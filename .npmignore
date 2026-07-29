@@ -1,0 +1,13 @@
+target/
+Cargo.lock
+Cargo.toml
+bin/
+
+.vscode/
+.wren/
+
+*.vsix
+src/
+docs/
+automation/
+wren-vscode-extension

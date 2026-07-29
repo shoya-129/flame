@@ -19,28 +19,32 @@ cargo install wrenlang
 
 1. **Initialize a new project**
 ```bash
-wrenlang init my_project
+wren new my_project
 cd my_project
 ```
 
 2. **Add Native Dependencies**
 Add dependencies from a local path or a GitHub repository:
 ```bash
-wrenlang add https://github.com/user/my_plugin
+wren add https://github.com/user/my_plugin
 ```
 Or for local native development:
 ```bash
-wrenlang native init
-wrenlang add --native bridge ./native
+wren native init
+wren add --native bridge ./native
 ```
 
 3. **Build & Run**
 ```bash
-wrenlang run src/main.wren
+wren run src/main.wren
+```
+Or for run the whole application:
+```bash
+wren
 ```
 Alternatively, build a standalone statically-linked executable:
 ```bash
-wrenlang build
+wren build
 ```
 
 ## Documentation
