@@ -1,0 +1,40 @@
+{
+  "name": "wren-vscode",
+  "displayName": "Wren Language Support",
+  "description": "Rich IDE syntax highlighting and configuration for the Wren programming language.",
+  "version": "0.1.0",
+  "publisher": "wren-lang",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:wren"
+  ],
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "wren",
+        "aliases": [
+          "Wren",
+          "wren"
+        ],
+        "extensions": [
+          ".wren",
+          ".wn"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wren",
+        "scopeName": "source.wren",
+        "path": "./syntaxes/wren.tmLanguage.json"
+      }
+    ]
+  }
+}

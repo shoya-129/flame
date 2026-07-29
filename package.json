@@ -1,0 +1,19 @@
+{
+  "name": "wrenlang",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "wren.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "build:npm": "cargo build --release && mkdir -p bin && cp target/release/wrenlang.exe bin/"
+  },
+  "bin": {
+    "wren": "bin/wrenlang.exe"
+  }
+}
