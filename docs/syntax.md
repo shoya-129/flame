@@ -25,7 +25,7 @@ Flame is statically typed. Types are either inferred or explicitly declared.
   * *Usage*: `let numbers: Vec<Int> = [1, 2, 3]`
 * **Tuples**: Fixed-size, ordered collections of potentially different types.
   * *Usage*: `let coordinates: (Int, String) = (10, "North")`
-* **`formula` (Map/Dictionary)**: A structured map-like data literal, ideal for configuration, JSON-like objects, or named key-value collections. Keys must be identifiers, and values can be literals, lists, or nested formulas.
+* **`formula` (Map/Dictionary)**: A structured map-like data literal, ideal for configuration, JSON-like objects, or named key-value collections. Keys must be identifiers, and values can be literals, lists, closures (anonymous functions), or nested formulas. Duplicate keys are supported; if a key is assigned multiple times within the same formula, the latter value overwrites the previous one without needing the `mut` keyword.
   * *Usage*:
     ```flame
     let config = formula {
@@ -34,7 +34,13 @@ Flame is statically typed. Types are either inferred or explicitly declared.
         options: {
             secure: true
         },
-        nodes: [1, 2, 3]
+        nodes: [1, 2, 3],
+        // Duplicate keys overwrite previous ones seamlessly!
+        port: 8081,
+        // Formulas can also store closures/anonymous functions
+        on_ready: () {
+            print("Config is ready!")
+        }
     }
     ```
 

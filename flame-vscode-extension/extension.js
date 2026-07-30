@@ -56,7 +56,7 @@ async function runCheck(document, position) {
     const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
     
     // Write unsaved content to a temporary file so the compiler sees exactly what the user is typing
-    const tempFilePath = document.uri.fsPath + '.wtmp'
+    const tempFilePath = document.uri.fsPath + '.ftmp'
     try {
         fs.writeFileSync(tempFilePath, document.getText())
     } catch (e) {

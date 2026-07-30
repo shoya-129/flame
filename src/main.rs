@@ -1,15 +1,15 @@
 pub mod aot_compiler;
 mod diagnostics;
+pub mod ide;
 mod lexer;
+pub mod native_std;
 mod package_manager;
 mod parser;
 pub mod runner;
+mod std_docs;
 mod stdlib;
 mod typechecker;
 pub mod vm;
-pub mod ide;
-mod std_docs;
-pub mod native_std;
 use diagnostics::Diagnostic;
 use lexer::Lexer;
 use parser::{Parser, Stmt};
@@ -99,7 +99,11 @@ fn main() {
             let p = Path::new(command);
             if p.exists() && p.extension().map_or(false, |ext| ext == "flame") {
                 let force_local = args.contains(&"--local".to_string());
-                let actual_cmd = if command == "--local" && args.len() >= 3 { &args[2] } else { command };
+                let actual_cmd = if command == "--local" && args.len() >= 3 {
+                    &args[2]
+                } else {
+                    command
+                };
                 run_file(actual_cmd, force_local);
             } else {
                 println!("\x1b[1;31merror:\x1b[0m unknown command '{}'", command);
@@ -244,7 +248,7 @@ fn parse_file_stmts(path: &Path, content: &str) -> Result<Vec<Stmt>, Diagnostic>
 }
 
 fn typecheck_file_stmts(path: &Path, stmts: &[Stmt]) -> Result<(), Vec<Diagnostic>> {
-    TypeChecker::new(path.to_string_lossy().to_string()).check_program(stmts)
+    TypeChecker::new(path.to_string_lossy().to_string()).check_program(stmts).0
 }
 
 fn build_project(args: &[String]) -> Option<PathBuf> {
@@ -319,13 +323,13 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
         let native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
         let plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
-        
+
         let mut processed_native_deps = Vec::new();
-        
+
         for (plugin_name, plugin_path) in native_deps_raw {
             let mut path_str = plugin_path.clone();
             if path_str.starts_with('"') && path_str.ends_with('"') {
-                path_str = path_str[1..path_str.len()-1].to_string();
+                path_str = path_str[1..path_str.len() - 1].to_string();
             }
             if path_str.starts_with('.') || path_str.starts_with('/') {
                 let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
@@ -334,7 +338,8 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                 if abs_path_str.starts_with("//?/") {
                     abs_path_str = abs_path_str[4..].to_string();
                 }
-                processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
+                processed_native_deps
+                    .push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
             } else {
                 processed_native_deps.push((plugin_name, path_str));
             }
@@ -343,16 +348,22 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         for (plugin_name, plugin_path) in plugins_raw {
             let mut path_str = plugin_path.clone();
             if path_str.starts_with('"') && path_str.ends_with('"') {
-                path_str = path_str[1..path_str.len()-1].to_string();
+                path_str = path_str[1..path_str.len() - 1].to_string();
             }
-            
+
             let is_local = path_str.starts_with('.') || path_str.starts_with('/');
             let actual_path = if is_local {
-                path_str 
+                path_str
             } else {
-                std::env::current_dir().unwrap().join(".flame").join("pkg").join(&plugin_name).to_string_lossy().into_owned()
+                std::env::current_dir()
+                    .unwrap()
+                    .join(".flame")
+                    .join("pkg")
+                    .join(&plugin_name)
+                    .to_string_lossy()
+                    .into_owned()
             };
-            
+
             let absolute_path = std::fs::canonicalize(std::path::Path::new(&actual_path))
                 .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&actual_path));
             let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
@@ -362,7 +373,12 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
         }
 
-        crate::aot_compiler::build_aot_project(&pkg_name, profile, &processed_native_deps, force_local);
+        crate::aot_compiler::build_aot_project(
+            &pkg_name,
+            profile,
+            &processed_native_deps,
+            force_local,
+        );
 
         let exe_name = format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX);
         let out_rel = format!("target/{}/{}", profile, exe_name);
@@ -390,7 +406,11 @@ fn run_file(path_str: &str, force_local: bool) {
         return;
     }
 
-    let build_args = if force_local { vec!["--local".to_string()] } else { vec![] };
+    let build_args = if force_local {
+        vec!["--local".to_string()]
+    } else {
+        vec![]
+    };
     if let Some(exe_path) = build_project(&build_args) {
         let mut child = Command::new(exe_path)
             .spawn()
@@ -620,9 +640,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     }
 
     let mut parser = Parser::new(tokens, file.to_string());
+    let mut tc_opt = None;
     match parser.parse() {
         Ok(stmts) => {
-            if let Err(diags) = TypeChecker::new(file.to_string()).check_program(&stmts) {
+            let (res, tc) = TypeChecker::new(file.to_string()).check_program(&stmts);
+            tc_opt = Some(tc);
+            if let Err(diags) = res {
                 for d in diags {
                     diagnostics.push(JsonDiagnostic {
                         severity: "error".to_string(),
@@ -717,13 +740,28 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     let (scanned_vars, scanned_structs) = ide::scan_document(&content);
 
     let (namespace, member_prefix) = extract_member_context(current_line, cursor_col);
-    let hover = if let Some(namespace) = namespace {
+    
+    let mut ast_hover = None;
+    if let Some(tc) = &tc_opt {
+        if let Some(l) = line {
+            for (span, ty_str) in &tc.hover_info {
+                if span.line == l && cursor_col >= span.col && cursor_col <= span.col + word_under_cursor.len() {
+                    let sig = format!("{}: {}", word_under_cursor, ty_str);
+                    ast_hover = Some(JsonHover {
+                        label: word_under_cursor.clone(),
+                        documentation: Some(format!("```flame\n{}\n```\nInferred type from AST", sig)),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    let mut hover;
+    
+    if let Some(namespace) = namespace {
         let mut hover_found = None;
         if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
-            let rel_meta = format!(".flame/pkg/{}/{}.fmi", &namespace, &namespace);
-            let meta_candidates = vec![
-                PathBuf::from(&rel_meta),
-            ];
             for function in &meta.functions {
                 if member_prefix
                     .as_deref()
@@ -754,7 +792,11 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                 kind: "function".to_string(),
                                 detail: format!("native.{}", namespace),
                                 documentation: function.docs.clone().or_else(|| {
-                                    load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
+                                    load_local_rust_doc(
+                                        &manifest_dir,
+                                        &namespace,
+                                        &function.flame_name,
+                                    )
                                 }),
                             });
                         }
@@ -762,25 +804,39 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 }
             }
             if !word_under_cursor.is_empty() {
-                hover_found = meta.functions
+                hover_found = meta
+                    .functions
                     .iter()
                     .find(|function| function.flame_name == word_under_cursor)
-                    .map(|function| JsonHover {
-                        label: format!("{}.{}", namespace, function.flame_name),
-                        documentation: function.docs.clone().or_else(|| {
-                            load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
-                        }),
+                    .map(|function| {
+                        let doc = function.docs.clone().unwrap_or_else(|| {
+                            load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name).unwrap_or_default()
+                        });
+                        JsonHover {
+                            label: format!("{}.{}", namespace, function.flame_name),
+                            documentation: Some(format!("```flame\nfn {}(...)\n```\n{}", function.flame_name, doc)),
+                        }
                     });
 
                 if hover_found.is_none() {
                     for struct_meta in &meta.structs {
                         if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
-                            if let Some(function) = struct_meta.methods.iter().find(|f| f.flame_name == word_under_cursor) {
+                            if let Some(function) = struct_meta
+                                .methods
+                                .iter()
+                                .find(|f| f.flame_name == word_under_cursor)
+                            {
+                                let sig = format!("fn {}(...)", function.flame_name);
+                                let doc = function.docs.clone().unwrap_or_else(|| {
+                                    load_local_rust_doc(
+                                        &manifest_dir,
+                                        &namespace,
+                                        &function.flame_name,
+                                    ).unwrap_or_default()
+                                });
                                 hover_found = Some(JsonHover {
                                     label: format!("{}.{}", namespace, function.flame_name),
-                                    documentation: function.docs.clone().or_else(|| {
-                                        load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
-                                    }),
+                                    documentation: Some(format!("```flame\n{}\n```\n{}", sig, doc)),
                                 });
                                 break;
                             }
@@ -788,11 +844,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     }
                 }
             }
-            hover_found
         } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {
             let mut provided_completions = false;
             for method in &std_methods {
-                if member_prefix.as_deref().map_or(true, |prefix| method.starts_with(prefix)) {
+                if member_prefix
+                    .as_deref()
+                    .map_or(true, |prefix| method.starts_with(prefix))
+                {
                     completions.push(JsonCompletion {
                         label: method.clone(),
                         kind: "function".to_string(),
@@ -802,10 +860,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     provided_completions = true;
                 }
             }
-            
+
             if !word_under_cursor.is_empty() {
                 if provided_completions && std_methods.contains(&word_under_cursor) {
-                    if let Some(doc) = crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor) {
+                    if let Some(doc) =
+                        crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor)
+                    {
                         hover_found = Some(JsonHover {
                             label: format!("{namespace}.{word_under_cursor}()"),
                             documentation: Some(doc.to_string()),
@@ -813,22 +873,81 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     } else {
                         hover_found = Some(JsonHover {
                             label: format!("{namespace}.{word_under_cursor}()"),
-                            documentation: Some(format!("Standard library function: {namespace}.{word_under_cursor}")),
+                            documentation: Some(format!(
+                                "Standard library function: {namespace}.{word_under_cursor}"
+                            )),
                         });
                     }
                 }
             }
-            hover_found
-        } else {
-            // It might be a variable instead of a module namespace!
-            let var_type = scanned_vars.iter().find(|v| v.name == namespace).and_then(|v| v.typ.as_ref());
+        } else if let Some(local_stmts) = load_local_module_declarations(&manifest_dir, file, &namespace) {
             let mut provided_completions = false;
             
+            for stmt in &local_stmts {
+                let func_info = match stmt {
+                    crate::parser::Stmt::FuncDecl { name, params, return_type, .. } => Some((name, params, return_type)),
+                    crate::parser::Stmt::ExportDecl(inner, _) => {
+                        if let crate::parser::Stmt::FuncDecl { name, params, return_type, .. } = &**inner {
+                            Some((name, params, return_type))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                
+                if let Some((name, params, return_type)) = func_info {
+                    let param_strs = params.iter().map(|p| {
+                        format!("{}{}: {}", if p.is_mut { "mut " } else { "" }, p.name, p.type_name)
+                    }).collect::<Vec<_>>().join(", ");
+                    let ret_str = return_type.as_deref().unwrap_or("Nil");
+                    let sig = format!("fn {}({}) -> {}", name, param_strs, ret_str);
+
+                    if member_prefix.as_deref().map_or(true, |prefix| name.starts_with(prefix)) {
+                        completions.push(JsonCompletion {
+                            label: name.clone(),
+                            kind: "function".to_string(),
+                            detail: format!("module {}", namespace),
+                            documentation: Some(sig.clone()),
+                        });
+                        provided_completions = true;
+                    }
+
+                    if !word_under_cursor.is_empty() && name == &word_under_cursor {
+                        hover_found = Some(JsonHover {
+                            label: format!("{}.{}()", namespace, name),
+                            documentation: Some(format!("```flame\n{}\n```", sig)),
+                        });
+                    }
+                }
+            }
+            
+            if !provided_completions {
+                // If the local file had no such functions matching the prefix, we just do nothing here.
+            }
+        } else {
+            let mut var_type = scanned_vars
+                .iter()
+                .find(|v| v.name == namespace)
+                .and_then(|v| v.typ.clone());
+            
+            // If not found as a variable, maybe it's a struct name directly?
+            if var_type.is_none() {
+                if scanned_structs.iter().any(|s| s.name == namespace) {
+                    var_type = Some(namespace.to_string());
+                }
+            }
+            
+            let mut provided_completions = false;
+
             if let Some(t) = var_type {
                 // If it's a known struct, suggest its fields and methods
                 if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
                     for field in &struct_def.fields {
-                        if member_prefix.as_deref().map_or(true, |prefix| field.starts_with(prefix)) {
+                        if member_prefix
+                            .as_deref()
+                            .map_or(true, |prefix| field.starts_with(prefix))
+                        {
                             completions.push(JsonCompletion {
                                 label: field.clone(),
                                 kind: "property".to_string(),
@@ -839,7 +958,10 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         }
                     }
                     for method in &struct_def.methods {
-                        if member_prefix.as_deref().map_or(true, |prefix| method.starts_with(prefix)) {
+                        if member_prefix
+                            .as_deref()
+                            .map_or(true, |prefix| method.starts_with(prefix))
+                        {
                             completions.push(JsonCompletion {
                                 label: method.clone(),
                                 kind: "method".to_string(),
@@ -850,12 +972,45 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         }
                     }
                 }
+                
+                // Also check native types like ThreadHandler
+                if !provided_completions {
+                    let native_module_lookup = match t.as_str() {
+                        "ThreadHandler" => Some("thread"),
+                        "ProcessHandler" => Some("process"),
+                        "File" => Some("fs"),
+                        "TcpStream" | "TcpListener" | "UdpSocket" => Some("net"),
+                        _ => None,
+                    };
+                    
+                    if let Some(mod_name) = native_module_lookup {
+                        if let Some(std_methods) = ide::get_std_module_methods(mod_name) {
+                            for method in &std_methods {
+                                if member_prefix
+                                    .as_deref()
+                                    .map_or(true, |prefix| method.starts_with(prefix))
+                                {
+                                    completions.push(JsonCompletion {
+                                        label: method.clone(),
+                                        kind: "method".to_string(),
+                                        detail: format!("{} method", t),
+                                        documentation: None,
+                                    });
+                                    provided_completions = true;
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            
+
             if !provided_completions {
                 // Fallback for primitive and collection methods
                 let builtin_methods = vec![
-                    ("len", "Returns the length in bytes (String) or elements (Vec)"),
+                    (
+                        "len",
+                        "Returns the length in bytes (String) or elements (Vec)",
+                    ),
                     ("push_str", "Appends a string slice (String)"),
                     ("to_uppercase", "Returns uppercase string (String)"),
                     ("to_lowercase", "Returns lowercase string (String)"),
@@ -890,12 +1045,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         .find(|(m, _)| *m == word_under_cursor)
                         .map(|(m, doc)| JsonHover {
                             label: format!("{m}()"),
-                            documentation: Some(doc.to_string()),
+                            documentation: Some(format!("```flame\nfn {m}(...)\n```\n{}", doc)),
                         });
                 }
             }
-            hover_found
         }
+        hover = hover_found;
     } else {
         // Keyword completions for bare words
         completions.extend(ide::get_keyword_completions(&word_under_cursor));
@@ -906,7 +1061,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             if let Some(doc) = crate::std_docs::get_std_module_doc(&word_under_cursor) {
                 hover_found = Some(JsonHover {
                     label: word_under_cursor.clone(),
-                    documentation: Some(doc.to_string()),
+                    documentation: Some(format!("```flame\nmodule {}\n```\n{}", word_under_cursor, doc)),
                 });
             }
         }
@@ -922,7 +1077,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 });
             }
         }
-        
+
         // Provide structs as completion for bare words
         for s in &scanned_structs {
             if s.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
@@ -934,23 +1089,37 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 });
             }
         }
-        
+
         if let Some(kw_hover) = ide::get_keyword_hover(&word_under_cursor) {
-            Some(kw_hover)
+            hover = Some(kw_hover);
         } else if word_under_cursor == "print" {
-            Some(JsonHover {
+            hover = Some(JsonHover {
                 label: "print(value)".to_string(),
-                documentation: Some("Prints the given value to standard output, followed by a newline.".to_string()),
-            })
+                documentation: Some(
+                    "```flame\nfn print(value: Any)\n```\nPrints the given value to standard output, followed by a newline.".to_string(),
+                ),
+            });
         } else if word_under_cursor == "eprint" {
-            Some(JsonHover {
+            hover = Some(JsonHover {
                 label: "eprint(value)".to_string(),
-                documentation: Some("Prints the given value to standard error, followed by a newline. Useful for logging errors or diagnostics.".to_string()),
-            })
+                documentation: Some("```flame\nfn eprint(value: Any)\n```\nPrints the given value to standard error, followed by a newline. Useful for logging errors or diagnostics.".to_string()),
+            });
+        } else if word_under_cursor == "thread" {
+            hover = Some(JsonHover {
+                label: "thread { ... }".to_string(),
+                documentation: Some("```flame\nfn thread(block: Block)\n```\nSpawns a new thread and executes the block.".to_string()),
+            });
         } else {
-            hover_found
+            hover = hover_found;
         }
     };
+
+    // Override with AST hover if available, unless AST hover is just Unknown and we already have better info
+    if let Some(ast) = ast_hover {
+        if hover.is_none() || !ast.label.ends_with(": Unknown") {
+            hover = Some(ast);
+        }
+    }
 
     JsonCheckOutput {
         file: file.to_string(),
@@ -1077,6 +1246,40 @@ fn extract_word_at_cursor(line: &str, col: usize) -> String {
     } else {
         String::new()
     }
+}
+
+fn load_local_module_declarations(
+    manifest_dir: &Path,
+    current_file: &str,
+    namespace: &str,
+) -> Option<Vec<crate::parser::Stmt>> {
+    let current_dir = Path::new(current_file).parent().unwrap_or(Path::new("."));
+    let mut candidate = current_dir.join(format!("{}.flame", namespace));
+    if !candidate.exists() {
+        candidate = current_dir.join(format!("{}.fm", namespace));
+    }
+    if !candidate.exists() {
+        candidate = manifest_dir.join("src").join(format!("{}.flame", namespace));
+    }
+    if !candidate.exists() {
+        candidate = manifest_dir.join("src").join(format!("{}.fm", namespace));
+    }
+    if !candidate.exists() {
+        return None;
+    }
+    let content = fs::read_to_string(&candidate).ok()?;
+    let mut lexer = Lexer::new(&content);
+    let mut tokens = Vec::new();
+    loop {
+        let tok = lexer.next_token();
+        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+        tokens.push(tok);
+        if is_eof {
+            break;
+        }
+    }
+    let mut parser = Parser::new(tokens, candidate.to_string_lossy().to_string());
+    parser.parse().ok()
 }
 
 fn load_meta_from_project(

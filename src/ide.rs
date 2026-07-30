@@ -25,7 +25,7 @@ const KEYWORDS: &[(&str, &str)] = &[
     ("import", "Imports a module. Example: `import std.fs`"),
     ("native", "Native dependencies import prefix. Example: `import native.mysql`"),
     ("std", "Standard library import prefix. Example: `import std.math`"),
-    ("thread", "Spawns a new background thread block. Example: `thread { ... }`"),
+    ("thread", "Spawns a new background thread block. Example: `thread { thread.sleep(3000) }`"),
     ("await", "Waits for an asynchronous task or thread to complete. Example: `await task`"),
     ("print", "Prints to standard output. Example: `print(\"hello\")`"),
     ("eprint", "Prints to standard error. Example: `eprint(\"error\")`"),
@@ -37,6 +37,7 @@ const KEYWORDS: &[(&str, &str)] = &[
     ("Bool", "Built-in Type: A boolean value (true or false)."),
     ("Nil", "Built-in Type: Represents the absence of a value."),
     ("Vec", "Built-in Type: A dynamically-sized array."),
+    ("ThreadHandler", "Built-in Type: A handle to a spawned background thread."),
 ];
 
 pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
@@ -54,9 +55,21 @@ pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
 pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
     KEYWORDS.iter()
         .find(|(kw, _)| *kw == word)
-        .map(|(kw, doc)| JsonHover {
-            label: kw.to_string(),
-            documentation: Some(doc.to_string()),
+        .map(|(kw, doc)| {
+            let mut formatted_doc = String::new();
+            if let Some((desc, ex)) = doc.split_once("Example: `") {
+                let clean_ex = ex.trim_end_matches('`');
+                formatted_doc = format!("```flame\nkeyword {}\n```\n{}\n\n**Example:**\n```flame\n{}\n```", kw, desc.trim(), clean_ex);
+            } else if doc.starts_with("Built-in Type:") {
+                formatted_doc = format!("```flame\ntype {}\n```\n{}", kw, doc.trim());
+            } else {
+                formatted_doc = format!("```flame\nkeyword {}\n```\n{}", kw, doc.trim());
+            }
+            
+            JsonHover {
+                label: kw.to_string(),
+                documentation: Some(formatted_doc),
+            }
         })
 }
 
@@ -110,6 +123,31 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         let name = cap[1].to_string();
         let typ = cap.get(2).map(|m| m.as_str().to_string());
         vars.push(ScannedVar { name, typ });
+    }
+
+    // Scan for variables with formula bodies to extract fields
+    let formula_re = Regex::new(r"(?s)(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)\s*=\s*formula\s*\{([^}]*)\}");
+    if let Ok(formula_re) = formula_re {
+        let field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:").unwrap();
+        for cap in formula_re.captures_iter(content) {
+            let name = cap[1].to_string();
+            let body = &cap[2];
+            let mut fields = Vec::new();
+            for field_cap in field_re.captures_iter(body) {
+                fields.push(field_cap[1].to_string());
+            }
+            let synthetic_type = format!("__formula_{}", name);
+            structs.push(ScannedStruct {
+                name: synthetic_type.clone(),
+                fields,
+                methods: vec![],
+            });
+            // Overwrite or add to vars at the beginning so it is found first
+            vars.insert(0, ScannedVar {
+                name,
+                typ: Some(synthetic_type),
+            });
+        }
     }
     
     // Scan for function decls: `fn name(a: Type, b: Type)`

@@ -23,10 +23,14 @@ flame new my_project
 cd my_project
 ```
 
-2. **Add Native Dependencies**
+2. **Add Dependencies & Plugins**
 Add dependencies from a local path or a GitHub repository:
 ```bash
-flame add https://github.com/user/my_plugin
+flame add https://github.com/user/my_package
+```
+Add a plugin from a local path or repository (use the `@plugin` flag):
+```bash
+flame add @plugin ./path/to/local_plugin
 ```
 Or for local native development:
 ```bash

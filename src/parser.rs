@@ -31,13 +31,6 @@ pub enum LiteralValue {
 }
 
 #[derive(Debug, Clone)]
-pub enum FormulaValue {
-    Literal(LiteralValue),
-    Map(Vec<(String, FormulaValue)>),
-    List(Vec<FormulaValue>),
-}
-
-#[derive(Debug, Clone)]
 pub struct Param {
     pub name: String,
     pub type_name: String,
@@ -65,8 +58,14 @@ pub enum Expr {
     Binary(Box<Expr>, BinaryOp, Box<Expr>, Span),
     Call(Box<Expr>, Vec<(Option<String>, Expr)>, Span),
     Dot(Box<Expr>, String, Span),
-    Formula(Vec<(String, FormulaValue)>, Span),
+    Formula(Vec<(String, Expr)>, Span),
     ThreadSpawn(Box<Expr>, Span),
+    Closure {
+        params: Vec<Param>,
+        return_type: Option<String>,
+        body: Vec<Stmt>,
+        span: Span,
+    },
     Await(Box<Expr>, Span),
     Tuple(Vec<Expr>, Span),
     VectorLiteral(Vec<Expr>, Span),
@@ -92,6 +91,7 @@ impl Expr {
             Expr::Dot(_, _, s) => s.clone(),
             Expr::Formula(_, s) => s.clone(),
             Expr::ThreadSpawn(_, s) => s.clone(),
+            Expr::Closure { span, .. } => span.clone(),
             Expr::Await(_, s) => s.clone(),
             Expr::Tuple(_, s) => s.clone(),
             Expr::VectorLiteral(_, s) => s.clone(),
@@ -449,6 +449,11 @@ impl Parser {
             )?;
             t.push_str(&sub_types.join(", "));
             t.push('>');
+        }
+        
+        if self.match_token(TokenKind::Arrow) {
+            t.push_str(" -> ");
+            t.push_str(&self.parse_type()?);
         }
         Ok(t)
     }
@@ -1158,7 +1163,7 @@ impl Parser {
                     let key_tok =
                         self.consume(TokenKind::Identifier, "expected formula field key")?;
                     self.consume(TokenKind::Colon, "expected ':' separator")?;
-                    let val = self.parse_formula_value()?;
+                    let val = self.parse_expr()?;
                     mappings.push((key_tok.lexeme.clone(), val));
                     self.match_token(TokenKind::Comma);
                 }
@@ -1227,6 +1232,9 @@ impl Parser {
                 ))
             }
             TokenKind::OpenParen => {
+                if self.is_closure_lookahead() {
+                    return self.parse_closure();
+                }
                 let start_tok = self.advance();
                 let mut expressions = Vec::new();
                 while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
@@ -1265,73 +1273,6 @@ impl Parser {
                 token.span.clone(),
                 Some("Failed to parse expression".to_string()),
                 Some("Check your expression formatting here".to_string()),
-            )),
-        }
-    }
-
-    fn parse_formula_value(&mut self) -> Result<FormulaValue, Diagnostic> {
-        let token = self.peek();
-        match token.kind {
-            TokenKind::IntLiteral => {
-                let tok = self.advance();
-                let val = tok.lexeme.parse::<i64>().unwrap_or(0);
-                Ok(FormulaValue::Literal(LiteralValue::Int(val)))
-            }
-            TokenKind::FloatLiteral => {
-                let tok = self.advance();
-                let val = tok.lexeme.parse::<f64>().unwrap_or(0.0);
-                Ok(FormulaValue::Literal(LiteralValue::Float(val)))
-            }
-            TokenKind::StringLiteral => {
-                let tok = self.advance();
-                Ok(FormulaValue::Literal(LiteralValue::String(
-                    tok.lexeme.clone(),
-                )))
-            }
-            TokenKind::True => {
-                self.advance();
-                Ok(FormulaValue::Literal(LiteralValue::Bool(true)))
-            }
-            TokenKind::False => {
-                self.advance();
-                Ok(FormulaValue::Literal(LiteralValue::Bool(false)))
-            }
-            TokenKind::Nil => {
-                self.advance();
-                Ok(FormulaValue::Literal(LiteralValue::Nil))
-            }
-            TokenKind::OpenBrace => {
-                self.advance();
-                let mut mapping = Vec::new();
-                while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
-                    let key = self.consume(TokenKind::Identifier, "expected key identifier")?;
-                    self.consume(TokenKind::Colon, "expected ':'")?;
-                    let val = self.parse_formula_value()?;
-                    mapping.push((key.lexeme.clone(), val));
-                    self.match_token(TokenKind::Comma);
-                }
-                self.consume(TokenKind::CloseBrace, "expected '}'")?;
-                Ok(FormulaValue::Map(mapping))
-            }
-            TokenKind::OpenBracket => {
-                self.advance();
-                let mut list = Vec::new();
-                while !self.check(TokenKind::CloseBracket) && !self.check(TokenKind::EOF) {
-                    list.push(self.parse_formula_value()?);
-                    self.match_token(TokenKind::Comma);
-                }
-                self.consume(TokenKind::CloseBracket, "expected ']'")?;
-                Ok(FormulaValue::List(list))
-            }
-            _ => Err(Diagnostic::new_error(
-                format!(
-                    "expected literal, list, or map for formula field, found '{}'",
-                    token.lexeme
-                ),
-                self.filepath.clone(),
-                token.span.clone(),
-                Some("Invalid formula mapping".to_string()),
-                None,
             )),
         }
     }
@@ -1377,6 +1318,98 @@ impl Parser {
             }
         }
         false
+    }
+
+    fn is_closure_lookahead(&self) -> bool {
+        let mut idx = self.index;
+        // Assume current token is OpenParen
+        if idx >= self.tokens.len() || self.tokens[idx].kind != TokenKind::OpenParen {
+            return false;
+        }
+        let mut parens = 0;
+        while idx < self.tokens.len() {
+            match self.tokens[idx].kind {
+                TokenKind::OpenParen => parens += 1,
+                TokenKind::CloseParen => {
+                    parens -= 1;
+                    if parens == 0 {
+                        // Look at next token
+                        let next_idx = idx + 1;
+                        if next_idx < self.tokens.len() {
+                            let next_kind = &self.tokens[next_idx].kind;
+                            return *next_kind == TokenKind::OpenBrace || *next_kind == TokenKind::Arrow;
+                        }
+                        return false;
+                    }
+                }
+                TokenKind::EOF => return false,
+                _ => {}
+            }
+            idx += 1;
+        }
+        false
+    }
+
+    fn parse_closure(&mut self) -> Result<Expr, Diagnostic> {
+        let start_tok = self.consume(TokenKind::OpenParen, "expected '(' for closure parameters")?;
+        let mut params = Vec::new();
+        while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
+            let mut is_ref = false;
+            let mut is_mut = false;
+
+            if self.match_token(TokenKind::Ampersand) {
+                is_ref = true;
+                if self.match_token(TokenKind::Mut) {
+                    is_mut = true;
+                }
+            }
+
+            let p_name_tok = self.consume(TokenKind::Identifier, "expected parameter name")?;
+            let name = p_name_tok.lexeme.clone();
+
+            let mut p_type = "Unknown".to_string();
+            if self.match_token(TokenKind::Colon) {
+                p_type = self.parse_type()?;
+            }
+
+            let mut default_val = None;
+            if self.match_token(TokenKind::Equal) {
+                default_val = Some(self.parse_expr()?);
+            }
+
+            params.push(Param {
+                name,
+                type_name: p_type,
+                default_val,
+                is_ref,
+                is_mut,
+            });
+
+            if !self.match_token(TokenKind::Comma) {
+                break;
+            }
+        }
+        self.consume(TokenKind::CloseParen, "expected ')' to close parameters list")?;
+
+        let mut return_type = None;
+        if self.match_token(TokenKind::Arrow) {
+            return_type = Some(self.parse_type()?);
+        }
+
+        let body = self.parse_block()?;
+        let end_span = self.peek().span.clone();
+
+        Ok(Expr::Closure {
+            params,
+            return_type,
+            body,
+            span: Span {
+                start: start_tok.span.start,
+                end: end_span.start,
+                line: start_tok.span.line,
+                col: start_tok.span.col,
+            },
+        })
     }
 
     fn parse_accessors(&mut self, mut expr: Expr) -> Result<Expr, Diagnostic> {

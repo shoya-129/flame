@@ -32,8 +32,10 @@ pub enum Value {
     Function {
         params: Vec<Param>,
         body: Vec<Stmt>,
+        env: Arc<Mutex<Env>>,
     },
     Break,
+    Return(Box<Value>),
     Moved(String),
     Ref(Box<Value>),
     RefPath(RefPath, bool),
@@ -145,6 +147,7 @@ impl fmt::Display for Value {
             Value::StructConstructor { name, .. } => write!(f, "<struct constructor: {}>", name),
             Value::Function { .. } => write!(f, "<function>"),
             Value::Break => write!(f, "<break>"),
+            Value::Return(val) => write!(f, "<return {}>", val),
             Value::NativeFunction(_) => write!(f, "<native function>"),
             Value::NativeCallback(_) => write!(f, "<native callback>"),
             Value::EnumMeta(name, _) => write!(f, "<enum {}>", name),
@@ -253,6 +256,7 @@ impl Value {
                 string_ptr: std::ptr::null_mut(),
                 obj_ptr: *ptr as *mut std::ffi::c_void,
             },
+            Value::Return(inner) => inner.pack(),
             _ => CValue::null(),
         }
     }
@@ -377,6 +381,7 @@ pub struct VarEntry {
     pub is_mut: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct Env {
     pub variables: HashMap<String, VarEntry>,
     pub parent: Option<Arc<Mutex<Env>>>,

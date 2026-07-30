@@ -1,5 +1,20 @@
-import native.rand
+import std.thread
+import hello
 
-let mut rng = rand.random("u32")
 
-print(rng)
+let user: Formula = formula {
+    name: "soham",
+    id: 89,
+    isAdmin: true,
+    numbers: [9,9],
+    status: (a: String) {
+        print(b);
+    }
+}
+
+const t: ThreadHandler = thread {
+    user.status("online")
+    hello.sayhello(user)
+}
+
+t.join()

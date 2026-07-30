@@ -1,6 +1,6 @@
 use crate::lexer::{Lexer, Span};
 use crate::parser::{
-    BinaryOp, Expr, FormulaValue, InterpolatedSegment, LiteralValue, Param, Parser, Stmt,
+    BinaryOp, Expr, InterpolatedSegment, LiteralValue, Param, Parser, Stmt,
 };
 
 use std::collections::HashMap;
@@ -97,6 +97,7 @@ impl Runner {
                 let func = Value::Function {
                     params: params.clone(),
                     body: body.clone(),
+                    env: env.clone(),
                 };
                 env.lock().unwrap().define(name.clone(), func, false);
                 Ok(Value::Nil)
@@ -258,6 +259,7 @@ impl Runner {
                                                     })
                                                     .collect(),
                                                 body: vec![],
+                                                env: mod_env.clone(),
                                             },
                                             false,
                                         );
@@ -288,6 +290,7 @@ impl Runner {
                                                         })
                                                         .collect(),
                                                     body: vec![],
+                                                    env: mod_env.clone(),
                                                 },
                                             );
                                         }
@@ -314,6 +317,7 @@ impl Runner {
                                                             })
                                                             .collect(),
                                                         body: vec![],
+                                                        env: mod_env.clone(),
                                                     },
                                                     false,
                                                 );
@@ -350,7 +354,10 @@ impl Runner {
                     );
                     self.modules.insert(mod_name, mod_env);
                 } else {
-                    let local_file = self.resolve_path(&format!("{}.flame", path.last().unwrap()));
+                    let mut local_file = self.resolve_path(&format!("{}.flame", path.last().unwrap()));
+                    if !local_file.exists() {
+                        local_file = self.resolve_path(&format!("{}.fm", path.last().unwrap()));
+                    }
                     if local_file.exists() {
                         let content = fs::read_to_string(&local_file).map_err(|e| e.to_string())?;
                         let mut lexer = Lexer::new(&content);
@@ -419,6 +426,9 @@ impl Runner {
                         if matches!(res, Value::Break) {
                             return Ok(Value::Break);
                         }
+                        if matches!(res, Value::Return(_)) {
+                            return Ok(res);
+                        }
                     }
                 } else if let Some(el) = else_branch {
                     let child = Arc::new(Mutex::new(Env::new_child(env)));
@@ -426,6 +436,9 @@ impl Runner {
                         let res = self.execute_statement(s, child.clone())?;
                         if matches!(res, Value::Break) {
                             return Ok(Value::Break);
+                        }
+                        if matches!(res, Value::Return(_)) {
+                            return Ok(res);
                         }
                     }
                 }
@@ -441,6 +454,9 @@ impl Runner {
                     let mut hit_break = false;
                     for s in body {
                         let res = self.execute_statement(s, child.clone())?;
+                        if matches!(res, Value::Return(_)) {
+                            return Ok(res);
+                        }
                         if matches!(res, Value::Break) {
                             hit_break = true;
                             break;
@@ -458,6 +474,9 @@ impl Runner {
                     let mut hit_break = false;
                     for s in body {
                         let res = self.execute_statement(s, child.clone())?;
+                        if matches!(res, Value::Return(_)) {
+                            return Ok(res);
+                        }
                         if matches!(res, Value::Break) {
                             hit_break = true;
                             break;
@@ -484,6 +503,14 @@ impl Runner {
                 }
                 Ok(Value::Nil)
             }
+            Stmt::ReturnStmt(expr_opt, _) => {
+                if let Some(expr) = expr_opt {
+                    let val = self.eval_expr(expr, env)?;
+                    Ok(Value::Return(Box::new(val)))
+                } else {
+                    Ok(Value::Return(Box::new(Value::Nil)))
+                }
+            }
             Stmt::Break(_) => Ok(Value::Break),
             Stmt::ForStmt {
                 var_name,
@@ -500,7 +527,13 @@ impl Runner {
                             child.lock().unwrap().define(var_name.clone(), it, false);
 
                             for s in body {
-                                self.execute_statement(s, child.clone())?;
+                                let res = self.execute_statement(s, child.clone())?;
+                                if matches!(res, Value::Return(_)) {
+                                    return Ok(res);
+                                }
+                                if matches!(res, Value::Break) {
+                                    return Ok(Value::Nil);
+                                }
                             }
                         }
                     }
@@ -514,7 +547,13 @@ impl Runner {
                                 .define(var_name.clone(), Value::Int(i), false);
 
                             for s in body {
-                                self.execute_statement(s, child.clone())?;
+                                let res = self.execute_statement(s, child.clone())?;
+                                if matches!(res, Value::Return(_)) {
+                                    return Ok(res);
+                                }
+                                if matches!(res, Value::Break) {
+                                    return Ok(Value::Nil);
+                                }
                             }
                         }
                     }
@@ -528,7 +567,13 @@ impl Runner {
                                 .define(var_name.clone(), Value::Int(i), false);
 
                             for s in body {
-                                self.execute_statement(s, child.clone())?;
+                                let res = self.execute_statement(s, child.clone())?;
+                                if matches!(res, Value::Return(_)) {
+                                    return Ok(res);
+                                }
+                                if matches!(res, Value::Break) {
+                                    return Ok(Value::Nil);
+                                }
                             }
                         }
                     }
@@ -590,6 +635,13 @@ impl Runner {
                         Err(format!("undefined variable '{}'", name))
                     }
                 }
+            }
+            Expr::Closure { params, body, .. } => {
+                Ok(Value::Function {
+                    params: params.clone(),
+                    body: body.clone(),
+                    env: env.clone(),
+                })
             }
             Expr::Borrow(inner, is_mut, _) => {
                 // Construct a reference path when possible; fall back to Ref(value)
@@ -1332,7 +1384,7 @@ impl Runner {
                                 }
                             }
                             if let Some(val) = map.get(member) {
-                                if let Value::Function { params, body } = val {
+                                if let Value::Function { params, body, env: _func_env } = val {
                                     if body.is_empty() {
                                         let mut evaled_args = Vec::new();
                                         for (_, arg_expr) in args {
@@ -1375,8 +1427,11 @@ impl Runner {
                                     }
                                     let mut last_val = Value::Nil;
                                     for stmt in body {
-                                        last_val =
-                                            self.execute_statement(stmt, child_env.clone())?;
+                                        let res = self.execute_statement(stmt, child_env.clone())?;
+                                        if let Value::Return(ret_val) = res {
+                                            return Ok(*ret_val);
+                                        }
+                                        last_val = res;
                                     }
                                     return Ok(last_val);
                                 }
@@ -1432,8 +1487,8 @@ impl Runner {
                         }
                         Err(format!("variant '{:?}' is not a tuple variant", var))
                     }
-                    Value::Function { params, body } => {
-                        let child_env = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                    Value::Function { params, body, env: closure_env } => {
+                        let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
                         for (i, p) in params.iter().enumerate() {
                             if i < args.len() {
                                 let arg_val = self.eval_expr(&args[i].1, env.clone())?;
@@ -1445,7 +1500,11 @@ impl Runner {
                         }
                         let mut last_val = Value::Nil;
                         for stmt in &body {
-                            last_val = self.execute_statement(stmt, child_env.clone())?;
+                            let res = self.execute_statement(stmt, child_env.clone())?;
+                            if let Value::Return(ret_val) = res {
+                                return Ok(*ret_val);
+                            }
+                            last_val = res;
                         }
                         Ok(last_val)
                     }
@@ -1491,7 +1550,7 @@ impl Runner {
             Expr::Formula(mappings, _) => {
                 let mut map = HashMap::new();
                 for (k, v) in mappings {
-                    let val = self.eval_formula_value(v)?;
+                    let val = self.eval_expr(v, env.clone())?;
                     map.insert(k.clone(), val);
                 }
                 Ok(Value::Formula(map))
@@ -1753,31 +1812,7 @@ impl Runner {
             .define(param.name.clone(), arg_val, param.is_mut);
     }
 
-    fn eval_formula_value(&mut self, val: &FormulaValue) -> Result<Value, String> {
-        match val {
-            FormulaValue::Literal(lit) => match lit {
-                LiteralValue::Int(i) => Ok(Value::Int(*i)),
-                LiteralValue::Float(f) => Ok(Value::Float(*f)),
-                LiteralValue::String(s) => Ok(Value::String(s.clone())),
-                LiteralValue::Bool(b) => Ok(Value::Bool(*b)),
-                LiteralValue::Nil => Ok(Value::Nil),
-            },
-            FormulaValue::Map(mapping) => {
-                let mut map = HashMap::new();
-                for (k, v) in mapping {
-                    map.insert(k.clone(), self.eval_formula_value(v)?);
-                }
-                Ok(Value::Formula(map))
-            }
-            FormulaValue::List(list) => {
-                let mut vec = Vec::new();
-                for v in list {
-                    vec.push(self.eval_formula_value(v)?);
-                }
-                Ok(Value::Tuple(vec))
-            }
-        }
-    }
+
 
     fn load_rust_file_methods(&self, rs_code: &str, env: Arc<Mutex<Env>>) {
         let mut e = env.lock().unwrap();
@@ -1793,6 +1828,7 @@ impl Runner {
                                 Value::Function {
                                     params: vec![],
                                     body: vec![],
+                                    env: env.clone(),
                                 },
                                 false,
                             );
@@ -1845,6 +1881,7 @@ impl Runner {
                             })
                             .collect(),
                         body: vec![],
+                        env: mod_env.clone(),
                     },
                     false,
                 );

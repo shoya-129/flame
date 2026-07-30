@@ -27,7 +27,7 @@ pub fn init() -> HashMap<String, Value> {
             if args.is_empty() {
                 return Err("thread.spawn expects 1 argument (function or callback)".to_string());
             }
-            if let Value::Function { body: _, params: _ } = &args[0] {
+            if let Value::Function { body: _, params: _, env: _ } = &args[0] {
                 // Thread spawning a Wren function is complex natively without VM cloning,
                 // but we can return a stub thread handle for now.
                 Ok(Value::ThreadHandler(999))

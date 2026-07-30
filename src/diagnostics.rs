@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 use crate::lexer::Span;
 
+#[derive(Debug, Clone)]
 pub enum DiagnosticSeverity {
     Error,
     Warning,
     Info,
 }
 
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: DiagnosticSeverity,
     pub message: String,

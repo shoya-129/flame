@@ -172,11 +172,16 @@ pub fn add_package(args: &[String]) {
     let toml_path = Path::new("flame.toml");
     if toml_path.exists() {
         let mut content = fs::read_to_string(toml_path).unwrap_or_default();
-        if !content.contains(section) {
-            content.push_str(&format!("\n{}\n", section));
-        }
         if !content.contains(&format!("{} =", manifest_key)) {
-            content.push_str(&format!("{} = \"{}\"\n", manifest_key, manifest_value));
+            if !content.contains(section) {
+                content.push_str(&format!("\n{}\n", section));
+                content.push_str(&format!("{} = \"{}\"\n", manifest_key, manifest_value));
+            } else {
+                if let Some(idx) = content.find(section) {
+                    let insert_pos = idx + section.len();
+                    content.insert_str(insert_pos, &format!("\n{} = \"{}\"", manifest_key, manifest_value));
+                }
+            }
             let _ = fs::write(toml_path, content);
         }
     }

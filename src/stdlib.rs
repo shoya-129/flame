@@ -12,6 +12,7 @@ fn function_value(params: Vec<Param>) -> Value {
     Value::Function {
         params,
         body: vec![],
+        env: Arc::new(Mutex::new(Env::new())),
     }
 }
 
