@@ -30,13 +30,13 @@ pub fn init() -> HashMap<String, Value> {
             if let Value::Function { body: _, params: _ } = &args[0] {
                 // Thread spawning a Wren function is complex natively without VM cloning,
                 // but we can return a stub thread handle for now.
-                Ok(Value::ThreadHandle(999))
+                Ok(Value::ThreadHandler(999))
             } else if let Value::NativeCallback(cb) = args[0] {
                 // We can actually spawn native callbacks safely!
                 let _handle = thread::spawn(move || {
                     let _ = cb(vec![]);
                 });
-                Ok(Value::ThreadHandle(998))
+                Ok(Value::ThreadHandler(998))
             } else {
                 Err("thread.spawn argument must be a function".to_string())
             }

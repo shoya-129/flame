@@ -202,16 +202,16 @@ fn create_new_project(name: &str) {
     let main_wren = r#"import math
 import std.thread
 
-fn main() {
-    print("Hello, world! Program executed successfully.")
-    let result: Int = math.add(5, 7)
-    print($"5 + 7 = {result}")
+print("Hello, world! Program executed successfully.")
+let result: Int = math.add(5, 7)
+print($"5 + 7 = {result}")
 
-    let t: ThreadHandle<nil> = thread {
-        print("Hello from background thread!")
-    }
-    t.join()
+let t: ThreadHandler = thread {
+    print("Hello from background thread!")
 }
+
+t.join()
+
 "#;
     fs::write(root.join("src/main.wren"), main_wren).unwrap();
 

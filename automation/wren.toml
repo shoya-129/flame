@@ -12,3 +12,4 @@ rust = "./native"
 
 [native-dependencies]
 uuid = { version = "*", features = ["v4"] }
+rand = "0.10.2"

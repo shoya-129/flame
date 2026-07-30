@@ -55,10 +55,39 @@ The **Wren VS Code Extension** reads these `.wmeta` files automatically.
 2. The extension will provide **autocomplete suggestions** showing every available function, struct, and constant from that Rust crate.
 3. It will even show you the **original Rust documentation and signatures** inline in your editor, exactly as the crate author wrote them!
 
-## 4. How it Works Under the Hood (For the Curious)
+## 4. Creating Custom Native Plugins
 
-1. **Resolution**: `wren run` reads your `wren.toml` and discovers your native Rust dependencies.
+In addition to downloading public crates from crates.io, you can write **your own custom Rust code** and call it directly from Wren. This is the recommended approach if you need extreme performance or want to bind to a specific Rust library with custom logic.
+
+To do this:
+
+1. **Initialize a Native Project**: Inside your Wren project, create a new Rust library by running `cargo init --lib native` (or use a dedicated `wren native init` command if provided by the toolchain). This creates a `native` folder with a `Cargo.toml` and `src/lib.rs`.
+2. **Write Rust Code**: Add your high-performance or custom Rust functions inside `native/src/lib.rs`.
+    ```rust
+    // native/src/lib.rs
+    pub fn heavy_computation(x: i64) -> i64 {
+        x * x * 42
+    }
+    ```
+3. **Add as a Dependency**: Open your `wren.toml` and add your local `native` folder as a local path dependency under `[native-dependencies]`.
+    ```toml
+    [native-dependencies]
+    native_plugin = { path = "./native" }
+    ```
+4. **Use in Wren**: Finally, import your custom Rust code as a native plugin in your Wren files and use it instantly!
+    ```wren
+    import native.native_plugin
+    
+    let result = native_plugin.heavy_computation(10)
+    print(result) // Outputs: 4200
+    ```
+    
+The compiler will automatically detect the local Rust code, build it alongside your Wren script, and instantly provide autocomplete suggestions for your custom functions!
+
+## 5. How it Works Under the Hood (For the Curious)
+
+1. **Resolution**: `wren run` reads your `wren.toml` and discovers your native Rust dependencies (both external crates and local folders).
 2. **Metadata Generation**: It runs `cargo rustdoc` to generate JSON metadata representing the Abstract Syntax Tree (AST) of the crates.
-3. **Bridge Generation**: Wren's AOT (Ahead-of-Time) compiler generates a safe Rust wrapper around the crate's public APIs.
+3. **Bridge Generation**: Wren's AOT (Ahead-of-Time) compiler generates a safe Rust wrapper around the crate's public APIs, automatically mapping data types (Strings, booleans, integers, floats). Generic functions (like `random<T>`) are instantiated dynamically for supported primitive types.
 4. **Static Compilation**: Wren generates a `Cargo` workspace inside the `.wren/build-cache` directory, compiles everything statically into a single executable, and maps the Rust functions directly into the Wren VM's memory.
 5. **Execution**: The resulting binary is ultra-fast, statically linked, and memory safe!

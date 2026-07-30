@@ -930,7 +930,7 @@ impl Runner {
                             }
                             _ => {}
                         },
-                        Value::ThreadHandle(id) => {
+                        Value::ThreadHandler(id) => {
                             if member == "join" {
                                 let mut registry = get_threads().lock().unwrap();
                                 if let Some(handle) = registry.remove(&id) {
@@ -1528,7 +1528,7 @@ impl Runner {
 
                 get_threads().lock().unwrap().insert(id, handle);
 
-                Ok(Value::ThreadHandle(id))
+                Ok(Value::ThreadHandler(id))
             }
             Expr::Tuple(exprs, _) => {
                 let mut vals = Vec::new();
@@ -1539,7 +1539,7 @@ impl Runner {
             }
             Expr::Await(inner, _) => {
                 let inner_val = self.eval_expr(inner, env)?;
-                if let Value::ThreadHandle(id) = inner_val {
+                if let Value::ThreadHandler(id) = inner_val {
                     let handle_opt = get_threads().lock().unwrap().remove(&id);
                     if let Some(handle) = handle_opt {
                         match handle.join() {

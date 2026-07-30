@@ -1,4 +1,5 @@
-import native.uuid
+import native.rand
 
-let a = uuid.new_v4()
-print(a)
+let mut rng = rand.random("u32")
+
+print(rng)

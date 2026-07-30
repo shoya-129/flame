@@ -14,7 +14,7 @@ pub enum Value {
     Bytes(Vec<u8>),
     Tuple(Vec<Value>),
     Formula(HashMap<String, Value>),
-    ThreadHandle(u64),
+    ThreadHandler(u64),
     Sender(u64),
     Receiver(u64),
     ChildProcess(u64),
@@ -134,7 +134,7 @@ impl fmt::Display for Value {
                 )
             }
             Value::Range(start, end) => write!(f, "{}..{}", start, end),
-            Value::ThreadHandle(id) => write!(f, "ThreadHandle({})", id),
+            Value::ThreadHandler(id) => write!(f, "ThreadHandler({})", id),
             Value::Sender(id) => write!(f, "Sender({})", id),
             Value::Receiver(id) => write!(f, "Receiver({})", id),
             Value::ChildProcess(id) => write!(f, "ChildProcess({})", id),

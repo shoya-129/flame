@@ -34,7 +34,11 @@ function execCompilerJson(args, cwd) {
             return
         }
 
-        child_process.execFile(compiler, args, { cwd }, (error, stdout) => {
+        let options = { cwd }
+        if (process.platform === 'win32' && compiler === 'wren') {
+            options.shell = true
+        }
+        child_process.execFile(compiler, args, options, (error, stdout) => {
             if (error && !stdout) {
                 resolve(null)
                 return

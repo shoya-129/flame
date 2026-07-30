@@ -523,7 +523,7 @@ impl TypeChecker {
                 mutable: *is_mut,
             },
             Expr::Await(inner, _) => self.infer_expr_type(inner),
-            Expr::ThreadSpawn(_, _) => Type::Named("ThreadHandle".to_string()),
+            Expr::ThreadSpawn(_, _) => Type::Named("ThreadHandler".to_string()),
             Expr::Block(stmts, _) => {
                 self.push_scope();
                 for stmt in stmts {

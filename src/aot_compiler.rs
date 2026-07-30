@@ -80,20 +80,69 @@ edition = "2021"
     main_rs.push_str("use wrenlang::vm;\n");
 
     // Generate docs for dependencies to extract metadata
-    for (name, _) in native_deps {
-        let _ = Command::new("cargo")
-            .args([
-                "+nightly",
-                "rustdoc",
-                "-p",
-                name,
-                "--",
-                "--output-format",
-                "json",
-                "-Zunstable-options",
-            ])
-            .current_dir(&build_cache)
-            .output();
+    for (name, version) in native_deps {
+        let mut package_spec = name.clone();
+        if !version.starts_with('{') && version != "*" {
+            package_spec = format!("{}@{}", name, version);
+        } else if version.starts_with('{') {
+            if let Some(idx) = version.find("version = \"") {
+                let rest = &version[idx + 11..];
+                if let Some(end_idx) = rest.find("\"") {
+                    let v = &rest[..end_idx];
+                    if v != "*" {
+                        package_spec = format!("{}@{}", name, v);
+                    }
+                }
+            } else if let Some(idx) = version.find("version=\"") {
+                let rest = &version[idx + 9..];
+                if let Some(end_idx) = rest.find("\"") {
+                    let v = &rest[..end_idx];
+                    if v != "*" {
+                        package_spec = format!("{}@{}", name, v);
+                    }
+                }
+            }
+        }
+        let mut retry = true;
+        
+        while retry {
+            retry = false;
+            let output = Command::new("cargo")
+                .args([
+                    "+nightly",
+                    "rustdoc",
+                    "-p",
+                    &package_spec,
+                    "--",
+                    "--output-format",
+                    "json",
+                    "-Zunstable-options",
+                ])
+                .current_dir(&build_cache)
+                .output();
+
+            if let Ok(out) = output {
+                if !out.status.success() {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    println!("WARNING: rustdoc failed for {}. Stderr: {}", package_spec, stderr);
+                    if stderr.contains("is ambiguous") && stderr.contains("following specifications") {
+                        // Extract the first specification
+                        if let Some(spec_idx) = stderr.find("following specifications") {
+                            let rest = &stderr[spec_idx..];
+                            if let Some(spec_line) = rest.lines().nth(1) {
+                                let spec = spec_line.trim();
+                                println!("WARNING: Found ambiguous spec suggestion: '{}'", spec);
+                                if !spec.is_empty() && spec != package_spec {
+                                    package_spec = spec.to_string();
+                                    retry = true;
+                                    println!("WARNING: Retrying rustdoc for {}", package_spec);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let json_path = build_cache
             .join("target/doc")
@@ -163,40 +212,76 @@ edition = "2021"
 
                         let args_str = call_args.join(", ");
 
-                        // Execute the call
-                        if name == "uuid" && f_name == "new_v4" {
-                            // Hardcoded fast path
-                            main_rs.push_str("        let res = uuid::Uuid::new_v4();\n");
+                        if func.is_generic {
+                            let generic_idx = func.params.len();
+                            main_rs.push_str(&format!("        let generic_type_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", generic_idx));
+                            main_rs.push_str("        let generic_type = generic_type_cstr.to_str().unwrap_or_default();\n");
+                            main_rs.push_str("        match generic_type {\n");
+                            let primitives = vec!["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "bool"];
+                            for prim in primitives {
+                                main_rs.push_str(&format!("            \"{}\" => {{\n", prim));
+                                main_rs.push_str(&format!("                let res = {}::{}::<{}>({});\n", name, func.name, prim, args_str));
+                                if prim == "bool" {
+                                    main_rs.push_str("                let mut cv = CValue::null();\n");
+                                    main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                    main_rs.push_str("                cv.bool_val = res;\n");
+                                    main_rs.push_str("                return cv;\n");
+                                } else if prim == "f32" || prim == "f64" {
+                                    main_rs.push_str("                let mut cv = CValue::null();\n");
+                                    main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                    main_rs.push_str("                cv.float_val = res as f64;\n");
+                                    main_rs.push_str("                return cv;\n");
+                                } else {
+                                    main_rs.push_str("                let mut cv = CValue::null();\n");
+                                    main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                    main_rs.push_str("                cv.int_val = res as i64;\n");
+                                    main_rs.push_str("                return cv;\n");
+                                }
+                                main_rs.push_str("            }\n");
+                            }
+                            main_rs.push_str("            _ => return CValue::null(),\n");
+                            main_rs.push_str("        }\n");
                         } else {
+                            // Execute the call
                             main_rs.push_str(&format!(
                                 "        let res = {}::{}({});\n",
                                 name, func.name, args_str
                             ));
-                        }
 
-                        // Convert result to CValue
-                        let rt = func.return_type.to_lowercase();
-                        if rt == "()" {
-                            main_rs.push_str("        let mut cv = CValue::null();\n");
-                            main_rs.push_str("        cv\n");
-                        } else if rt.contains("string") || rt.contains("str") || rt.contains("uuid") {
-                            main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
-                            main_rs.push_str("        let mut cv = CValue::null();\n");
-                            main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
-                            main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
-                            main_rs.push_str("        cv\n");
-                        } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" {
-                            main_rs.push_str("        let mut cv = CValue::null();\n");
-                            main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
-                            main_rs.push_str("        cv.int_val = res as i64;\n");
-                            main_rs.push_str("        cv\n");
-                        } else {
-                            main_rs.push_str("        let boxed = Box::new(res);\n");
-                            main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
-                            main_rs.push_str("        let mut cv = CValue::null();\n");
-                            main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
-                            main_rs.push_str("        cv.obj_ptr = ptr;\n");
-                            main_rs.push_str("        cv\n");
+                            // Convert result to CValue
+                            let rt = func.return_type.to_lowercase();
+                            if rt == "()" {
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv\n");
+                            } else if rt == "string" || rt == "&str" || rt.contains("uuid") {
+                                main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
+                                main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
+                                main_rs.push_str("        cv\n");
+                            } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" || rt == "i16" || rt == "u16" || rt == "i8" || rt == "u8" {
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                main_rs.push_str("        cv.int_val = res as i64;\n");
+                                main_rs.push_str("        cv\n");
+                            } else if rt == "bool" {
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                main_rs.push_str("        cv.bool_val = res;\n");
+                                main_rs.push_str("        cv\n");
+                            } else if rt == "f32" || rt == "f64" {
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                main_rs.push_str("        cv.float_val = res as f64;\n");
+                                main_rs.push_str("        cv\n");
+                            } else {
+                                main_rs.push_str("        let boxed = Box::new(res);\n");
+                                main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
+                                main_rs.push_str("        cv.obj_ptr = ptr;\n");
+                                main_rs.push_str("        cv\n");
+                            }
                         }
                         main_rs.push_str("    }\n");
                     }
@@ -251,41 +336,92 @@ edition = "2021"
                             }
 
                             let args_str = call_args.join(", ");
-                            if func.is_static {
-                                main_rs.push_str(&format!(
-                                    "        let res = {}::{}::{}({});\n",
-                                    name, s_name, func.name, args_str
-                                ));
+                            if func.is_generic {
+                                let generic_idx = if func.is_static { func.params.len() } else { func.params.len() + 1 };
+                                main_rs.push_str(&format!("        let generic_type_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", generic_idx));
+                                main_rs.push_str("        let generic_type = generic_type_cstr.to_str().unwrap_or_default();\n");
+                                main_rs.push_str("        match generic_type {\n");
+                                let primitives = vec!["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "bool"];
+                                for prim in primitives {
+                                    main_rs.push_str(&format!("            \"{}\" => {{\n", prim));
+                                    if func.is_static {
+                                        main_rs.push_str(&format!(
+                                            "                let res = {}::{}::{}::<{}>({});\n",
+                                            name, s_name, func.name, prim, args_str
+                                        ));
+                                    } else {
+                                        main_rs.push_str(&format!(
+                                            "                let res = obj.{}::<{}>({});\n",
+                                            func.name, prim, args_str
+                                        ));
+                                    }
+                                    if prim == "bool" {
+                                        main_rs.push_str("                let mut cv = CValue::null();\n");
+                                        main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                        main_rs.push_str("                cv.bool_val = res;\n");
+                                        main_rs.push_str("                return cv;\n");
+                                    } else if prim == "f32" || prim == "f64" {
+                                        main_rs.push_str("                let mut cv = CValue::null();\n");
+                                        main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                        main_rs.push_str("                cv.float_val = res as f64;\n");
+                                        main_rs.push_str("                return cv;\n");
+                                    } else {
+                                        main_rs.push_str("                let mut cv = CValue::null();\n");
+                                        main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                        main_rs.push_str("                cv.int_val = res as i64;\n");
+                                        main_rs.push_str("                return cv;\n");
+                                    }
+                                    main_rs.push_str("            }\n");
+                                }
+                                main_rs.push_str("            _ => return CValue::null(),\n");
+                                main_rs.push_str("        }\n");
                             } else {
-                                main_rs.push_str(&format!(
-                                    "        let res = obj.{}({});\n",
-                                    func.name, args_str
-                                ));
-                            }
+                                if func.is_static {
+                                    main_rs.push_str(&format!(
+                                        "        let res = {}::{}::{}({});\n",
+                                        name, s_name, func.name, args_str
+                                    ));
+                                } else {
+                                    main_rs.push_str(&format!(
+                                        "        let res = obj.{}({});\n",
+                                        func.name, args_str
+                                    ));
+                                }
 
-                            // Convert result to CValue
-                            let rt = func.return_type.to_lowercase();
-                            if rt == "()" {
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv\n");
-                            } else if rt.contains("string") || rt.contains("str") || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
-                                main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
-                                main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
-                                main_rs.push_str("        cv\n");
-                            } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" {
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
-                                main_rs.push_str("        cv.int_val = res as i64;\n");
-                                main_rs.push_str("        cv\n");
-                            } else {
-                                main_rs.push_str("        let boxed = Box::new(res);\n");
-                                main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
-                                main_rs.push_str("        cv.obj_ptr = ptr;\n");
-                                main_rs.push_str("        cv\n");
+                                // Convert result to CValue
+                                let rt = func.return_type.to_lowercase();
+                                if rt == "()" {
+                                    main_rs.push_str("        let mut cv = CValue::null();\n");
+                                    main_rs.push_str("        cv\n");
+                                } else if rt == "string" || rt == "&str" || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
+                                    main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
+                                    main_rs.push_str("        let mut cv = CValue::null();\n");
+                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
+                                    main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
+                                    main_rs.push_str("        cv\n");
+                                } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" || rt == "i16" || rt == "u16" || rt == "i8" || rt == "u8" {
+                                    main_rs.push_str("        let mut cv = CValue::null();\n");
+                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                    main_rs.push_str("        cv.int_val = res as i64;\n");
+                                    main_rs.push_str("        cv\n");
+                                } else if rt == "bool" {
+                                    main_rs.push_str("        let mut cv = CValue::null();\n");
+                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                    main_rs.push_str("        cv.bool_val = res;\n");
+                                    main_rs.push_str("        cv\n");
+                                } else if rt == "f32" || rt == "f64" {
+                                    main_rs.push_str("        let mut cv = CValue::null();\n");
+                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                    main_rs.push_str("        cv.float_val = res as f64;\n");
+                                    main_rs.push_str("        cv\n");
+                                } else {
+                                    main_rs.push_str("        let boxed = Box::new(res);\n");
+                                    main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+                                    main_rs.push_str("        let mut cv = CValue::null();\n");
+                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
+                                    main_rs.push_str("        cv.obj_ptr = ptr;\n");
+                                    main_rs.push_str("        cv\n");
+                                }
                             }
                             main_rs.push_str("    }\n");
                         }
@@ -391,8 +527,10 @@ edition = "2021"
         } else {
             eprintln!("\x1b[1;31m     Error\x1b[0m failed to build native executable.");
             eprintln!("{}", String::from_utf8_lossy(&out.stderr));
+            std::process::exit(1);
         }
     } else {
         eprintln!("\x1b[1;31m     Error\x1b[0m could not invoke cargo build.");
+        std::process::exit(1);
     }
 }

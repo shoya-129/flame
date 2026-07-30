@@ -17,6 +17,8 @@ pub struct WrenFunctionMeta {
     #[serde(default)]
     pub is_static: bool,
     #[serde(default)]
+    pub is_generic: bool,
+    #[serde(default)]
     pub docs: Option<String>,
 }
 
@@ -180,7 +182,10 @@ pub fn add_package(args: &[String]) {
     if is_plugin {
         let local_plugin = Path::new(manifest_key);
         if local_plugin.join("Cargo.toml").exists() {
-            println!("\x1b[1;36m   Compiling\x1b[0m native plugin '{}'...", manifest_key);
+            println!(
+                "\x1b[1;36m   Compiling\x1b[0m native plugin '{}'...",
+                manifest_key
+            );
             let _ = std::process::Command::new("cargo")
                 .arg("build")
                 .current_dir(local_plugin)
@@ -240,35 +245,41 @@ pub fn ensure_dependencies_installed() {
         Err(_) => return,
     };
 
-
     // Parse all relevant sections for dependencies
     let deps = parse_section_entries(&content, "[dependencies]");
     let native_deps = parse_section_entries(&content, "[native-dependencies]");
     let plugins = parse_section_entries(&content, "[plugins]");
-    
+
     // Combine native deps and plugins for compilation
     let mut native_to_compile = native_deps;
     native_to_compile.extend(plugins);
-    
+
     // Helper to fetch remote dependency
     let fetch_remote = |target: &str, source: &str| -> String {
         let is_local = source.starts_with('.') || source.starts_with('/') || source == "*";
         if is_local {
-            if source == "*" { target.to_string() } else { source.to_string() }
+            if source == "*" {
+                target.to_string()
+            } else {
+                source.to_string()
+            }
         } else {
             let pkg_dir = Path::new(".wren").join("pkg");
             let target_dir = pkg_dir.join(&target);
-            
+
             if !source.starts_with("http") {
                 // If it's a version number and not a URL, we skip remote fetching for now
                 // as there's no central registry. (e.g. `std = "0.1.0"`)
                 return target.to_string();
             }
-            
+
             if !target_dir.exists() {
                 let _ = fs::create_dir_all(&pkg_dir);
-                println!("\x1b[1;36m   Fetching\x1b[0m '{}' from {}...", target, source);
-                
+                println!(
+                    "\x1b[1;36m   Fetching\x1b[0m '{}' from {}...",
+                    target, source
+                );
+
                 let mut url = source.to_string();
                 let mut version = None;
                 if let Some(idx) = url.rfind('@') {
@@ -298,7 +309,10 @@ pub fn ensure_dependencies_installed() {
                 let mut bytes = download_zip(&download_url);
                 if bytes.is_err() && version.is_none() {
                     // Fallback to master
-                    let fallback = format!("{}/archive/refs/heads/master.zip", url.trim_end_matches('/'));
+                    let fallback = format!(
+                        "{}/archive/refs/heads/master.zip",
+                        url.trim_end_matches('/')
+                    );
                     bytes = download_zip(&fallback);
                 }
 
@@ -315,11 +329,11 @@ pub fn ensure_dependencies_installed() {
                             let mut components = outpath.components();
                             components.next(); // skip root dir
                             let rel_path: std::path::PathBuf = components.collect();
-                            
+
                             if rel_path.as_os_str().is_empty() {
                                 continue;
                             }
-                            
+
                             let target_path = target_dir.join(&rel_path);
 
                             if (*file.name()).ends_with('/') {
@@ -336,7 +350,10 @@ pub fn ensure_dependencies_installed() {
                         }
                     }
                 } else {
-                    println!("\x1b[1;31merror:\x1b[0m failed to fetch plugin '{}'", target);
+                    println!(
+                        "\x1b[1;31merror:\x1b[0m failed to fetch plugin '{}'",
+                        target
+                    );
                 }
             }
             target_dir.to_string_lossy().into_owned()
@@ -352,16 +369,23 @@ pub fn ensure_dependencies_installed() {
     for (target, source) in native_to_compile {
         let plugin_path_str = fetch_remote(&target, &source);
         let plugin_path = Path::new(&plugin_path_str);
-        
+
         if plugin_path.join("Cargo.toml").exists() {
-            println!("\x1b[1;36m   Compiling\x1b[0m native plugin '{}'...", target);
+            println!(
+                "\x1b[1;36m   Compiling\x1b[0m native plugin '{}'...",
+                target
+            );
             let output = std::process::Command::new("cargo")
                 .arg("build")
                 .current_dir(plugin_path)
                 .output();
             if let Ok(out) = output {
                 if !out.status.success() {
-                    println!("Failed to compile {}: {}", target, String::from_utf8_lossy(&out.stderr));
+                    println!(
+                        "Failed to compile {}: {}",
+                        target,
+                        String::from_utf8_lossy(&out.stderr)
+                    );
                 }
             }
             inspect_native_plugin(&target, plugin_path);
@@ -392,7 +416,6 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
             println!("Rustdoc error: {}", String::from_utf8_lossy(&output.stderr));
         }
     }
-
 
     let rustdoc_json_path = plugin_path
         .join("target")
@@ -427,8 +450,12 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                     if let Some(inner) = item.get("inner").and_then(|i| i.as_object()) {
                         if inner.contains_key("function") {
                             let mut is_top_level = false;
-                            if let Some(p_obj) = paths.and_then(|p| p.get(id)).and_then(|p| p.as_object()) {
-                                if let Some(path_arr) = p_obj.get("path").and_then(|pa| pa.as_array()) {
+                            if let Some(p_obj) =
+                                paths.and_then(|p| p.get(id)).and_then(|p| p.as_object())
+                            {
+                                if let Some(path_arr) =
+                                    p_obj.get("path").and_then(|pa| pa.as_array())
+                                {
                                     if path_arr.len() == 2 {
                                         is_top_level = true;
                                     }
@@ -440,13 +467,34 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                             let mut param_types = vec![];
                             let mut return_type = "NativeObject".to_string();
 
-                            if let Some(sig) = inner
-                                .get("function")
-                                .and_then(|f| f.as_object())
-                                .and_then(|f| f.get("sig"))
-                                .and_then(|s| s.as_object())
-                            {
-                                if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
+                            let mut is_generic = false;
+                            let mut has_bounds = false;
+                            if let Some(func_obj) = inner.get("function").and_then(|f| f.as_object()) {
+                                if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
+                                    if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                                        if !params.is_empty() {
+                                            if params.len() == 1 {
+                                                if let Some(kind) = params[0].get("kind").and_then(|k| k.as_object()) {
+                                                    if let Some(type_obj) = kind.get("type").and_then(|t| t.as_object()) {
+                                                        if let Some(bounds) = type_obj.get("bounds").and_then(|b| b.as_array()) {
+                                                            if !bounds.is_empty() {
+                                                                has_bounds = true;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                is_generic = true;
+                                            } else {
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                                if has_bounds {
+                                    continue;
+                                }
+                                if let Some(sig) = func_obj.get("sig").and_then(|s| s.as_object()) {
+                                    if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
                                     for input in inputs {
                                         if let Some(arr) = input.as_array() {
                                             if arr.len() == 2 {
@@ -461,21 +509,64 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     return_type = "()".to_string();
                                 }
                             }
-                            
+                            }
+
                             let has_unsupported_param = param_types.iter().any(|pt| {
                                 let p = pt.to_lowercase();
-                                !p.contains("str") && !p.contains("bool") && !p.contains("range") && 
-                                p != "i8" && p != "i16" && p != "i32" && p != "i64" && p != "i128" && p != "isize" &&
-                                p != "u8" && p != "u16" && p != "u32" && p != "u64" && p != "u128" && p != "usize"
+                                !p.contains("str")
+                                    && !p.contains("bool")
+                                    && !p.contains("range")
+                                    && p != "i8"
+                                    && p != "i16"
+                                    && p != "i32"
+                                    && p != "i64"
+                                    && p != "i128"
+                                    && p != "isize"
+                                    && p != "u8"
+                                    && p != "u16"
+                                    && p != "u32"
+                                    && p != "u64"
+                                    && p != "u128"
+                                    && p != "usize"
                             });
-                            
-                            if return_type.contains("(") || param_types.iter().any(|pt| pt.contains("impl ")) || has_unsupported_param {
+                            let mut generic_param_name = String::new();
+                            if let Some(func_obj) = inner.get("function").and_then(|f| f.as_object()) {
+                                if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
+                                    if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                                        if params.len() == 1 {
+                                            if let Some(p_name) = params[0].get("name").and_then(|n| n.as_str()) {
+                                                generic_param_name = p_name.to_string();
+                                            }
+                                            is_generic = true;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if return_type.contains("(")
+                                || return_type.contains("impl ")
+                                || param_types.iter().any(|pt| pt.contains("impl "))
+                                || (has_unsupported_param && !is_generic)
+                            {
                                 continue;
+                            }
+
+                            if is_generic && !param_types.is_empty() {
+                                continue;
+                            }
+
+                            if is_generic && return_type != generic_param_name {
+                                continue;
+                            }
+
+                            if is_generic {
+                                return_type = "Generic".to_string();
                             }
 
                             functions.push(WrenFunctionMeta {
                                 name: name.to_string(),
                                 wren_name: name.to_string(),
+                                is_generic,
                                 params: param_types
                                     .iter()
                                     .enumerate()
@@ -493,68 +584,201 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     .filter(|d| !d.is_empty()),
                             });
                         } else if inner.contains_key("struct") {
-                            if name == "Hyphenated" || name == "Simple" || name == "Urn" || name == "Braced" || name == "ThreadLocalContext" {
+                            if name == "Hyphenated"
+                                || name == "Simple"
+                                || name == "Urn"
+                                || name == "Braced"
+                                || name == "ThreadLocalContext"
+                                || name == "WeightedIndex"
+                                || name == "Bernoulli"
+                                || name == "StepRng"
+                                || name == "ReseedingRng"
+                                || name == "Choose"
+                                || name == "ThreadRng"
+                            {
                                 continue;
                             }
                             let mut s_methods = vec![];
-                            if let Some(impls) = inner.get("struct").and_then(|s| s.get("impls")).and_then(|i| i.as_array()) {
+                            if let Some(impls) = inner
+                                .get("struct")
+                                .and_then(|s| s.get("impls"))
+                                .and_then(|i| i.as_array())
+                            {
                                 for impl_id in impls {
-                                    let impl_id_str = if let Some(s) = impl_id.as_str() { s.to_string() } else { impl_id.to_string() };
-                                    if let Some(impl_item) = index.get(&impl_id_str).and_then(|i| i.as_object()) {
-                                        if let Some(impl_inner) = impl_item.get("inner").and_then(|i| i.as_object()) {
-                                                if let Some(impl_block) = impl_inner.get("impl").and_then(|i| i.as_object()) {
-                                                    if let Some(items) = impl_block.get("items").and_then(|i| i.as_array()) {
-                                                        for m_id in items {
-                                                            let m_id_str = if let Some(s) = m_id.as_str() { s.to_string() } else { m_id.to_string() };
-                                                            if let Some(m_item) = index.get(&m_id_str).and_then(|i| i.as_object()) {
-                                                                if m_item.get("visibility").and_then(|v| v.as_str()) != Some("public") {
-                                                                    continue;
-                                                                }
-                                                                if let Some(m_name) = m_item.get("name").and_then(|n| n.as_str()) {
-                                                                    if let Some(m_inner) = m_item.get("inner").and_then(|i| i.as_object()) {
-                                                                        if m_inner.contains_key("function") {
-                                                                                let mut m_param_types = vec![];
-                                                                                let mut m_return_type = "NativeObject".to_string();
-                                                                                
-                                                                                let mut is_static = true;
-                                                                                let mut consumes_self = false;
-                                                                                if let Some(sig) = m_inner.get("function").and_then(|f| f.as_object()).and_then(|f| f.get("sig")).and_then(|s| s.as_object()) {
-                                                                                    if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
-                                                                                        for input in inputs {
-                                                                                            if let Some(arr) = input.as_array() {
-                                                                                                if arr.len() == 2 {
-                                                                                                    let param_name = arr[0].as_str().unwrap_or_default();
-                                                                                                    if param_name == "self" {
+                                    let impl_id_str = if let Some(s) = impl_id.as_str() {
+                                        s.to_string()
+                                    } else {
+                                        impl_id.to_string()
+                                    };
+                                    if let Some(impl_item) =
+                                        index.get(&impl_id_str).and_then(|i| i.as_object())
+                                    {
+                                        if let Some(impl_inner) =
+                                            impl_item.get("inner").and_then(|i| i.as_object())
+                                        {
+                                            if let Some(impl_block) =
+                                                impl_inner.get("impl").and_then(|i| i.as_object())
+                                            {
+                                                if let Some(items) = impl_block
+                                                    .get("items")
+                                                    .and_then(|i| i.as_array())
+                                                {
+                                                    for m_id in items {
+                                                        let m_id_str =
+                                                            if let Some(s) = m_id.as_str() {
+                                                                s.to_string()
+                                                            } else {
+                                                                m_id.to_string()
+                                                            };
+                                                        if let Some(m_item) = index
+                                                            .get(&m_id_str)
+                                                            .and_then(|i| i.as_object())
+                                                        {
+                                                            if m_item
+                                                                .get("visibility")
+                                                                .and_then(|v| v.as_str())
+                                                                != Some("public")
+                                                            {
+                                                                continue;
+                                                            }
+                                                            if let Some(m_name) = m_item
+                                                                .get("name")
+                                                                .and_then(|n| n.as_str())
+                                                            {
+                                                                if let Some(m_inner) = m_item
+                                                                    .get("inner")
+                                                                    .and_then(|i| i.as_object())
+                                                                {
+                                                                    if m_inner
+                                                                        .contains_key("function")
+                                                                    {
+                                                                        let mut m_param_types =
+                                                                            vec![];
+                                                                        let mut m_return_type =
+                                                                            "NativeObject"
+                                                                                .to_string();
+
+                                                                        let mut is_static = true;
+                                                                        let mut consumes_self =
+                                                                            false;
+                                                                        let mut is_generic = false;
+                                                                        let mut has_bounds = false;
+                                                                        if let Some(func_obj) = m_inner.get("function").and_then(|f| f.as_object()) {
+                                                                            if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
+                                                                                if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                                                                                    if !params.is_empty() {
+                                                                                        if params.len() == 1 {
+                                                                                            if let Some(kind) = params[0].get("kind").and_then(|k| k.as_object()) {
+                                                                                                if let Some(type_obj) = kind.get("type").and_then(|t| t.as_object()) {
+                                                                                                    if let Some(bounds) = type_obj.get("bounds").and_then(|b| b.as_array()) {
+                                                                                                        if !bounds.is_empty() {
+                                                                                                            has_bounds = true;
+                                                                                                        }
+                                                                                                    }
+                                                                                                }
+                                                                                            }
+                                                                                            is_generic = true;
+                                                                                        } else {
+                                                                                            continue;
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            if has_bounds {
+                                                                                continue;
+                                                                            }
+                                                                            if let Some(sig) = func_obj.get("sig").and_then(|s| s.as_object()) {
+                                                                                if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
+                                                                                for input in inputs
+                                                                                {
+                                                                                    if let Some(
+                                                                                        arr,
+                                                                                    ) = input
+                                                                                        .as_array()
+                                                                                    {
+                                                                                        if arr.len()
+                                                                                            == 2
+                                                                                        {
+                                                                                            let param_name = arr[0].as_str().unwrap_or_default();
+                                                                                            if param_name == "self" {
                                                                                                         is_static = false;
                                                                                                         if let Some(g) = arr[1].as_object().and_then(|o| o.get("generic")).and_then(|v| v.as_str()) {
                                                                                                             if g == "Self" { consumes_self = true; }
                                                                                                         }
                                                                                                         continue;
                                                                                                     }
-                                                                                                    m_param_types.push(parse_type(&arr[1]));
-                                                                                                }
-                                                                                            }
+                                                                                            m_param_types.push(parse_type(&arr[1]));
                                                                                         }
                                                                                     }
-                                                                                    if let Some(output) = sig.get("output") {
-                                                                                        m_return_type = parse_type(output);
-                                                                                    } else {
-                                                                                        m_return_type = "()".to_string();
+                                                                                }
+                                                                            }
+                                                                            if let Some(output) =
+                                                                                sig.get("output")
+                                                                            {
+                                                                                m_return_type =
+                                                                                    parse_type(
+                                                                                        output,
+                                                                                    );
+                                                                            } else {
+                                                                                m_return_type =
+                                                                                    "()".to_string(
+                                                                                    );
+                                                                            }
+                                                                        }
+                                                                        }
+                                                                        let mut generic_param_name = String::new();
+                                                                        if let Some(func_obj) = m_inner.get("function").and_then(|f| f.as_object()) {
+                                                                            if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
+                                                                                if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                                                                                    if params.len() == 1 {
+                                                                                        if let Some(p_name) = params[0].get("name").and_then(|n| n.as_str()) {
+                                                                                            generic_param_name = p_name.to_string();
+                                                                                        }
+                                                                                        is_generic = true;
                                                                                     }
                                                                                 }
-                                                                                let has_unsupported_param = m_param_types.iter().any(|pt| {
+                                                                            }
+                                                                        }
+
+                                                                        let has_unsupported_param = m_param_types.iter().any(|pt| {
                                                                                     let p = pt.to_lowercase();
                                                                                     !p.contains("str") && !p.contains("bool") && !p.contains("range") && 
                                                                                     p != "i8" && p != "i16" && p != "i32" && p != "i64" && p != "i128" && p != "isize" &&
                                                                                     p != "u8" && p != "u16" && p != "u32" && p != "u64" && p != "u128" && p != "usize"
                                                                                 });
-                                                                                if consumes_self || m_return_type.contains("(") || m_param_types.iter().any(|pt| pt.contains("impl ")) || has_unsupported_param {
-                                                                                    continue;
-                                                                                }
-                                                                                
-                                                                                s_methods.push(WrenFunctionMeta {
+
+                                                                        if consumes_self
+                                                                            || m_return_type
+                                                                                .contains("(")
+                                                                            || m_return_type.contains("impl ")
+                                                                            || m_param_types
+                                                                                .iter()
+                                                                                .any(|pt| {
+                                                                                    pt.contains(
+                                                                                        "impl ",
+                                                                                    )
+                                                                                })
+                                                                            || (has_unsupported_param && !is_generic)
+                                                                        {
+                                                                            continue;
+                                                                        }
+
+                                                                        if is_generic && !m_param_types.is_empty() {
+                                                                            continue;
+                                                                        }
+
+                                                                        if is_generic && m_return_type != generic_param_name {
+                                                                            continue;
+                                                                        }
+
+                                                                        if is_generic {
+                                                                            m_return_type = "Generic".to_string();
+                                                                        }
+
+                                                                        s_methods.push(WrenFunctionMeta {
                                                                                     name: m_name.to_string(),
                                                                                     wren_name: m_name.to_string(),
+                                                                                    is_generic,
                                                                                     params: m_param_types.iter().enumerate().map(|(idx, pt)| WrenParamMeta {
                                                                                         name: format!("arg{}", idx),
                                                                                         type_name: pt.clone(),
@@ -567,8 +791,6 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                                         .map(|d| d.trim().to_string())
                                                                                         .filter(|d| !d.is_empty()),
                                                                                 });
-                                                                            }
-                                                                        }
                                                                     }
                                                                 }
                                                             }
@@ -578,6 +800,8 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                             }
                                         }
                                     }
+                                }
+                            }
                             structs.push(WrenStructMeta {
                                 name: name.to_string(),
                                 methods: s_methods,
@@ -622,7 +846,11 @@ fn parse_type(ty: &serde_json::Value) -> String {
         return prim.to_string();
     }
     if let Some(res) = ty.get("resolved_path").and_then(|p| p.as_object()) {
-        if let Some(name) = res.get("name").or_else(|| res.get("path")).and_then(|n| n.as_str()) {
+        if let Some(name) = res
+            .get("name")
+            .or_else(|| res.get("path"))
+            .and_then(|n| n.as_str())
+        {
             return name.to_string();
         }
     }
@@ -633,9 +861,7 @@ fn parse_type(ty: &serde_json::Value) -> String {
         return "impl trait".to_string();
     }
     if let Some(generic) = ty.get("generic").and_then(|g| g.as_str()) {
-        if generic == "Self" {
-            return "Self".to_string();
-        }
+        return generic.to_string();
     }
     "NativeObject".to_string()
 }
