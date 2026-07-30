@@ -3,6 +3,7 @@
   "displayName": "Wren Language Support",
   "description": "Rich IDE syntax highlighting and configuration for the Wren programming language.",
   "version": "0.1.0",
+  "icon": "wren.png",
   "publisher": "wren-lang",
   "engines": {
     "vscode": "^1.60.0"
@@ -23,10 +24,30 @@
           "wren"
         ],
         "extensions": [
-          ".wren",
+          ".wren"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/wrenlang.svg",
+          "dark": "./icons/wrenlang.svg"
+        }
+      },
+      {
+        "id": "wren-wn",
+        "extensions": [
           ".wn"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "wren-config",
+        "extensions": [
+          ".wmeta"
+        ],
+        "icon": {
+          "light": "./icons/config.svg",
+          "dark": "./icons/config.svg"
+        }
       }
     ],
     "grammars": [
@@ -34,6 +55,18 @@
         "language": "wren",
         "scopeName": "source.wren",
         "path": "./syntaxes/wren.tmLanguage.json"
+      },
+      {
+        "language": "wren-wn",
+        "scopeName": "source.wren",
+        "path": "./syntaxes/wren.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "wren-icons",
+        "label": "Wren Icons",
+        "path": "./icons/fileicons.json"
       }
     ]
   }

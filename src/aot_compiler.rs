@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, String)]) {
+pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, String)], force_local: bool) {
     println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
     let build_cache = Path::new(".wren").join("build-cache");
@@ -34,6 +34,11 @@ pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, 
     if let Ok(dev_path) = std::env::var("WREN_DEV_PATH") {
         is_local_dev = true;
         wren_source_dir = std::path::PathBuf::from(dev_path);
+    }
+
+    if force_local {
+        is_local_dev = true;
+        wren_source_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     }
 
     let wrenlang_dep = if is_local_dev {
@@ -142,12 +147,17 @@ edition = "2021"
                                     "        let arg{} = c_args[{}].bool_val;\n",
                                     idx, idx
                                 ));
-                            } else {
-                                main_rs.push_str(&format!(
-                                    "        let arg{} = c_args[{}].int_val;\n",
-                                    idx, idx
-                                ));
-                            }
+                                } else if p_type == "i32" || p_type == "i64" || p_type == "u32" || p_type == "u64" || p_type == "usize" || p_type == "i16" || p_type == "u16" || p_type == "i8" || p_type == "u8" || p_type == "u128" || p_type == "i128" {
+                                    main_rs.push_str(&format!(
+                                        "        let arg{} = c_args[{}].int_val as {};\n",
+                                        idx, idx, p.type_name
+                                    ));
+                                } else {
+                                    main_rs.push_str(&format!(
+                                        "        let arg{} = c_args[{}].int_val;\n",
+                                        idx, idx
+                                    ));
+                                }
                             call_args.push(format!("arg{}", idx));
                         }
 
@@ -165,34 +175,29 @@ edition = "2021"
                         }
 
                         // Convert result to CValue
-                        main_rs
-                            .push_str("        // Auto-box result to NativeObject or primitive\n");
-                        main_rs
-                            .push_str("        let type_str = std::any::type_name_of_val(&res);\n");
-                        main_rs.push_str("        if type_str.contains(\"String\") || type_str.contains(\"str\") || type_str.contains(\"Uuid\") {\n");
-                        main_rs.push_str("            let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
-                        main_rs.push_str("            let mut cv = CValue::null();\n");
-                        main_rs.push_str("            cv.tag = wrenlang::runner::CValueTag::String;\n");
-                        main_rs.push_str("            cv.string_ptr = c_str.into_raw();\n");
-                        main_rs.push_str("            cv\n");
-                        main_rs.push_str("        } else if type_str.contains(\"i32\") || type_str.contains(\"i64\") || type_str.contains(\"u32\") || type_str.contains(\"u64\") || type_str.contains(\"usize\") {\n");
-                        main_rs.push_str("            let mut cv = CValue::null();\n");
-                        main_rs.push_str("            cv.tag = wrenlang::runner::CValueTag::Int;\n");
-                        main_rs.push_str("            // hacky cast to i64 by displaying it\n");
-                        main_rs.push_str(
-                            "            cv.int_val = res.to_string().parse().unwrap_or(0);\n",
-                        );
-                        main_rs.push_str("            cv\n");
-                        main_rs.push_str("        } else {\n");
-                        main_rs.push_str("            let boxed = Box::new(res);\n");
-                        main_rs.push_str("            let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
-                        main_rs.push_str("            let mut cv = CValue::null();\n");
-                        main_rs.push_str(
-                            "            cv.tag = wrenlang::runner::CValueTag::NativeObject;\n",
-                        );
-                        main_rs.push_str("            cv.obj_ptr = ptr;\n");
-                        main_rs.push_str("            cv\n");
-                        main_rs.push_str("        }\n");
+                        let rt = func.return_type.to_lowercase();
+                        if rt == "()" {
+                            main_rs.push_str("        let mut cv = CValue::null();\n");
+                            main_rs.push_str("        cv\n");
+                        } else if rt.contains("string") || rt.contains("str") || rt.contains("uuid") {
+                            main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
+                            main_rs.push_str("        let mut cv = CValue::null();\n");
+                            main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
+                            main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
+                            main_rs.push_str("        cv\n");
+                        } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" {
+                            main_rs.push_str("        let mut cv = CValue::null();\n");
+                            main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                            main_rs.push_str("        cv.int_val = res as i64;\n");
+                            main_rs.push_str("        cv\n");
+                        } else {
+                            main_rs.push_str("        let boxed = Box::new(res);\n");
+                            main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+                            main_rs.push_str("        let mut cv = CValue::null();\n");
+                            main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
+                            main_rs.push_str("        cv.obj_ptr = ptr;\n");
+                            main_rs.push_str("        cv\n");
+                        }
                         main_rs.push_str("    }\n");
                     }
 
@@ -210,74 +215,78 @@ edition = "2021"
                                 combined_name
                             ));
                             main_rs.push_str("        let mut c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
-                            main_rs.push_str(&format!(
-                                "        // Self is arg 0, cast from obj_ptr\n"
-                            ));
-                            main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                            if !func.is_static {
+                                main_rs.push_str(&format!(
+                                    "        // Self is arg 0, cast from obj_ptr\n"
+                                ));
+                                main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                            }
 
                             let mut call_args = Vec::new();
                             for (idx, p) in func.params.iter().enumerate() {
+                                let c_idx = if func.is_static { idx } else { idx + 1 };
                                 let p_type = p.type_name.to_lowercase();
                                 if p_type.contains("range") {
-                                    main_rs.push_str(&format!("        let arg{} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n", idx+1, idx+1, idx+1));
+                                    main_rs.push_str(&format!("        let arg{} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n", c_idx, c_idx, c_idx));
                                 } else if p_type.contains("str") {
-                                    main_rs.push_str(&format!("        let arg{}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", idx+1, idx+1));
-                                    main_rs.push_str(&format!("        let arg{} = arg{}_cstr.to_str().unwrap_or_default();\n", idx+1, idx+1));
+                                    main_rs.push_str(&format!("        let arg{}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", c_idx, c_idx));
+                                    main_rs.push_str(&format!("        let arg{} = arg{}_cstr.to_str().unwrap_or_default();\n", c_idx, c_idx));
                                 } else if p_type.contains("bool") {
                                     main_rs.push_str(&format!(
                                         "        let arg{} = c_args[{}].bool_val;\n",
-                                        idx + 1,
-                                        idx + 1
+                                        c_idx, c_idx
+                                    ));
+                                } else if p_type == "i32" || p_type == "i64" || p_type == "u32" || p_type == "u64" || p_type == "usize" || p_type == "i16" || p_type == "u16" || p_type == "i8" || p_type == "u8" || p_type == "u128" || p_type == "i128" {
+                                    main_rs.push_str(&format!(
+                                        "        let arg{} = c_args[{}].int_val as {};\n",
+                                        c_idx, c_idx, p.type_name
                                     ));
                                 } else {
                                     main_rs.push_str(&format!(
                                         "        let arg{} = c_args[{}].int_val;\n",
-                                        idx + 1,
-                                        idx + 1
+                                        c_idx, c_idx
                                     ));
                                 }
-                                call_args.push(format!("arg{}", idx + 1));
+                                call_args.push(format!("arg{}", c_idx));
                             }
 
                             let args_str = call_args.join(", ");
-                            main_rs.push_str(&format!(
-                                "        let res = obj.{}({});\n",
-                                func.name, args_str
-                            ));
+                            if func.is_static {
+                                main_rs.push_str(&format!(
+                                    "        let res = {}::{}::{}({});\n",
+                                    name, s_name, func.name, args_str
+                                ));
+                            } else {
+                                main_rs.push_str(&format!(
+                                    "        let res = obj.{}({});\n",
+                                    func.name, args_str
+                                ));
+                            }
 
                             // Convert result to CValue
-                            main_rs.push_str(
-                                "        // Auto-box result to NativeObject or primitive\n",
-                            );
-                            main_rs.push_str(
-                                "        let type_str = std::any::type_name_of_val(&res);\n",
-                            );
-                            main_rs.push_str("        if type_str.contains(\"String\") || type_str.contains(\"str\") || type_str.contains(\"Uuid\") {\n");
-                            main_rs.push_str("            let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
-                            main_rs.push_str("            let mut cv = CValue::null();\n");
-                            main_rs.push_str(
-                                "            cv.tag = wrenlang::runner::CValueTag::String;\n",
-                            );
-                            main_rs.push_str("            cv.string_ptr = c_str.into_raw();\n");
-                            main_rs.push_str("            cv\n");
-                            main_rs.push_str("        } else if type_str.contains(\"i32\") || type_str.contains(\"i64\") || type_str.contains(\"u32\") || type_str.contains(\"u64\") || type_str.contains(\"usize\") {\n");
-                            main_rs.push_str("            let mut cv = CValue::null();\n");
-                            main_rs
-                                .push_str("            cv.tag = wrenlang::runner::CValueTag::Int;\n");
-                            main_rs.push_str(
-                                "            cv.int_val = res.to_string().parse().unwrap_or(0);\n",
-                            );
-                            main_rs.push_str("            cv\n");
-                            main_rs.push_str("        } else {\n");
-                            main_rs.push_str("            let boxed = Box::new(res);\n");
-                            main_rs.push_str("            let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
-                            main_rs.push_str("            let mut cv = CValue::null();\n");
-                            main_rs.push_str(
-                                "            cv.tag = wrenlang::runner::CValueTag::NativeObject;\n",
-                            );
-                            main_rs.push_str("            cv.obj_ptr = ptr;\n");
-                            main_rs.push_str("            cv\n");
-                            main_rs.push_str("        }\n");
+                            let rt = func.return_type.to_lowercase();
+                            if rt == "()" {
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv\n");
+                            } else if rt.contains("string") || rt.contains("str") || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
+                                main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
+                                main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
+                                main_rs.push_str("        cv\n");
+                            } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" {
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                main_rs.push_str("        cv.int_val = res as i64;\n");
+                                main_rs.push_str("        cv\n");
+                            } else {
+                                main_rs.push_str("        let boxed = Box::new(res);\n");
+                                main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+                                main_rs.push_str("        let mut cv = CValue::null();\n");
+                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
+                                main_rs.push_str("        cv.obj_ptr = ptr;\n");
+                                main_rs.push_str("        cv\n");
+                            }
                             main_rs.push_str("    }\n");
                         }
                     }
@@ -309,6 +318,10 @@ edition = "2021"
                             let f_name = &func.wren_name;
                             let sym = format!("wren_{}_{}_{}", name, s_name, f_name);
                             main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, s_name=s_name, f_name=f_name));
+                            if name.to_lowercase() == s_name.to_lowercase() {
+                                let alias_sym = format!("wren_{}_{}", name, f_name);
+                                main_rs.push_str(&format!("    runner.native_methods.insert(\"{alias_sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", alias_sym=alias_sym, name=name, s_name=s_name, f_name=f_name));
+                            }
                         }
                     }
                 }

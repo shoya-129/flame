@@ -9,3 +9,6 @@ std = "0.1.0"
 
 [plugins]
 rust = "./native"
+
+[native-dependencies]
+uuid = { version = "*", features = ["v4"] }

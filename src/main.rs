@@ -24,7 +24,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         if Path::new("src/main.wren").exists() {
-            run_file("src/main.wren");
+            run_file("src/main.wren", false);
             return;
         }
         print_help();
@@ -68,8 +68,17 @@ fn main() {
                 println!("usage: wren run <file_path.wren>");
                 return;
             }
-            let filepath = &args[2];
-            run_file(filepath);
+            let force_local = args.contains(&"--local".to_string());
+            let filepath = if args[2] == "--local" {
+                if args.len() < 4 {
+                    println!("\x1b[1;31merror:\x1b[0m please specify a Wren file to run");
+                    return;
+                }
+                &args[3]
+            } else {
+                &args[2]
+            };
+            run_file(filepath, force_local);
         }
         "test" => {
             run_tests();
@@ -89,7 +98,9 @@ fn main() {
             // Check if argument is a Wren source file
             let p = Path::new(command);
             if p.exists() && p.extension().map_or(false, |ext| ext == "wren") {
-                run_file(command);
+                let force_local = args.contains(&"--local".to_string());
+                let actual_cmd = if command == "--local" && args.len() >= 3 { &args[2] } else { command };
+                run_file(actual_cmd, force_local);
             } else {
                 println!("\x1b[1;31merror:\x1b[0m unknown command '{}'", command);
                 print_help();
@@ -248,6 +259,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     }
 
     let is_release = args.contains(&"--release".to_string()) || args.contains(&"-r".to_string());
+    let force_local = args.contains(&"--local".to_string());
     let mut pkg_name = "app".to_string();
     if let Ok(toml_str) = fs::read_to_string("wren.toml") {
         for line in toml_str.lines() {
@@ -309,35 +321,49 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         let native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
         let plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
         
-        let mut all_native_deps = native_deps_raw;
-        all_native_deps.extend(plugins_raw);
-        
         let mut processed_native_deps = Vec::new();
-        // Treat plugins and native-deps as native deps for AOT compiler
-        for (plugin_name, plugin_path) in all_native_deps {
+        
+        for (plugin_name, plugin_path) in native_deps_raw {
+            let mut path_str = plugin_path.clone();
+            if path_str.starts_with('"') && path_str.ends_with('"') {
+                path_str = path_str[1..path_str.len()-1].to_string();
+            }
+            if path_str.starts_with('.') || path_str.starts_with('/') {
+                let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
+                    .unwrap_or_else(|_| std::path::PathBuf::from(&path_str));
+                let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
+                if abs_path_str.starts_with("//?/") {
+                    abs_path_str = abs_path_str[4..].to_string();
+                }
+                processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
+            } else {
+                processed_native_deps.push((plugin_name, path_str));
+            }
+        }
+
+        for (plugin_name, plugin_path) in plugins_raw {
             let mut path_str = plugin_path.clone();
             if path_str.starts_with('"') && path_str.ends_with('"') {
                 path_str = path_str[1..path_str.len()-1].to_string();
             }
             
-            let is_local = path_str.starts_with('.') || path_str.starts_with('/') || path_str == "*";
+            let is_local = path_str.starts_with('.') || path_str.starts_with('/');
             let actual_path = if is_local {
-                if path_str == "*" { plugin_name.clone() } else { path_str }
+                path_str 
             } else {
                 std::env::current_dir().unwrap().join(".wren").join("pkg").join(&plugin_name).to_string_lossy().into_owned()
             };
             
-            // For local plugins, we must provide an absolute path because build-cache is a subdirectory
             let absolute_path = std::fs::canonicalize(std::path::Path::new(&actual_path))
                 .unwrap_or_else(|_| std::path::PathBuf::from(&actual_path));
             let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
             if abs_path_str.starts_with("//?/") {
                 abs_path_str = abs_path_str[4..].to_string();
             }
-            processed_native_deps.push((plugin_name.clone(), format!("{{ path = \"{}\" }}", abs_path_str)));
+            processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
         }
 
-        crate::aot_compiler::build_aot_project(&pkg_name, profile, &processed_native_deps);
+        crate::aot_compiler::build_aot_project(&pkg_name, profile, &processed_native_deps, force_local);
 
         let exe_name = format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX);
         let out_rel = format!("target/{}/{}", profile, exe_name);
@@ -354,7 +380,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     }
 }
 
-fn run_file(path_str: &str) {
+fn run_file(path_str: &str, force_local: bool) {
     let start_time = std::time::Instant::now();
     let path = Path::new(path_str);
     if !path.exists() {
@@ -365,7 +391,8 @@ fn run_file(path_str: &str) {
         return;
     }
 
-    if let Some(exe_path) = build_project(&[]) {
+    let build_args = if force_local { vec!["--local".to_string()] } else { vec![] };
+    if let Some(exe_path) = build_project(&build_args) {
         let mut child = Command::new(exe_path)
             .spawn()
             .expect("Failed to execute generated binary");
@@ -399,7 +426,7 @@ fn run_tests() {
     // Check if main.wren exists and run it
     let main_path = Path::new("src/main.wren");
     if main_path.exists() {
-        run_file("src/main.wren");
+        run_file("src/main.wren", false);
     }
     println!(
         "\x1b[1;32mtest result: ok.\x1b[0m 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
@@ -710,6 +737,27 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     });
                 }
             }
+            // Add struct methods that match the module name (e.g. Uuid inside uuid)
+            for struct_meta in &meta.structs {
+                if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
+                    for function in &struct_meta.methods {
+                        if member_prefix
+                            .as_deref()
+                            .map(|prefix| function.wren_name.starts_with(prefix))
+                            .unwrap_or(true)
+                        {
+                            completions.push(JsonCompletion {
+                                label: function.wren_name.clone(),
+                                kind: "function".to_string(),
+                                detail: format!("native.{}", namespace),
+                                documentation: function.docs.clone().or_else(|| {
+                                    load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
+                                }),
+                            });
+                        }
+                    }
+                }
+            }
             if !word_under_cursor.is_empty() {
                 hover_found = meta.functions
                     .iter()
@@ -720,6 +768,22 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                             load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
                         }),
                     });
+
+                if hover_found.is_none() {
+                    for struct_meta in &meta.structs {
+                        if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
+                            if let Some(function) = struct_meta.methods.iter().find(|f| f.wren_name == word_under_cursor) {
+                                hover_found = Some(JsonHover {
+                                    label: format!("{}.{}", namespace, function.wren_name),
+                                    documentation: function.docs.clone().or_else(|| {
+                                        load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
+                                    }),
+                                });
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             hover_found
         } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {

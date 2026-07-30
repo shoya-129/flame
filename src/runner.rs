@@ -296,6 +296,29 @@ impl Runner {
                                             Value::Formula(struct_map),
                                             false,
                                         );
+                                        
+                                        if struct_meta.name.to_lowercase() == raw_mod_name.to_lowercase() {
+                                            for method in &struct_meta.methods {
+                                                mod_env.lock().unwrap().define(
+                                                    method.wren_name.clone(),
+                                                    Value::Function {
+                                                        params: method
+                                                            .params
+                                                            .iter()
+                                                            .map(|p| Param {
+                                                                name: p.name.clone(),
+                                                                type_name: p.type_name.clone(),
+                                                                default_val: None,
+                                                                is_ref: false,
+                                                                is_mut: false,
+                                                            })
+                                                            .collect(),
+                                                        body: vec![],
+                                                    },
+                                                    false,
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                             }

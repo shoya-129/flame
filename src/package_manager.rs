@@ -15,6 +15,8 @@ pub struct WrenFunctionMeta {
     pub params: Vec<WrenParamMeta>,
     pub return_type: String,
     #[serde(default)]
+    pub is_static: bool,
+    #[serde(default)]
     pub docs: Option<String>,
 }
 
@@ -412,8 +414,9 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
 
     if let Ok(json_str) = fs::read_to_string(rustdoc_json_path) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json_str) {
+            let paths = v.get("paths").and_then(|p| p.as_object());
             if let Some(index) = v.get("index").and_then(|i| i.as_object()) {
-                for (_id, item) in index {
+                for (id, item) in index {
                     if item.get("visibility").and_then(|v| v.as_str()) != Some("public") {
                         continue;
                     }
@@ -423,6 +426,17 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                     };
                     if let Some(inner) = item.get("inner").and_then(|i| i.as_object()) {
                         if inner.contains_key("function") {
+                            let mut is_top_level = false;
+                            if let Some(p_obj) = paths.and_then(|p| p.get(id)).and_then(|p| p.as_object()) {
+                                if let Some(path_arr) = p_obj.get("path").and_then(|pa| pa.as_array()) {
+                                    if path_arr.len() == 2 {
+                                        is_top_level = true;
+                                    }
+                                }
+                            }
+                            if !is_top_level {
+                                continue;
+                            }
                             let mut param_types = vec![];
                             let mut return_type = "NativeObject".to_string();
 
@@ -447,6 +461,17 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     return_type = "()".to_string();
                                 }
                             }
+                            
+                            let has_unsupported_param = param_types.iter().any(|pt| {
+                                let p = pt.to_lowercase();
+                                !p.contains("str") && !p.contains("bool") && !p.contains("range") && 
+                                p != "i8" && p != "i16" && p != "i32" && p != "i64" && p != "i128" && p != "isize" &&
+                                p != "u8" && p != "u16" && p != "u32" && p != "u64" && p != "u128" && p != "usize"
+                            });
+                            
+                            if return_type.contains("(") || param_types.iter().any(|pt| pt.contains("impl ")) || has_unsupported_param {
+                                continue;
+                            }
 
                             functions.push(WrenFunctionMeta {
                                 name: name.to_string(),
@@ -460,6 +485,7 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     })
                                     .collect(),
                                 return_type: return_type.clone(),
+                                is_static: true,
                                 docs: item
                                     .get("docs")
                                     .and_then(|d| d.as_str())
@@ -467,31 +493,44 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     .filter(|d| !d.is_empty()),
                             });
                         } else if inner.contains_key("struct") {
+                            if name == "Hyphenated" || name == "Simple" || name == "Urn" || name == "Braced" || name == "ThreadLocalContext" {
+                                continue;
+                            }
                             let mut s_methods = vec![];
                             if let Some(impls) = inner.get("struct").and_then(|s| s.get("impls")).and_then(|i| i.as_array()) {
                                 for impl_id in impls {
-                                    if let Some(impl_id_str) = impl_id.as_str() {
-                                        if let Some(impl_item) = index.get(impl_id_str).and_then(|i| i.as_object()) {
-                                            if let Some(impl_inner) = impl_item.get("inner").and_then(|i| i.as_object()) {
+                                    let impl_id_str = if let Some(s) = impl_id.as_str() { s.to_string() } else { impl_id.to_string() };
+                                    if let Some(impl_item) = index.get(&impl_id_str).and_then(|i| i.as_object()) {
+                                        if let Some(impl_inner) = impl_item.get("inner").and_then(|i| i.as_object()) {
                                                 if let Some(impl_block) = impl_inner.get("impl").and_then(|i| i.as_object()) {
                                                     if let Some(items) = impl_block.get("items").and_then(|i| i.as_array()) {
                                                         for m_id in items {
-                                                            if let Some(m_id_str) = m_id.as_str() {
-                                                                if let Some(m_item) = index.get(m_id_str).and_then(|i| i.as_object()) {
-                                                                    if m_item.get("visibility").and_then(|v| v.as_str()) != Some("public") {
-                                                                        continue;
-                                                                    }
-                                                                    if let Some(m_name) = m_item.get("name").and_then(|n| n.as_str()) {
-                                                                        if let Some(m_inner) = m_item.get("inner").and_then(|i| i.as_object()) {
-                                                                            if m_inner.contains_key("function") {
+                                                            let m_id_str = if let Some(s) = m_id.as_str() { s.to_string() } else { m_id.to_string() };
+                                                            if let Some(m_item) = index.get(&m_id_str).and_then(|i| i.as_object()) {
+                                                                if m_item.get("visibility").and_then(|v| v.as_str()) != Some("public") {
+                                                                    continue;
+                                                                }
+                                                                if let Some(m_name) = m_item.get("name").and_then(|n| n.as_str()) {
+                                                                    if let Some(m_inner) = m_item.get("inner").and_then(|i| i.as_object()) {
+                                                                        if m_inner.contains_key("function") {
                                                                                 let mut m_param_types = vec![];
                                                                                 let mut m_return_type = "NativeObject".to_string();
                                                                                 
+                                                                                let mut is_static = true;
+                                                                                let mut consumes_self = false;
                                                                                 if let Some(sig) = m_inner.get("function").and_then(|f| f.as_object()).and_then(|f| f.get("sig")).and_then(|s| s.as_object()) {
                                                                                     if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
                                                                                         for input in inputs {
                                                                                             if let Some(arr) = input.as_array() {
                                                                                                 if arr.len() == 2 {
+                                                                                                    let param_name = arr[0].as_str().unwrap_or_default();
+                                                                                                    if param_name == "self" {
+                                                                                                        is_static = false;
+                                                                                                        if let Some(g) = arr[1].as_object().and_then(|o| o.get("generic")).and_then(|v| v.as_str()) {
+                                                                                                            if g == "Self" { consumes_self = true; }
+                                                                                                        }
+                                                                                                        continue;
+                                                                                                    }
                                                                                                     m_param_types.push(parse_type(&arr[1]));
                                                                                                 }
                                                                                             }
@@ -503,6 +542,15 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                                         m_return_type = "()".to_string();
                                                                                     }
                                                                                 }
+                                                                                let has_unsupported_param = m_param_types.iter().any(|pt| {
+                                                                                    let p = pt.to_lowercase();
+                                                                                    !p.contains("str") && !p.contains("bool") && !p.contains("range") && 
+                                                                                    p != "i8" && p != "i16" && p != "i32" && p != "i64" && p != "i128" && p != "isize" &&
+                                                                                    p != "u8" && p != "u16" && p != "u32" && p != "u64" && p != "u128" && p != "usize"
+                                                                                });
+                                                                                if consumes_self || m_return_type.contains("(") || m_param_types.iter().any(|pt| pt.contains("impl ")) || has_unsupported_param {
+                                                                                    continue;
+                                                                                }
                                                                                 
                                                                                 s_methods.push(WrenFunctionMeta {
                                                                                     name: m_name.to_string(),
@@ -512,7 +560,12 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                                         type_name: pt.clone(),
                                                                                     }).collect(),
                                                                                     return_type: m_return_type,
-                                                                                    docs: None,
+                                                                                    is_static,
+                                                                                    docs: m_item
+                                                                                        .get("docs")
+                                                                                        .and_then(|d| d.as_str())
+                                                                                        .map(|d| d.trim().to_string())
+                                                                                        .filter(|d| !d.is_empty()),
                                                                                 });
                                                                             }
                                                                         }
@@ -525,8 +578,6 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                             }
                                         }
                                     }
-                                }
-                            }
                             structs.push(WrenStructMeta {
                                 name: name.to_string(),
                                 methods: s_methods,
@@ -571,8 +622,19 @@ fn parse_type(ty: &serde_json::Value) -> String {
         return prim.to_string();
     }
     if let Some(res) = ty.get("resolved_path").and_then(|p| p.as_object()) {
-        if let Some(name) = res.get("name").and_then(|n| n.as_str()) {
+        if let Some(name) = res.get("name").or_else(|| res.get("path")).and_then(|n| n.as_str()) {
             return name.to_string();
+        }
+    }
+    if ty.get("tuple").is_some() {
+        return "(tuple)".to_string();
+    }
+    if ty.get("impl_trait").is_some() {
+        return "impl trait".to_string();
+    }
+    if let Some(generic) = ty.get("generic").and_then(|g| g.as_str()) {
+        if generic == "Self" {
+            return "Self".to_string();
         }
     }
     "NativeObject".to_string()

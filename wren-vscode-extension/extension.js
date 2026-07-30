@@ -11,21 +11,19 @@ function findWorkspaceRoot(documentPath) {
 }
 
 function findCompilerBinary(workspaceRoot) {
-    const candidates = [
-        path.join(workspaceRoot, 'target', 'debug', 'wren.exe'),
-        path.join(workspaceRoot, 'target', 'release', 'wren.exe'),
-        path.join(workspaceRoot, 'target', 'debug', 'wren'),
-        path.join(workspaceRoot, 'target', 'release', 'wren'),
-        path.join(workspaceRoot, 'target', 'debug', 'pra.exe'),
-        path.join(workspaceRoot, 'target', 'release', 'pra.exe'),
-        path.join(workspaceRoot, 'target', 'debug', 'pra'),
-        path.join(workspaceRoot, 'target', 'release', 'pra')
-    ]
+    // Local development: check for built binaries in the workspace
+    if (workspaceRoot) {
+        const candidates = [
+            path.join(workspaceRoot, 'target', 'debug', 'wrenlang.exe'),
+            path.join(workspaceRoot, 'target', 'release', 'wrenlang.exe')
+        ]
 
-    for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) return candidate
+        for (const candidate of candidates) {
+            if (fs.existsSync(candidate)) return candidate
+        }
     }
-    return null
+
+    return 'wren'
 }
 
 function execCompilerJson(args, cwd) {

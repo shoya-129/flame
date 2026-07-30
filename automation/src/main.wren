@@ -1,4 +1,4 @@
-import native.rust
+import native.uuid
 
-
-print(rust.rust_add(1, 3))
+let a = uuid.new_v4()
+print(a)

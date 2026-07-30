@@ -1,0 +1,14 @@
+{
+    "iconDefinitions": {
+        "_wren": {
+            "iconPath": "./wrenlang.svg"
+        },
+        "_wren_config": {
+            "iconPath": "./config.svg"
+        }
+    },
+    "fileExtensions": {
+        "wren": "_wren",
+        "wmeta": "_wren_config"
+    }
+}
