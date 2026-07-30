@@ -1,7 +1,6 @@
 target/
 Cargo.lock
-bin/
-
+*.exe
 .vscode/
 .wren/
 
