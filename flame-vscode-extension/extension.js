@@ -11,11 +11,10 @@ function findWorkspaceRoot(documentPath) {
 }
 
 function findCompilerBinary(workspaceRoot) {
-    // Local development: check for built binaries in the workspace
     if (workspaceRoot) {
         const candidates = [
-            path.join(workspaceRoot, 'target', 'debug', 'wrenlang.exe'),
-            path.join(workspaceRoot, 'target', 'release', 'wrenlang.exe')
+            path.join(workspaceRoot, 'target', 'debug', 'flamelang.exe'),
+            path.join(workspaceRoot, 'target', 'release', 'flamelang.exe')
         ]
 
         for (const candidate of candidates) {
@@ -23,7 +22,7 @@ function findCompilerBinary(workspaceRoot) {
         }
     }
 
-    return 'wren'
+    return 'flame'
 }
 
 function execCompilerJson(args, cwd) {
@@ -35,7 +34,7 @@ function execCompilerJson(args, cwd) {
         }
 
         let options = { cwd }
-        if (process.platform === 'win32' && compiler === 'wren') {
+        if (process.platform === 'win32' && compiler === 'flame') {
             options.shell = true
         }
         child_process.execFile(compiler, args, options, (error, stdout) => {
@@ -96,11 +95,11 @@ function toCompletionItem(entry) {
 }
 
 function activate(context) {
-    const diagnostics = vscode.languages.createDiagnosticCollection('wren')
+    const diagnostics = vscode.languages.createDiagnosticCollection('flame')
     context.subscriptions.push(diagnostics)
 
     async function refreshDiagnostics(document) {
-        if (!document || document.languageId !== 'wren') return
+        if (!document || document.languageId !== 'flame') return
         const result = await runCheck(document)
         if (!result) return
 
@@ -132,7 +131,7 @@ function activate(context) {
         refreshDiagnostics(vscode.window.activeTextEditor.document)
     }
 
-    context.subscriptions.push(vscode.languages.registerCompletionItemProvider('wren', {
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider('flame', {
         async provideCompletionItems(document, position) {
             const result = await runCheck(document, position)
             if (!result) return []
@@ -140,7 +139,7 @@ function activate(context) {
         }
     }, '.', '@'))
 
-    context.subscriptions.push(vscode.languages.registerHoverProvider('wren', {
+    context.subscriptions.push(vscode.languages.registerHoverProvider('flame', {
         async provideHover(document, position) {
             const result = await runCheck(document, position)
             if (!result || !result.hover) return null

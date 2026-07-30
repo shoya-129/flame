@@ -1,14 +1,14 @@
-# Ownership and Borrowing in Wren
+# Ownership and Borrowing in Flame
 
-Wren's memory management and safety guarantees are powered by its Rust-like ownership and borrowing model. This system ensures memory safety without needing a garbage collector and guarantees that data races cannot occur.
+Flame's memory management and safety guarantees are powered by its Rust-like ownership and borrowing model. This system ensures memory safety without needing a garbage collector and guarantees that data races cannot occur.
 
 ## Ownership Rules
 
-1. Each value in Wren has a variable that’s called its **owner**.
+1. Each value in Flame has a variable that’s called its **owner**.
 2. There can only be one owner at a time.
 3. When the owner goes out of scope, the value will be dropped.
 
-```wren
+```flame
 let s = String.from("hello") // s is the owner
 take_ownership(s)
     
@@ -27,7 +27,7 @@ Instead of transferring ownership, you can **borrow** values by passing a refere
 
 You can create an immutable reference using `&`. You can have any number of immutable references to a value simultaneously.
 
-```wren
+```flame
 fn boo(s: String) -> String {
     s
 }
@@ -42,7 +42,7 @@ To modify a borrowed value, you must use a mutable reference using `&mut`.
 
 **Important Rule:** You can only have **one** mutable reference to a particular piece of data in a particular scope at a time.
 
-```wren
+```flame
 fn change(&mut some_string: String) {
     some_string.push_str(", world")
 }
@@ -58,13 +58,13 @@ At any given time, you can have *either*:
 - One mutable reference (`&mut T`).
 - Any number of immutable references (`&T`).
 
-References must always be valid (no dangling pointers). Wren's compiler guarantees this at compile time.
+References must always be valid (no dangling pointers). flame's compiler guarantees this at compile time.
 
 ## `mut` and Function Signatures
 
 When declaring a variable, it is immutable by default. You must use `mut` to make it mutable.
 
-```wren
+```flame
 let a = 5
 // a = 6 // Error!
 
@@ -74,7 +74,7 @@ b = 6 // OK
 
 When passing parameters to a function, if the function needs to modify the value in-place, the parameter must be defined as `&mut T`.
 
-```wren
+```flame
 fn process_data(data: &mut Vec<U64>) {
     data.push(42)
 }

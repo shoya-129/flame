@@ -6,13 +6,15 @@ use std::process::Command;
 pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, String)], force_local: bool) {
     println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
-    let build_cache = Path::new(".wren").join("build-cache");
+    let build_cache = Path::new(".flame").join("build-cache");
     let _ = fs::create_dir_all(&build_cache);
-    let _ = fs::create_dir_all(build_cache.join("src"));
+    let src_dir = build_cache.join("src");
+    let _ = fs::create_dir_all(&src_dir);
+    let _ = fs::write(src_dir.join("main.rs"), "fn main() {}");
 
     let current_exe = std::env::current_exe().unwrap();
     let mut is_local_dev = false;
-    let mut wren_source_dir = std::path::PathBuf::new();
+    let mut flame_source_dir = std::path::PathBuf::new();
     
     if let (Some(parent1), Some(parent2), Some(parent3)) = (
         current_exe.parent(),
@@ -24,27 +26,27 @@ pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, 
             && parent3.join("Cargo.toml").exists()
         {
             let cargo_content = fs::read_to_string(parent3.join("Cargo.toml")).unwrap_or_default();
-            if cargo_content.contains("name = \"wrenlang\"") {
+            if cargo_content.contains("name = \"flame\"") {
                 is_local_dev = true;
-                wren_source_dir = parent3.to_path_buf();
+                flame_source_dir = parent3.to_path_buf();
             }
         }
     }
 
     if let Ok(dev_path) = std::env::var("WREN_DEV_PATH") {
         is_local_dev = true;
-        wren_source_dir = std::path::PathBuf::from(dev_path);
+        flame_source_dir = std::path::PathBuf::from(dev_path);
     }
 
     if force_local {
         is_local_dev = true;
-        wren_source_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        flame_source_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     }
 
-    let wrenlang_dep = if is_local_dev {
-        format!(r#"wrenlang = {{ path = "{}" }}"#, wren_source_dir.to_string_lossy().replace("\\", "/"))
+    let flame_dep = if is_local_dev {
+        format!(r#"flamelang = {{ path = "{}" }}"#, flame_source_dir.to_string_lossy().replace("\\", "/"))
     } else {
-        format!(r#"wrenlang = "{}""#, env!("CARGO_PKG_VERSION"))
+        format!(r#"flamelang = "{}""#, env!("CARGO_PKG_VERSION"))
     };
 
     let mut deps_str = String::new();
@@ -63,11 +65,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-{wrenlang_dep}
+{flame_dep}
 {deps}
 "#,
         pkg_name = pkg_name,
-        wrenlang_dep = wrenlang_dep,
+        flame_dep = flame_dep,
         deps = deps_str
     );
 
@@ -75,9 +77,9 @@ edition = "2021"
 
     let mut main_rs = String::new();
     main_rs.push_str("#![allow(unused_variables, dead_code, unused_imports, non_snake_case)]\n");
-    main_rs.push_str("use wrenlang::runner::{Runner, CValue};\n");
+    main_rs.push_str("use flamelang::runner::{Runner, CValue};\n");
     main_rs.push_str("use std::path::PathBuf;\n\n");
-    main_rs.push_str("use wrenlang::vm;\n");
+    main_rs.push_str("use flamelang::vm;\n");
 
     // Generate docs for dependencies to extract metadata
     for (name, version) in native_deps {
@@ -147,9 +149,9 @@ edition = "2021"
         let json_path = build_cache
             .join("target/doc")
             .join(format!("{}.json", name.replace("-", "_")));
-        let meta_dir = Path::new(".wren").join("pkg").join(name);
+        let meta_dir = Path::new(".flame").join("pkg").join(name);
         fs::create_dir_all(&meta_dir).unwrap();
-        let meta_path = meta_dir.join(format!("{}.wmeta", name));
+        let meta_path = meta_dir.join(format!("{}.fmi", name));
 
         if json_path.exists() {
             let meta = crate::package_manager::parse_rustdoc_json(&json_path, name);
@@ -160,13 +162,13 @@ edition = "2021"
     }
 
     for (name, _) in native_deps {
-        let meta_path = Path::new(".wren")
+        let meta_path = Path::new(".flame")
             .join("pkg")
             .join(name)
-            .join(format!("{}.wmeta", name));
+            .join(format!("{}.fmi", name));
         if meta_path.exists() {
             if let Ok(meta_content) = fs::read_to_string(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<package_manager::WrenMeta>(&meta_content) {
+                if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content) {
                     main_rs.push_str(&format!("// Wrapper for crate {}\n", name));
                     main_rs.push_str(&format!("mod bridge_{} {{\n", name));
                     main_rs.push_str("    use super::*;\n");
@@ -176,7 +178,7 @@ edition = "2021"
                         if !generated_methods.insert(func.name.clone()) {
                             continue;
                         }
-                        let f_name = &func.wren_name;
+                        let f_name = &func.flame_name;
                         main_rs.push_str(&format!(
                             "    pub fn {}(_args: *const CValue, _len: usize) -> CValue {{\n",
                             f_name
@@ -223,17 +225,17 @@ edition = "2021"
                                 main_rs.push_str(&format!("                let res = {}::{}::<{}>({});\n", name, func.name, prim, args_str));
                                 if prim == "bool" {
                                     main_rs.push_str("                let mut cv = CValue::null();\n");
-                                    main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                    main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Bool;\n");
                                     main_rs.push_str("                cv.bool_val = res;\n");
                                     main_rs.push_str("                return cv;\n");
                                 } else if prim == "f32" || prim == "f64" {
                                     main_rs.push_str("                let mut cv = CValue::null();\n");
-                                    main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                    main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Float;\n");
                                     main_rs.push_str("                cv.float_val = res as f64;\n");
                                     main_rs.push_str("                return cv;\n");
                                 } else {
                                     main_rs.push_str("                let mut cv = CValue::null();\n");
-                                    main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                    main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Int;\n");
                                     main_rs.push_str("                cv.int_val = res as i64;\n");
                                     main_rs.push_str("                return cv;\n");
                                 }
@@ -256,29 +258,29 @@ edition = "2021"
                             } else if rt == "string" || rt == "&str" || rt.contains("uuid") {
                                 main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
                                 main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
+                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
                                 main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
                                 main_rs.push_str("        cv\n");
                             } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" || rt == "i16" || rt == "u16" || rt == "i8" || rt == "u8" {
                                 main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
                                 main_rs.push_str("        cv.int_val = res as i64;\n");
                                 main_rs.push_str("        cv\n");
                             } else if rt == "bool" {
                                 main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Bool;\n");
                                 main_rs.push_str("        cv.bool_val = res;\n");
                                 main_rs.push_str("        cv\n");
                             } else if rt == "f32" || rt == "f64" {
                                 main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Float;\n");
                                 main_rs.push_str("        cv.float_val = res as f64;\n");
                                 main_rs.push_str("        cv\n");
                             } else {
                                 main_rs.push_str("        let boxed = Box::new(res);\n");
                                 main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
                                 main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
+                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
                                 main_rs.push_str("        cv.obj_ptr = ptr;\n");
                                 main_rs.push_str("        cv\n");
                             }
@@ -289,7 +291,7 @@ edition = "2021"
                     for struct_meta in meta.structs {
                         let s_name = &struct_meta.name;
                         for func in struct_meta.methods {
-                            let f_name = &func.wren_name;
+                            let f_name = &func.flame_name;
                             let combined_name = format!("{}_{}", s_name, f_name);
                             if !generated_methods.insert(combined_name.clone()) {
                                 continue;
@@ -357,17 +359,17 @@ edition = "2021"
                                     }
                                     if prim == "bool" {
                                         main_rs.push_str("                let mut cv = CValue::null();\n");
-                                        main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                        main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Bool;\n");
                                         main_rs.push_str("                cv.bool_val = res;\n");
                                         main_rs.push_str("                return cv;\n");
                                     } else if prim == "f32" || prim == "f64" {
                                         main_rs.push_str("                let mut cv = CValue::null();\n");
-                                        main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                        main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Float;\n");
                                         main_rs.push_str("                cv.float_val = res as f64;\n");
                                         main_rs.push_str("                return cv;\n");
                                     } else {
                                         main_rs.push_str("                let mut cv = CValue::null();\n");
-                                        main_rs.push_str("                cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                        main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Int;\n");
                                         main_rs.push_str("                cv.int_val = res as i64;\n");
                                         main_rs.push_str("                return cv;\n");
                                     }
@@ -396,29 +398,29 @@ edition = "2021"
                                 } else if rt == "string" || rt == "&str" || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
                                     main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
                                     main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::String;\n");
+                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
                                     main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
                                     main_rs.push_str("        cv\n");
                                 } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" || rt == "i16" || rt == "u16" || rt == "i8" || rt == "u8" {
                                     main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Int;\n");
+                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
                                     main_rs.push_str("        cv.int_val = res as i64;\n");
                                     main_rs.push_str("        cv\n");
                                 } else if rt == "bool" {
                                     main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Bool;\n");
+                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Bool;\n");
                                     main_rs.push_str("        cv.bool_val = res;\n");
                                     main_rs.push_str("        cv\n");
                                 } else if rt == "f32" || rt == "f64" {
                                     main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::Float;\n");
+                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Float;\n");
                                     main_rs.push_str("        cv.float_val = res as f64;\n");
                                     main_rs.push_str("        cv\n");
                                 } else {
                                     main_rs.push_str("        let boxed = Box::new(res);\n");
                                     main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
                                     main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = wrenlang::runner::CValueTag::NativeObject;\n");
+                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
                                     main_rs.push_str("        cv.obj_ptr = ptr;\n");
                                     main_rs.push_str("        cv\n");
                                 }
@@ -433,29 +435,29 @@ edition = "2021"
     }
 
     main_rs.push_str("fn main() {\n");
-    main_rs.push_str("    let mut runner = Runner::new(PathBuf::from(\"src/main.wren\"));\n");
+    main_rs.push_str("    let mut runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
 
     for (name, _) in native_deps {
-        let meta_path = Path::new(".wren")
+        let meta_path = Path::new(".flame")
             .join("pkg")
             .join(name)
-            .join(format!("{}.wmeta", name));
+            .join(format!("{}.fmi", name));
         if meta_path.exists() {
             if let Ok(meta_content) = fs::read_to_string(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<package_manager::WrenMeta>(&meta_content) {
+                if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content) {
                     for func in meta.functions {
-                        let f_name = &func.wren_name;
-                        let sym = format!("wren_{}_{}", name, f_name);
+                        let f_name = &func.flame_name;
+                        let sym = format!("flame_{}_{}", name, f_name);
                         main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, f_name=f_name));
                     }
                     for struct_meta in meta.structs {
                         let s_name = &struct_meta.name;
                         for func in struct_meta.methods {
-                            let f_name = &func.wren_name;
-                            let sym = format!("wren_{}_{}_{}", name, s_name, f_name);
+                            let f_name = &func.flame_name;
+                            let sym = format!("flame_{}_{}_{}", name, s_name, f_name);
                             main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, s_name=s_name, f_name=f_name));
                             if name.to_lowercase() == s_name.to_lowercase() {
-                                let alias_sym = format!("wren_{}_{}", name, f_name);
+                                let alias_sym = format!("flame_{}_{}", name, f_name);
                                 main_rs.push_str(&format!("    runner.native_methods.insert(\"{alias_sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", alias_sym=alias_sym, name=name, s_name=s_name, f_name=f_name));
                             }
                         }
@@ -470,18 +472,18 @@ edition = "2021"
     main_rs
         .push_str("    // Read the package's source at runtime from current working directory\n");
     main_rs.push_str(
-        "    let src = std::fs::read_to_string(\"src/main.wren\").unwrap_or_default();\n",
+        "    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n",
     );
-    main_rs.push_str("    let mut lexer = wrenlang::lexer::Lexer::new(&src);\n");
+    main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
     main_rs.push_str("    let mut tokens = Vec::new();\n");
     main_rs.push_str("    loop {\n");
     main_rs.push_str("        let tok = lexer.next_token();\n");
-    main_rs.push_str("        let is_eof = tok.kind == wrenlang::lexer::TokenKind::EOF;\n");
+    main_rs.push_str("        let is_eof = tok.kind == flamelang::lexer::TokenKind::EOF;\n");
     main_rs.push_str("        tokens.push(tok);\n");
     main_rs.push_str("        if is_eof { break; }\n");
     main_rs.push_str("    }\n");
     main_rs.push_str(
-        "    let mut parser = wrenlang::parser::Parser::new(tokens, \"src/main.wren\".to_string());\n",
+        "    let mut parser = flamelang::parser::Parser::new(tokens, \"src/main.fm\".to_string());\n",
     );
     main_rs.push_str("    match parser.parse() {\n");
     main_rs.push_str("        Ok(stmts) => {\n");

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "Wren",
-  "scopeName": "source.wren",
+  "name": "Flame",
+  "scopeName": "source.flame",
   "patterns": [
     {
       "include": "#comments"
@@ -32,11 +32,11 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.line.double-slash.wren",
+          "name": "comment.line.double-slash.flame",
           "match": "//.*$"
         },
         {
-          "name": "comment.block.wren",
+          "name": "comment.block.flame",
           "begin": "/\\*",
           "end": "\\*/"
         }
@@ -45,14 +45,14 @@
     "decorators": {
       "patterns": [
         {
-          "name": "meta.decorator.wren",
+          "name": "meta.decorator.flame",
           "match": "(@)([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": {
-              "name": "punctuation.definition.decorator.wren"
+              "name": "punctuation.definition.decorator.flame"
             },
             "2": {
-              "name": "entity.name.function.decorator.wren"
+              "name": "entity.name.function.decorator.flame"
             }
           }
         }
@@ -64,21 +64,21 @@
           "begin": "\\b(import)\\b",
           "beginCaptures": {
             "1": {
-              "name": "keyword.control.wren"
+              "name": "keyword.control.flame"
             }
           },
           "end": "$|;",
           "patterns": [
             {
-              "name": "keyword.control.wren",
+              "name": "keyword.control.flame",
               "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*\\b"
             },
             {
-              "name": "variable.other.wren",
+              "name": "variable.other.flame",
               "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
             },
             {
-              "name": "punctuation.separator.wren",
+              "name": "punctuation.separator.flame",
               "match": "\\."
             }
           ]
@@ -87,24 +87,24 @@
           "begin": "(@)(plugin)\\b",
           "beginCaptures": {
             "1": {
-              "name": "punctuation.definition.decorator.wren"
+              "name": "punctuation.definition.decorator.flame"
             },
             "2": {
-              "name": "keyword.control.wren"
+              "name": "keyword.control.flame"
             }
           },
           "end": "$|;",
           "patterns": [
             {
-              "name": "keyword.control.wren",
+              "name": "keyword.control.flame",
               "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*\\b"
             },
             {
-              "name": "variable.other.wren",
+              "name": "variable.other.flame",
               "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
             },
             {
-              "name": "string.quoted.double.wren",
+              "name": "string.quoted.double.flame",
               "begin": "\"",
               "end": "\""
             }
@@ -115,19 +115,19 @@
     "keywords": {
       "patterns": [
         {
-          "name": "keyword.control.wren",
+          "name": "keyword.control.flame",
           "match": "\\b(if|else|match|for|in|while|loop|break|continue|defer|return|yield|await|async|thread)\\b"
         },
         {
-          "name": "keyword.declaration.wren",
+          "name": "keyword.declaration.flame",
           "match": "\\b(let|const|var|fn|struct|enum|trait|impl|export|import|mut|as|type|where)\\b"
         },
         {
-          "name": "variable.language.wren",
+          "name": "variable.language.flame",
           "match": "\\b(self|Self)\\b"
         },
         {
-          "name": "constant.language.wren",
+          "name": "constant.language.flame",
           "match": "\\b(true|false|nil)\\b"
         }
       ]
@@ -135,7 +135,7 @@
     "types": {
       "patterns": [
         {
-          "name": "support.type.wren",
+          "name": "support.type.flame",
           "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
         }
       ]
@@ -143,26 +143,26 @@
     "strings": {
       "patterns": [
         {
-          "name": "string.quoted.double.interpolated.wren",
+          "name": "string.quoted.double.interpolated.flame",
           "begin": "\\$\"",
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.wren",
+              "name": "constant.character.escape.flame",
               "match": "\\\\."
             },
             {
-              "name": "meta.interpolation.wren",
+              "name": "meta.interpolation.flame",
               "begin": "\\{",
               "beginCaptures": {
                 "0": {
-                  "name": "punctuation.definition.template-expression.begin.wren"
+                  "name": "punctuation.definition.template-expression.begin.flame"
                 }
               },
               "end": "\\}",
               "endCaptures": {
                 "0": {
-                  "name": "punctuation.definition.template-expression.end.wren"
+                  "name": "punctuation.definition.template-expression.end.flame"
                 }
               },
               "patterns": [
@@ -174,23 +174,23 @@
           ]
         },
         {
-          "name": "string.quoted.double.wren",
+          "name": "string.quoted.double.flame",
           "begin": "\"",
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.wren",
+              "name": "constant.character.escape.flame",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.single.wren",
+          "name": "string.quoted.single.flame",
           "begin": "'",
           "end": "'",
           "patterns": [
             {
-              "name": "constant.character.escape.wren",
+              "name": "constant.character.escape.flame",
               "match": "\\\\."
             }
           ]
@@ -200,19 +200,19 @@
     "numbers": {
       "patterns": [
         {
-          "name": "constant.numeric.float.wren",
+          "name": "constant.numeric.float.flame",
           "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?\\b"
         },
         {
-          "name": "constant.numeric.decimal.wren",
+          "name": "constant.numeric.decimal.flame",
           "match": "\\b[0-9]+\\b"
         },
         {
-          "name": "constant.numeric.hex.wren",
+          "name": "constant.numeric.hex.flame",
           "match": "\\b0x[0-9a-fA-F]+\\b"
         },
         {
-          "name": "constant.numeric.binary.wren",
+          "name": "constant.numeric.binary.flame",
           "match": "\\b0b[01]+\\b"
         }
       ]
@@ -220,15 +220,15 @@
     "identifiers": {
       "patterns": [
         {
-          "name": "entity.name.function.wren",
+          "name": "entity.name.function.flame",
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
         },
         {
-          "name": "variable.other.macro.wren",
+          "name": "variable.other.macro.flame",
           "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*"
         },
         {
-          "name": "variable.other.wren",
+          "name": "variable.other.flame",
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
         }
       ]

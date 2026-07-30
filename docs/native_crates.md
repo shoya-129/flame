@@ -1,12 +1,12 @@
-# Using Native Rust Crates in Wren
+# Using Native Rust Crates in Flame
 
-Wren's philosophy is: **"Don't reinvent the wheel; just use Rust's."** 
+Flame's philosophy is: **"Don't reinvent the wheel; just use Rust's."** 
 
-Wren doesn't just provide an FFI (Foreign Function Interface) to C or Rust. Instead, the Wren compiler treats Rust crates as a **second source language**. When you build a Wren project, the compiler resolves the Rust dependencies, generates static bridges, and statically compiles them directly into your final executable. No dynamic loading, no `.dll` files, and no wrapper boilerplate.
+Flame doesn't just provide an FFI (Foreign Function Interface) to C or Rust. Instead, the Flame compiler treats Rust crates as a **second source language**. When you build a Flame project, the compiler resolves the Rust dependencies, generates static bridges, and statically compiles them directly into your final executable. No dynamic loading, no `.dll` files, and no wrapper boilerplate.
 
 ## 1. Adding a Crate
 
-To use a Rust crate, add it to your `wren.toml` file under `[native-dependencies]`. This is analogous to a `Cargo.toml` dependency block.
+To use a Rust crate, add it to your `flame.toml` file under `[native-dependencies]`. This is analogous to a `Cargo.toml` dependency block.
 
 ```toml
 [package]
@@ -21,9 +21,9 @@ regex = "1.10"
 
 ## 2. Importing the Crate
 
-In your `.wren` source files, import the crate using the `native.` prefix.
+In your `.flame` source files, import the crate using the `native.` prefix.
 
-```wren
+```flame
 import native.uuid
 import native.regex
 
@@ -33,7 +33,7 @@ print($"Generated ID: {id}")
 
 ## 3. How to Know Which Functions to Use
 
-Because Wren interacts natively with Rust, **the API you use in Wren is exactly the same as the Rust API**. 
+Because flame interacts natively with Rust, **the API you use in flame is exactly the same as the Rust API**. 
 
 There are two primary ways to discover what functions you can call on a crate:
 
@@ -41,15 +41,15 @@ There are two primary ways to discover what functions you can call on a crate:
 
 Since you are calling Rust code directly, you can read the official Rust documentation for the crate on [docs.rs](https://docs.rs). 
 
-For example, if you look up the `uuid` crate on docs.rs, you will see a function called `new_v4`. In Wren, you call it exactly the same way: `uuid.new_v4()`. If you see a struct method, you call it the same way.
+For example, if you look up the `uuid` crate on docs.rs, you will see a function called `new_v4`. In flame, you call it exactly the same way: `uuid.new_v4()`. If you see a struct method, you call it the same way.
 
-### B. The VS Code Extension and `.wmeta` (Intellisense)
+### B. The VS Code Extension and `.fmi` (Intellisense)
 
-Wren provides a world-class developer experience through its VS Code Extension. You don't have to guess or memorize APIs!
+Flame provides a world-class developer experience through its VS Code Extension. You don't have to guess or memorize APIs!
 
-When you run `wren build` or `wren run`, the Wren compiler uses `rustdoc` behind the scenes to generate metadata about the crate. It saves this metadata as `.wmeta` files in your `.wren/pkg` directory.
+When you run `flame build` or `flame run`, the flame compiler uses `rustdoc` behind the scenes to generate metadata about the crate. It saves this metadata as `.fmi` files in your `.flame/pkg` directory.
 
-The **Wren VS Code Extension** reads these `.wmeta` files automatically. 
+The **flame VS Code Extension** reads these `.fmi` files automatically. 
 
 1. Type the crate name and a dot (e.g., `uuid.`).
 2. The extension will provide **autocomplete suggestions** showing every available function, struct, and constant from that Rust crate.
@@ -57,11 +57,11 @@ The **Wren VS Code Extension** reads these `.wmeta` files automatically.
 
 ## 4. Creating Custom Native Plugins
 
-In addition to downloading public crates from crates.io, you can write **your own custom Rust code** and call it directly from Wren. This is the recommended approach if you need extreme performance or want to bind to a specific Rust library with custom logic.
+In addition to downloading public crates from crates.io, you can write **your own custom Rust code** and call it directly from flame. This is the recommended approach if you need extreme performance or want to bind to a specific Rust library with custom logic.
 
 To do this:
 
-1. **Initialize a Native Project**: Inside your Wren project, create a new Rust library by running `cargo init --lib native` (or use a dedicated `wren native init` command if provided by the toolchain). This creates a `native` folder with a `Cargo.toml` and `src/lib.rs`.
+1. **Initialize a Native Project**: Inside your flame project, create a new Rust library by running `cargo init --lib native` (or use a dedicated `flame native init` command if provided by the toolchain). This creates a `native` folder with a `Cargo.toml` and `src/lib.rs`.
 2. **Write Rust Code**: Add your high-performance or custom Rust functions inside `native/src/lib.rs`.
     ```rust
     // native/src/lib.rs
@@ -69,25 +69,25 @@ To do this:
         x * x * 42
     }
     ```
-3. **Add as a Dependency**: Open your `wren.toml` and add your local `native` folder as a local path dependency under `[native-dependencies]`.
+3. **Add as a Dependency**: Open your `flame.toml` and add your local `native` folder as a local path dependency under `[native-dependencies]`.
     ```toml
     [native-dependencies]
     native_plugin = { path = "./native" }
     ```
-4. **Use in Wren**: Finally, import your custom Rust code as a native plugin in your Wren files and use it instantly!
-    ```wren
+4. **Use in flame**: Finally, import your custom Rust code as a native plugin in your flame files and use it instantly!
+    ```flame
     import native.native_plugin
     
     let result = native_plugin.heavy_computation(10)
     print(result) // Outputs: 4200
     ```
     
-The compiler will automatically detect the local Rust code, build it alongside your Wren script, and instantly provide autocomplete suggestions for your custom functions!
+The compiler will automatically detect the local Rust code, build it alongside your flame script, and instantly provide autocomplete suggestions for your custom functions!
 
 ## 5. How it Works Under the Hood (For the Curious)
 
-1. **Resolution**: `wren run` reads your `wren.toml` and discovers your native Rust dependencies (both external crates and local folders).
+1. **Resolution**: `flame run` reads your `flame.toml` and discovers your native Rust dependencies (both external crates and local folders).
 2. **Metadata Generation**: It runs `cargo rustdoc` to generate JSON metadata representing the Abstract Syntax Tree (AST) of the crates.
-3. **Bridge Generation**: Wren's AOT (Ahead-of-Time) compiler generates a safe Rust wrapper around the crate's public APIs, automatically mapping data types (Strings, booleans, integers, floats). Generic functions (like `random<T>`) are instantiated dynamically for supported primitive types.
-4. **Static Compilation**: Wren generates a `Cargo` workspace inside the `.wren/build-cache` directory, compiles everything statically into a single executable, and maps the Rust functions directly into the Wren VM's memory.
+3. **Bridge Generation**: flame's AOT (Ahead-of-Time) compiler generates a safe Rust wrapper around the crate's public APIs, automatically mapping data types (Strings, booleans, integers, floats). Generic functions (like `random<T>`) are instantiated dynamically for supported primitive types.
+4. **Static Compilation**: flame generates a `Cargo` workspace inside the `.flame/build-cache` directory, compiles everything statically into a single executable, and maps the Rust functions directly into the flame VM's memory.
 5. **Execution**: The resulting binary is ultra-fast, statically linked, and memory safe!

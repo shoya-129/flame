@@ -141,7 +141,7 @@ impl Runner {
                     let mut current =
                         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                     for _ in 0..5 {
-                        let check = current.join("wren-stdlib");
+                        let check = current.join("flame-stdlib");
                         if check.exists() {
                             stdlib_dir = Some(check);
                             break;
@@ -158,7 +158,7 @@ impl Runner {
                         for part in path {
                             f = f.join(part);
                         }
-                        f = f.with_extension("wren");
+                        f = f.with_extension("flame");
                         if f.exists() { Some(f) } else { None }
                     } else {
                         None
@@ -208,11 +208,11 @@ impl Runner {
                         self.modules.insert(mod_name, mod_env);
                     }
                 } else if mod_name.starts_with("native.")
-                    || Path::new(&format!(".wren/pkg/{}", path.last().unwrap())).exists()
+                    || Path::new(&format!(".flame/pkg/{}", path.last().unwrap())).exists()
                 {
                     let mod_env = Arc::new(Mutex::new(Env::new()));
                     let raw_mod_name = path.last().unwrap();
-                    let rel_meta = format!(".wren/pkg/{}/{}.wmeta", raw_mod_name, raw_mod_name);
+                    let rel_meta = format!(".flame/pkg/{}/{}.fmi", raw_mod_name, raw_mod_name);
                     let meta_candidates = vec![
                         PathBuf::from(&rel_meta),
                         self.resolve_path(&rel_meta),
@@ -234,7 +234,7 @@ impl Runner {
                     if let Some(meta_path) = meta_file {
                         if let Ok(meta_str) = fs::read_to_string(&meta_path) {
                             if let Ok(meta) =
-                                serde_json::from_str::<crate::package_manager::WrenMeta>(&meta_str)
+                                serde_json::from_str::<crate::package_manager::FlameMeta>(&meta_str)
                             {
                                 if meta.kind == "native" {
                                     mod_env.lock().unwrap().define(
@@ -244,7 +244,7 @@ impl Runner {
                                     );
                                     for fn_meta in &meta.functions {
                                         mod_env.lock().unwrap().define(
-                                            fn_meta.wren_name.clone(),
+                                            fn_meta.flame_name.clone(),
                                             Value::Function {
                                                 params: fn_meta
                                                     .params
@@ -274,7 +274,7 @@ impl Runner {
                                         );
                                         for method in &struct_meta.methods {
                                             struct_map.insert(
-                                                method.wren_name.clone(),
+                                                method.flame_name.clone(),
                                                 Value::Function {
                                                     params: method
                                                         .params
@@ -300,7 +300,7 @@ impl Runner {
                                         if struct_meta.name.to_lowercase() == raw_mod_name.to_lowercase() {
                                             for method in &struct_meta.methods {
                                                 mod_env.lock().unwrap().define(
-                                                    method.wren_name.clone(),
+                                                    method.flame_name.clone(),
                                                     Value::Function {
                                                         params: method
                                                             .params
@@ -350,7 +350,7 @@ impl Runner {
                     );
                     self.modules.insert(mod_name, mod_env);
                 } else {
-                    let local_file = self.resolve_path(&format!("{}.wren", path.last().unwrap()));
+                    let local_file = self.resolve_path(&format!("{}.flame", path.last().unwrap()));
                     if local_file.exists() {
                         let content = fs::read_to_string(&local_file).map_err(|e| e.to_string())?;
                         let mut lexer = Lexer::new(&content);
@@ -1015,8 +1015,8 @@ impl Runner {
                                 c_args.push(arg_v.pack());
                             }
 
-                            let sym_str1 = format!("wren_{}_{}_{}", crate_name, type_name, member);
-                            let sym_str2 = format!("wren_{}_{}", crate_name, member);
+                            let sym_str1 = format!("flame_{}_{}_{}", crate_name, type_name, member);
+                            let sym_str2 = format!("flame_{}_{}", crate_name, member);
 
                             let func = self
                                 .native_methods
@@ -1058,7 +1058,7 @@ impl Runner {
                                             use std::io::{Read, Write};
                                             let mut buf = [0u8; 1024];
                                             let _ = stream.read(&mut buf);
-                                            let json_body = r#"{"status": "ok", "message": "Hello from Wren HTTP Router Server"}"#;
+                                            let json_body = r#"{"status": "ok", "message": "Hello from Flame HTTP Router Server"}"#;
                                             let response = format!(
                                                 "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                                                 json_body.len(),
@@ -1304,10 +1304,10 @@ impl Runner {
                                     });
 
                                 let mut symbol_candidates =
-                                    vec![format!("wren_{}_{}", raw_ns, member)];
+                                    vec![format!("flame_{}_{}", raw_ns, member)];
                                 if let Some(pt) = &parent_type {
                                     symbol_candidates
-                                        .push(format!("wren_{}_{}_{}", raw_ns, pt, member));
+                                        .push(format!("flame_{}_{}_{}", raw_ns, pt, member));
                                 }
 
                                 for sym_str in symbol_candidates {
@@ -1804,7 +1804,7 @@ impl Runner {
     }
 
     fn execute_plugin(&mut self, plugin_name: &str, env: Arc<Mutex<Env>>) -> Result<Value, String> {
-        let rel_meta = format!(".wren/pkg/{}/{}.wmeta", plugin_name, plugin_name);
+        let rel_meta = format!(".flame/pkg/{}/{}.fmi", plugin_name, plugin_name);
         let meta_candidates = vec![
             PathBuf::from(&rel_meta),
             self.resolve_path(&rel_meta),
@@ -1821,7 +1821,7 @@ impl Runner {
                 continue;
             }
             let meta_str = fs::read_to_string(&meta_path).map_err(|e| e.to_string())?;
-            let meta = serde_json::from_str::<crate::package_manager::WrenMeta>(&meta_str)
+            let meta = serde_json::from_str::<crate::package_manager::FlameMeta>(&meta_str)
                 .map_err(|e| e.to_string())?;
             let mod_env = Arc::new(Mutex::new(Env::new()));
             mod_env.lock().unwrap().define(
@@ -1831,7 +1831,7 @@ impl Runner {
             );
             for fn_meta in &meta.functions {
                 mod_env.lock().unwrap().define(
-                    fn_meta.wren_name.clone(),
+                    fn_meta.flame_name.clone(),
                     Value::Function {
                         params: fn_meta
                             .params
@@ -1862,7 +1862,7 @@ impl Runner {
             .filepath
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join(format!("{}.wren", plugin_name));
+            .join(format!("{}.flame", plugin_name));
         let plugin_file = if local_file.exists() {
             local_file
         } else {
@@ -1871,12 +1871,12 @@ impl Runner {
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new("."))
                 .join("src")
-                .join(format!("{}.wren", plugin_name));
+                .join(format!("{}.flame", plugin_name));
             if ws_file.exists() {
                 ws_file
             } else {
                 return Err(format!(
-                    "Plugin '{}' not found as native metadata or local .wren file",
+                    "Plugin '{}' not found as native metadata or local .flame file",
                     plugin_name
                 ));
             }
@@ -1929,7 +1929,7 @@ impl Runner {
 mod tests {
     use super::*;
 
-    fn run_wren(code: &str) -> Result<Value, String> {
+    fn run_flame(code: &str) -> Result<Value, String> {
         let mut lexer = Lexer::new(code);
         let mut tokens = Vec::new();
         loop {
@@ -1941,9 +1941,9 @@ mod tests {
             tokens.push(tok);
         }
 
-        let mut parser = Parser::new(tokens, "test.wren".to_string());
+        let mut parser = Parser::new(tokens, "test.flame".to_string());
         let stmts = parser.parse().map_err(|diag| diag.message)?;
-        let mut runner = Runner::new(PathBuf::from("test.wren"));
+        let mut runner = Runner::new(PathBuf::from("test.flame"));
         runner.run(&stmts)
     }
 
@@ -1963,7 +1963,7 @@ fn main() {
     let mut f: Formula = formula {
         name: "std",
         v: "1.0.0",
-        description: "std lib of wren"
+        description: "std lib of flame"
     }
 
     let mut con: Config = Config.modules(f)
@@ -1972,7 +1972,7 @@ fn main() {
     print("final:", con.name)
 }"#;
 
-        run_wren(code).unwrap();
+        run_flame(code).unwrap();
     }
 
     #[test]
@@ -1985,7 +1985,7 @@ fn main() {
     rx.recv()
 }"#;
 
-        let result = run_wren(code).unwrap();
+        let result = run_flame(code).unwrap();
         assert_eq!(result.to_string(), "\"test_message\"");
     }
 }

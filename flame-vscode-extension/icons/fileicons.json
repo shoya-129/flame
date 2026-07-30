@@ -1,0 +1,14 @@
+{
+    "iconDefinitions": {
+        "_flame": {
+            "iconPath": "./flame.svg"
+        },
+        "_flame_config": {
+            "iconPath": "./config.svg"
+        }
+    },
+    "fileExtensions": {
+        "flame": "_flame",
+        "wmeta": "_flame_config"
+    }
+}

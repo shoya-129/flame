@@ -1,12 +1,12 @@
-# Wren Syntax and Language Guide
+# Flame Syntax and Language Guide
 
-Wren is a modern, statically typed language that combines performance with expressive, high-level abstractions. This document provides a comprehensive guide to all built-in types, keywords, control flow mechanics, and concurrent programming models available in Wren.
+Flame is a modern, statically typed language that combines performance with expressive, high-level abstractions. This document provides a comprehensive guide to all built-in types, keywords, control flow mechanics, and concurrent programming models available in Flame.
 
 ---
 
 ## 1. Data Types
 
-Wren is statically typed. Types are either inferred or explicitly declared.
+Flame is statically typed. Types are either inferred or explicitly declared.
 
 ### Primitive Types
 * **`Int`**: A 64-bit signed integer. 
@@ -27,7 +27,7 @@ Wren is statically typed. Types are either inferred or explicitly declared.
   * *Usage*: `let coordinates: (Int, String) = (10, "North")`
 * **`formula` (Map/Dictionary)**: A structured map-like data literal, ideal for configuration, JSON-like objects, or named key-value collections. Keys must be identifiers, and values can be literals, lists, or nested formulas.
   * *Usage*:
-    ```wren
+    ```flame
     let config = formula {
         host: "localhost",
         port: 8080,
@@ -39,7 +39,7 @@ Wren is statically typed. Types are either inferred or explicitly declared.
     ```
 
 ### References (Borrowing)
-Wren uses references to borrow data without copying it.
+Flame uses references to borrow data without copying it.
 * **`&T`**: An immutable reference. Read-only access to a value.
   * *Usage*: `let ref = &coordinates`
 * **`&mut T`**: A mutable reference. Allows modifying the borrowed value.
@@ -50,17 +50,17 @@ Wren uses references to borrow data without copying it.
 ## 2. Variables and Constants
 
 * **`let`**: Declares a standard, immutable variable. Once assigned, it cannot be changed.
-  ```wren
+  ```flame
   let name = "John"
   // name = "Doe" // Error: cannot mutate immutable variable
   ```
 * **`mut`**: Used in conjunction with `let` to declare a variable whose value can be mutated.
-  ```wren
+  ```flame
   let mut counter = 0
   counter = counter + 1
   ```
 * **`const`**: Declares a compile-time constant. Must include an explicit type.
-  ```wren
+  ```flame
   const MAX_USERS: Int = 100
   ```
 
@@ -69,14 +69,14 @@ Wren uses references to borrow data without copying it.
 ## 3. Functions
 
 * **`fn`**: Defines a function. You must specify parameter types and optionally the return type.
-  ```wren
+  ```flame
   fn add(a: Int, b: Int) -> Int {
       return a + b
   }
   ```
 
 * **`async fn`**: Defines an asynchronous function that returns a Future and does not block the thread.
-  ```wren
+  ```flame
   async fn fetch_data(url: String) -> String {
       // background work...
       return "data"
@@ -87,11 +87,11 @@ Wren uses references to borrow data without copying it.
 
 ## 4. Control Flow
 
-Wren provides a rich set of control flow keywords.
+Flame provides a rich set of control flow keywords.
 
 ### Conditionals
 * **`if` / `else`**: Standard conditional branching.
-  ```wren
+  ```flame
   if score > 90 {
       print("A")
   } else if score > 80 {
@@ -102,7 +102,7 @@ Wren provides a rich set of control flow keywords.
   ```
 
 * **`match`**: Powerful pattern matching against variables or enums.
-  ```wren
+  ```flame
   let state = 1
   match state {
       0 => print("Stopped"),
@@ -113,7 +113,7 @@ Wren provides a rich set of control flow keywords.
 
 ### Loops
 * **`while`**: Loops as long as a condition evaluates to `true`.
-  ```wren
+  ```flame
   let mut x = 0
   while x < 5 {
       x = x + 1
@@ -121,7 +121,7 @@ Wren provides a rich set of control flow keywords.
   ```
 
 * **`loop`**: Creates an infinite loop. Must be explicitly broken.
-  ```wren
+  ```flame
   loop {
       print("Running forever...")
       break // explicitly exit the loop
@@ -129,7 +129,7 @@ Wren provides a rich set of control flow keywords.
   ```
 
 * **`for` / `in`**: Iterates over a collection or range.
-  ```wren
+  ```flame
   let items = [1, 2, 3]
   for item in items {
       print(item)
@@ -141,7 +141,7 @@ Wren provides a rich set of control flow keywords.
 * **`continue`**: Skips the rest of the current loop iteration and moves to the next.
 * **`return`**: Returns a value from the current function and exits it.
 * **`defer`**: Schedules a block of code to run at the exact moment the current scope closes. Useful for cleaning up resources, closing files, or unlocking mutexes.
-  ```wren
+  ```flame
   fn process_file() {
       let file = open("data.txt")
       defer file.close() // Will automatically run when process_file finishes
@@ -153,10 +153,10 @@ Wren provides a rich set of control flow keywords.
 
 ## 5. Object-Oriented and Custom Types
 
-Wren separates data layout (`struct`) from behavior (`impl`).
+flame separates data layout (`struct`) from behavior (`impl`).
 
 * **`struct`**: Defines a custom data structure with named fields.
-  ```wren
+  ```flame
   struct User {
       name: String,
       age: Int
@@ -164,7 +164,7 @@ Wren separates data layout (`struct`) from behavior (`impl`).
   ```
 
 * **`impl`**: Defines methods (functions attached to a type) for a `struct` or `enum`.
-  ```wren
+  ```flame
   impl User {
       // Associated function (like a static method)
       fn new(name: String) -> User {
@@ -179,7 +179,7 @@ Wren separates data layout (`struct`) from behavior (`impl`).
   ```
 
 * **`enum`**: Defines a type that can be one of several named variants. Variants can optionally hold data.
-  ```wren
+  ```flame
   enum ConnectionState {
       Disconnected,
       Connecting(String), // holds an IP string
@@ -188,7 +188,7 @@ Wren separates data layout (`struct`) from behavior (`impl`).
   ```
 
 * **`trait`**: Defines a shared interface (a contract) that multiple structs or enums can implement.
-  ```wren
+  ```flame
   trait Drawable {
       fn draw(&self)
   }
@@ -198,10 +198,10 @@ Wren separates data layout (`struct`) from behavior (`impl`).
 
 ## 6. Concurrency (`thread`, `await`)
 
-Wren handles concurrency using a thread-based background task system.
+Flame handles concurrency using a thread-based background task system.
 
 * **`thread`**: Spawns a new background thread to run a block of code concurrently alongside the main program. It returns a thread handle.
-  ```wren
+  ```flame
   let handle = thread {
       print("Running in the background!")
       return 42
@@ -209,7 +209,7 @@ Wren handles concurrency using a thread-based background task system.
   ```
 
 * **`await`**: A prefix operator used to wait for an asynchronous task or a spawned thread to finish. It pauses the current execution context until the value is ready.
-  ```wren
+  ```flame
   async fn do_work() {
       let handle = thread {
           // heavy computation
@@ -221,7 +221,7 @@ Wren handles concurrency using a thread-based background task system.
       print($"Result was {result}")
   }
   ```
-  *(Note: `await` is a prefix operator in Wren, meaning it goes **before** the variable, unlike Rust's postfix `.await`)*.
+  *(Note: `await` is a prefix operator in flame, meaning it goes **before** the variable, unlike Rust's postfix `.await`)*.
 
 ---
 
@@ -231,7 +231,7 @@ Wren handles concurrency using a thread-based background task system.
   * **`std`**: The standard library prefix (e.g., `import std.fs` for file system, `import std.thread`, `import std.math`).
   * **`native`**: Used to import native Rust plugins/dependencies (e.g., `import native.mysql`).
 
-  ```wren
+  ```flame
   import std.fs
   
   fn read_config() {
@@ -247,10 +247,10 @@ Wren handles concurrency using a thread-based background task system.
 ## 8. Built-in I/O Functions
 
 * **`print`**: Prints a value to standard output, followed by a newline.
-  ```wren
+  ```flame
   print("Normal log message")
   ```
 * **`eprint`**: Prints a value to standard error, followed by a newline. Useful for warnings and diagnostics.
-  ```wren
+  ```flame
   eprint("Failed to load file!")
   ```

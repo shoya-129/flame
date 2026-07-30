@@ -1,16 +1,16 @@
 {
-  "name": "wren-vscode",
-  "displayName": "Wren Language Support",
-  "description": "Rich IDE syntax highlighting and configuration for the Wren programming language.",
+  "name": "flame-vscode",
+  "displayName": "Flame Language Support",
+  "description": "Rich IDE syntax highlighting and configuration for the Flame programming language.",
   "version": "0.1.0",
-  "icon": "wren.png",
-  "publisher": "wren-lang",
+  "icon": "flame.png",
+  "publisher": "flame-lang",
   "engines": {
     "vscode": "^1.60.0"
   },
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:wren"
+    "onLanguage:flame"
   ],
   "categories": [
     "Programming Languages"
@@ -18,31 +18,31 @@
   "contributes": {
     "languages": [
       {
-        "id": "wren",
+        "id": "flame",
         "aliases": [
-          "Wren",
-          "wren"
+          "Flame",
+          "flame"
         ],
         "extensions": [
-          ".wren"
+          ".fm"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./icons/wrenlang.svg",
-          "dark": "./icons/wrenlang.svg"
+          "light": "./icons/flame.svg",
+          "dark": "./icons/flame.svg"
         }
       },
       {
-        "id": "wren-wn",
+        "id": "flame-wn",
         "extensions": [
-          ".wn"
+          ".fmi"
         ],
         "configuration": "./language-configuration.json"
       },
       {
-        "id": "wren-config",
+        "id": "flame-config",
         "extensions": [
-          ".wmeta"
+          ".fmi"
         ],
         "icon": {
           "light": "./icons/config.svg",
@@ -52,20 +52,20 @@
     ],
     "grammars": [
       {
-        "language": "wren",
-        "scopeName": "source.wren",
-        "path": "./syntaxes/wren.tmLanguage.json"
+        "language": "flame",
+        "scopeName": "source.fm",
+        "path": "./syntaxes/flame.tmLanguage.json"
       },
       {
-        "language": "wren-wn",
-        "scopeName": "source.wren",
-        "path": "./syntaxes/wren.tmLanguage.json"
+        "language": "flame-wn",
+        "scopeName": "source.fm",
+        "path": "./syntaxes/flame.tmLanguage.json"
       }
     ],
     "iconThemes": [
       {
-        "id": "wren-icons",
-        "label": "Wren Icons",
+        "id": "flame-icons",
+        "label": "Flame Icons",
         "path": "./icons/fileicons.json"
       }
     ]

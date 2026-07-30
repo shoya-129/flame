@@ -3,16 +3,16 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WrenParamMeta {
+pub struct FlameParamMeta {
     pub name: String,
     pub type_name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WrenFunctionMeta {
+pub struct FlameFunctionMeta {
     pub name: String,
-    pub wren_name: String,
-    pub params: Vec<WrenParamMeta>,
+    pub flame_name: String,
+    pub params: Vec<FlameParamMeta>,
     pub return_type: String,
     #[serde(default)]
     pub is_static: bool,
@@ -23,20 +23,20 @@ pub struct WrenFunctionMeta {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WrenStructMeta {
+pub struct FlameStructMeta {
     pub name: String,
-    pub methods: Vec<WrenFunctionMeta>,
+    pub methods: Vec<FlameFunctionMeta>,
     #[serde(default)]
     pub docs: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WrenMeta {
+pub struct FlameMeta {
     pub module: String,
     pub kind: String,
     pub lib: Option<String>,
-    pub functions: Vec<WrenFunctionMeta>,
-    pub structs: Vec<WrenStructMeta>,
+    pub functions: Vec<FlameFunctionMeta>,
+    pub structs: Vec<FlameStructMeta>,
     #[serde(default)]
     pub docs: Option<String>,
 }
@@ -82,7 +82,7 @@ fn parse_plugin_entries(content: &str) -> Vec<(String, String)> {
 }
 
 pub fn list_plugins() -> Vec<PluginSpec> {
-    let toml_path = Path::new("wren.toml");
+    let toml_path = Path::new("flame.toml");
     if !toml_path.exists() {
         return Vec::new();
     }
@@ -116,7 +116,9 @@ pub fn list_plugins() -> Vec<PluginSpec> {
 pub fn add_package(args: &[String]) {
     if args.is_empty() {
         println!("\x1b[1;31merror:\x1b[0m please specify package name to add.");
-        println!("usage: wren add <package_name> | wren add @plugin <plugin_name_or_url@version>");
+        println!(
+            "usage: flame add <package_name> | flame add @plugin <plugin_name_or_url@version>"
+        );
         return;
     }
 
@@ -167,7 +169,7 @@ pub fn add_package(args: &[String]) {
         manifest_key
     );
 
-    let toml_path = Path::new("wren.toml");
+    let toml_path = Path::new("flame.toml");
     if toml_path.exists() {
         let mut content = fs::read_to_string(toml_path).unwrap_or_default();
         if !content.contains(section) {
@@ -208,7 +210,7 @@ pub fn add_package(args: &[String]) {
 }
 
 pub fn remove_package(pkg_name: &str) {
-    let toml_path = Path::new("wren.toml");
+    let toml_path = Path::new("flame.toml");
     if toml_path.exists() {
         if let Ok(content) = fs::read_to_string(toml_path) {
             let lines: Vec<&str> = content
@@ -219,7 +221,7 @@ pub fn remove_package(pkg_name: &str) {
         }
     }
 
-    let pkg_dir = Path::new(".wren").join("pkg").join(pkg_name);
+    let pkg_dir = Path::new(".flame").join("pkg").join(pkg_name);
     if pkg_dir.exists() {
         let _ = fs::remove_dir_all(pkg_dir);
     }
@@ -227,15 +229,15 @@ pub fn remove_package(pkg_name: &str) {
 }
 
 pub fn ensure_dependencies_installed() {
-    // Compile std_bridge directly since it uses #[wren_export] now
-    let std_bridge_path = Path::new("wren-stdlib").join("native").join("std_bridge");
+    // Compile std_bridge directly since it uses #[flame_export] now
+    let std_bridge_path = Path::new("flame-stdlib").join("native").join("std_bridge");
     if std_bridge_path.exists() {
         let _ = std::process::Command::new("cargo")
             .arg("build")
             .current_dir(&std_bridge_path)
             .output();
     }
-    let toml_path = Path::new("wren.toml");
+    let toml_path = Path::new("flame.toml");
     if !toml_path.exists() {
         return;
     }
@@ -264,7 +266,7 @@ pub fn ensure_dependencies_installed() {
                 source.to_string()
             }
         } else {
-            let pkg_dir = Path::new(".wren").join("pkg");
+            let pkg_dir = Path::new(".flame").join("pkg");
             let target_dir = pkg_dir.join(&target);
 
             if !source.starts_with("http") {
@@ -296,7 +298,7 @@ pub fn ensure_dependencies_installed() {
 
                 let download_zip = |u: &str| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
                     let client = reqwest::blocking::Client::builder()
-                        .user_agent("Wrenlang-Package-Manager")
+                        .user_agent("Flamelang-Package-Manager")
                         .build()?;
                     let resp = client.get(u).send()?;
                     if resp.status().is_success() {
@@ -360,7 +362,7 @@ pub fn ensure_dependencies_installed() {
         }
     };
 
-    // Fetch pure Wren dependencies
+    // Fetch pure Flame dependencies
     for (target, source) in deps {
         fetch_remote(&target, &source);
     }
@@ -424,14 +426,14 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
 
     let meta = parse_rustdoc_json(&rustdoc_json_path, target);
 
-    let pkg_dir = Path::new(".wren").join("pkg").join(target);
+    let pkg_dir = Path::new(".flame").join("pkg").join(target);
     let _ = fs::create_dir_all(&pkg_dir);
     if let Ok(meta_str) = serde_json::to_string_pretty(&meta) {
-        let _ = fs::write(pkg_dir.join(format!("{}.wmeta", target)), meta_str);
+        let _ = fs::write(pkg_dir.join(format!("{}.fmi", target)), meta_str);
     }
 }
 
-pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
+pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
     let mut functions = Vec::new();
     let mut structs = Vec::new();
 
@@ -469,14 +471,28 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
 
                             let mut is_generic = false;
                             let mut has_bounds = false;
-                            if let Some(func_obj) = inner.get("function").and_then(|f| f.as_object()) {
-                                if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
-                                    if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                            if let Some(func_obj) =
+                                inner.get("function").and_then(|f| f.as_object())
+                            {
+                                if let Some(generics) =
+                                    func_obj.get("generics").and_then(|g| g.as_object())
+                                {
+                                    if let Some(params) =
+                                        generics.get("params").and_then(|p| p.as_array())
+                                    {
                                         if !params.is_empty() {
                                             if params.len() == 1 {
-                                                if let Some(kind) = params[0].get("kind").and_then(|k| k.as_object()) {
-                                                    if let Some(type_obj) = kind.get("type").and_then(|t| t.as_object()) {
-                                                        if let Some(bounds) = type_obj.get("bounds").and_then(|b| b.as_array()) {
+                                                if let Some(kind) = params[0]
+                                                    .get("kind")
+                                                    .and_then(|k| k.as_object())
+                                                {
+                                                    if let Some(type_obj) =
+                                                        kind.get("type").and_then(|t| t.as_object())
+                                                    {
+                                                        if let Some(bounds) = type_obj
+                                                            .get("bounds")
+                                                            .and_then(|b| b.as_array())
+                                                        {
                                                             if !bounds.is_empty() {
                                                                 has_bounds = true;
                                                             }
@@ -494,21 +510,23 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     continue;
                                 }
                                 if let Some(sig) = func_obj.get("sig").and_then(|s| s.as_object()) {
-                                    if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
-                                    for input in inputs {
-                                        if let Some(arr) = input.as_array() {
-                                            if arr.len() == 2 {
-                                                param_types.push(parse_type(&arr[1]));
+                                    if let Some(inputs) =
+                                        sig.get("inputs").and_then(|i| i.as_array())
+                                    {
+                                        for input in inputs {
+                                            if let Some(arr) = input.as_array() {
+                                                if arr.len() == 2 {
+                                                    param_types.push(parse_type(&arr[1]));
+                                                }
                                             }
                                         }
                                     }
+                                    if let Some(output) = sig.get("output") {
+                                        return_type = parse_type(output);
+                                    } else {
+                                        return_type = "()".to_string();
+                                    }
                                 }
-                                if let Some(output) = sig.get("output") {
-                                    return_type = parse_type(output);
-                                } else {
-                                    return_type = "()".to_string();
-                                }
-                            }
                             }
 
                             let has_unsupported_param = param_types.iter().any(|pt| {
@@ -530,11 +548,19 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     && p != "usize"
                             });
                             let mut generic_param_name = String::new();
-                            if let Some(func_obj) = inner.get("function").and_then(|f| f.as_object()) {
-                                if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
-                                    if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                            if let Some(func_obj) =
+                                inner.get("function").and_then(|f| f.as_object())
+                            {
+                                if let Some(generics) =
+                                    func_obj.get("generics").and_then(|g| g.as_object())
+                                {
+                                    if let Some(params) =
+                                        generics.get("params").and_then(|p| p.as_array())
+                                    {
                                         if params.len() == 1 {
-                                            if let Some(p_name) = params[0].get("name").and_then(|n| n.as_str()) {
+                                            if let Some(p_name) =
+                                                params[0].get("name").and_then(|n| n.as_str())
+                                            {
                                                 generic_param_name = p_name.to_string();
                                             }
                                             is_generic = true;
@@ -563,14 +589,14 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                 return_type = "Generic".to_string();
                             }
 
-                            functions.push(WrenFunctionMeta {
+                            functions.push(FlameFunctionMeta {
                                 name: name.to_string(),
-                                wren_name: name.to_string(),
+                                flame_name: name.to_string(),
                                 is_generic,
                                 params: param_types
                                     .iter()
                                     .enumerate()
-                                    .map(|(i, pt)| WrenParamMeta {
+                                    .map(|(i, pt)| FlameParamMeta {
                                         name: format!("arg{}", i),
                                         type_name: pt.clone(),
                                     })
@@ -663,11 +689,36 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                             false;
                                                                         let mut is_generic = false;
                                                                         let mut has_bounds = false;
-                                                                        if let Some(func_obj) = m_inner.get("function").and_then(|f| f.as_object()) {
-                                                                            if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
-                                                                                if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
-                                                                                    if !params.is_empty() {
-                                                                                        if params.len() == 1 {
+                                                                        if let Some(func_obj) =
+                                                                            m_inner
+                                                                                .get("function")
+                                                                                .and_then(|f| {
+                                                                                    f.as_object()
+                                                                                })
+                                                                        {
+                                                                            if let Some(generics) =
+                                                                                func_obj
+                                                                                    .get("generics")
+                                                                                    .and_then(|g| {
+                                                                                        g.as_object(
+                                                                                        )
+                                                                                    })
+                                                                            {
+                                                                                if let Some(
+                                                                                    params,
+                                                                                ) = generics
+                                                                                    .get("params")
+                                                                                    .and_then(|p| {
+                                                                                        p.as_array()
+                                                                                    })
+                                                                                {
+                                                                                    if !params
+                                                                                        .is_empty()
+                                                                                    {
+                                                                                        if params
+                                                                                            .len()
+                                                                                            == 1
+                                                                                        {
                                                                                             if let Some(kind) = params[0].get("kind").and_then(|k| k.as_object()) {
                                                                                                 if let Some(type_obj) = kind.get("type").and_then(|t| t.as_object()) {
                                                                                                     if let Some(bounds) = type_obj.get("bounds").and_then(|b| b.as_array()) {
@@ -687,11 +738,26 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                             if has_bounds {
                                                                                 continue;
                                                                             }
-                                                                            if let Some(sig) = func_obj.get("sig").and_then(|s| s.as_object()) {
-                                                                                if let Some(inputs) = sig.get("inputs").and_then(|i| i.as_array()) {
-                                                                                for input in inputs
+                                                                            if let Some(sig) =
+                                                                                func_obj
+                                                                                    .get("sig")
+                                                                                    .and_then(|s| {
+                                                                                        s.as_object(
+                                                                                        )
+                                                                                    })
+                                                                            {
+                                                                                if let Some(
+                                                                                    inputs,
+                                                                                ) = sig
+                                                                                    .get("inputs")
+                                                                                    .and_then(|i| {
+                                                                                        i.as_array()
+                                                                                    })
                                                                                 {
-                                                                                    if let Some(
+                                                                                    for input in
+                                                                                        inputs
+                                                                                    {
+                                                                                        if let Some(
                                                                                         arr,
                                                                                     ) = input
                                                                                         .as_array()
@@ -710,27 +776,52 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                                             m_param_types.push(parse_type(&arr[1]));
                                                                                         }
                                                                                     }
+                                                                                    }
                                                                                 }
-                                                                            }
-                                                                            if let Some(output) =
-                                                                                sig.get("output")
-                                                                            {
-                                                                                m_return_type =
-                                                                                    parse_type(
-                                                                                        output,
-                                                                                    );
-                                                                            } else {
-                                                                                m_return_type =
+                                                                                if let Some(
+                                                                                    output,
+                                                                                ) = sig
+                                                                                    .get("output")
+                                                                                {
+                                                                                    m_return_type =
+                                                                                        parse_type(
+                                                                                            output,
+                                                                                        );
+                                                                                } else {
+                                                                                    m_return_type =
                                                                                     "()".to_string(
                                                                                     );
+                                                                                }
                                                                             }
                                                                         }
-                                                                        }
-                                                                        let mut generic_param_name = String::new();
-                                                                        if let Some(func_obj) = m_inner.get("function").and_then(|f| f.as_object()) {
-                                                                            if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
-                                                                                if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
-                                                                                    if params.len() == 1 {
+                                                                        let mut generic_param_name =
+                                                                            String::new();
+                                                                        if let Some(func_obj) =
+                                                                            m_inner
+                                                                                .get("function")
+                                                                                .and_then(|f| {
+                                                                                    f.as_object()
+                                                                                })
+                                                                        {
+                                                                            if let Some(generics) =
+                                                                                func_obj
+                                                                                    .get("generics")
+                                                                                    .and_then(|g| {
+                                                                                        g.as_object(
+                                                                                        )
+                                                                                    })
+                                                                            {
+                                                                                if let Some(
+                                                                                    params,
+                                                                                ) = generics
+                                                                                    .get("params")
+                                                                                    .and_then(|p| {
+                                                                                        p.as_array()
+                                                                                    })
+                                                                                {
+                                                                                    if params.len()
+                                                                                        == 1
+                                                                                    {
                                                                                         if let Some(p_name) = params[0].get("name").and_then(|n| n.as_str()) {
                                                                                             generic_param_name = p_name.to_string();
                                                                                         }
@@ -763,7 +854,10 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                             continue;
                                                                         }
 
-                                                                        if is_generic && !m_param_types.is_empty() {
+                                                                        if is_generic
+                                                                            && !m_param_types
+                                                                                .is_empty()
+                                                                        {
                                                                             continue;
                                                                         }
 
@@ -772,14 +866,16 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                                                         }
 
                                                                         if is_generic {
-                                                                            m_return_type = "Generic".to_string();
+                                                                            m_return_type =
+                                                                                "Generic"
+                                                                                    .to_string();
                                                                         }
 
-                                                                        s_methods.push(WrenFunctionMeta {
+                                                                        s_methods.push(FlameFunctionMeta {
                                                                                     name: m_name.to_string(),
-                                                                                    wren_name: m_name.to_string(),
+                                                                                    flame_name: m_name.to_string(),
                                                                                     is_generic,
-                                                                                    params: m_param_types.iter().enumerate().map(|(idx, pt)| WrenParamMeta {
+                                                                                    params: m_param_types.iter().enumerate().map(|(idx, pt)| FlameParamMeta {
                                                                                         name: format!("arg{}", idx),
                                                                                         type_name: pt.clone(),
                                                                                     }).collect(),
@@ -802,7 +898,7 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
                                     }
                                 }
                             }
-                            structs.push(WrenStructMeta {
+                            structs.push(FlameStructMeta {
                                 name: name.to_string(),
                                 methods: s_methods,
                                 docs: item
@@ -831,7 +927,7 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> WrenMeta {
         format!("lib{}.so", target)
     };
 
-    WrenMeta {
+    FlameMeta {
         module: target.to_string(),
         kind: "native".to_string(),
         lib: Some(lib_filename),

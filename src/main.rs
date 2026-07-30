@@ -23,8 +23,8 @@ use typechecker::TypeChecker;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
-        if Path::new("src/main.wren").exists() {
-            run_file("src/main.wren", false);
+        if Path::new("src/main.fm").exists() {
+            run_file("src/main.fm", false);
             return;
         }
         print_help();
@@ -39,7 +39,7 @@ fn main() {
         "remove" => {
             if args.len() < 3 {
                 println!("\x1b[1;31merror:\x1b[0m please specify package name to remove.");
-                println!("usage: wren remove <package_name>");
+                println!("usage: flame remove <package_name>");
                 return;
             }
             package_manager::remove_package(&args[2]);
@@ -47,7 +47,7 @@ fn main() {
         "new" => {
             if args.len() < 3 {
                 println!("\x1b[1;31merror:\x1b[0m please specify the project name");
-                println!("usage: wren new <project_name>");
+                println!("usage: flame new <project_name>");
                 return;
             }
             let project_name = &args[2];
@@ -64,14 +64,14 @@ fn main() {
         }
         "run" => {
             if args.len() < 3 {
-                println!("\x1b[1;31merror:\x1b[0m please specify a Wren file to run");
-                println!("usage: wren run <file_path.wren>");
+                println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run");
+                println!("usage: flame run <file_path.fm>");
                 return;
             }
             let force_local = args.contains(&"--local".to_string());
             let filepath = if args[2] == "--local" {
                 if args.len() < 4 {
-                    println!("\x1b[1;31merror:\x1b[0m please specify a Wren file to run");
+                    println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run");
                     return;
                 }
                 &args[3]
@@ -86,7 +86,7 @@ fn main() {
         "native" => {
             if args.len() < 3 || args[2] != "init" {
                 println!("\x1b[1;31merror:\x1b[0m unknown subcommand");
-                println!("usage: wren native init");
+                println!("usage: flame native init");
                 return;
             }
             init_native_bridge();
@@ -95,9 +95,9 @@ fn main() {
             print_help();
         }
         _ => {
-            // Check if argument is a Wren source file
+            // Check if argument is a Flame source file
             let p = Path::new(command);
-            if p.exists() && p.extension().map_or(false, |ext| ext == "wren") {
+            if p.exists() && p.extension().map_or(false, |ext| ext == "flame") {
                 let force_local = args.contains(&"--local".to_string());
                 let actual_cmd = if command == "--local" && args.len() >= 3 { &args[2] } else { command };
                 run_file(actual_cmd, force_local);
@@ -115,16 +115,16 @@ fn print_help() {
     let reset = "\x1b[0m";
 
     println!(
-        "{}Wren Compiler & Package Manager (Version 0.1.0){} ",
+        "{}Flame Compiler & Package Manager (Version 0.1.0){} ",
         bold, reset
     );
     println!("Designed for systems programming with supreme DX.");
     println!();
-    println!("{}USAGE:{} wren <SUBCOMMAND> [args]", bold, reset);
+    println!("{}USAGE:{} flame <SUBCOMMAND> [args]", bold, reset);
     println!();
     println!("{}SUBCOMMANDS:{}", bold, reset);
     println!(
-        "  {}add{} <pkg> [--native] Add a dependency (Wren module or native Rust crate)",
+        "  {}add{} <pkg> [--native] Add a dependency (Flame module or native Rust crate)",
         cyan, reset
     );
     println!(
@@ -132,15 +132,15 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}new{} <name>          Create a new Wren package template",
+        "  {}new{} <name>          Create a new Flame package template",
         cyan, reset
     );
     println!(
-        "  {}build{} [--release]  Compile the workspace project defined in wren.toml",
+        "  {}build{} [--release]  Compile the workspace project defined in flame.toml",
         cyan, reset
     );
     println!(
-        "  {}check{} <file> [--json] [--line N --col N]  Analyze a Wren file for diagnostics and IDE data",
+        "  {}check{} <file> [--json] [--line N --col N]  Analyze a Flame file for diagnostics and IDE data",
         cyan, reset
     );
     println!(
@@ -148,7 +148,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}run{} <file>           Compile and run a Wren source file",
+        "  {}run{} <file>           Compile and run a Flame source file",
         cyan, reset
     );
     println!(
@@ -174,7 +174,7 @@ fn create_new_project(name: &str) {
     }
 
     println!(
-        "Scaffolding a brand new Wren package: \x1b[1;32m{}\x1b[0m",
+        "Scaffolding a brand new Flame package: \x1b[1;32m{}\x1b[0m",
         name
     );
 
@@ -191,15 +191,15 @@ fn create_new_project(name: &str) {
         }
     }
 
-    // Write wren.toml
+    // Write flame.toml
     let toml_content = format!(
         "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2026\"\ntype = \"executable\"\n\n[dependencies]\nstd = \"0.1.0\"\n",
         name
     );
-    fs::write(root.join("wren.toml"), toml_content).unwrap();
+    fs::write(root.join("flame.toml"), toml_content).unwrap();
 
-    // Write src/main.wren
-    let main_wren = r#"import math
+    // Write src/main.fm
+    let main_flame = r#"import math
 import std.thread
 
 print("Hello, world! Program executed successfully.")
@@ -211,16 +211,15 @@ let t: ThreadHandler = thread {
 }
 
 t.join()
-
 "#;
-    fs::write(root.join("src/main.wren"), main_wren).unwrap();
+    fs::write(root.join("src/main.fm"), main_flame).unwrap();
 
-    // Write src/math.wren
-    let math_wren = r#"export fn add(a: Int, b: Int) -> Int {
+    // Write src/math.fm
+    let math_flame = r#"export fn add(a: Int, b: Int) -> Int {
     a + b
 }
 "#;
-    fs::write(root.join("src/math.wren"), math_wren).unwrap();
+    fs::write(root.join("src/math.fm"), math_flame).unwrap();
 
     println!(
         "\x1b[1;32mCreated\x1b[0m binary (application) `{}` package",
@@ -249,19 +248,19 @@ fn typecheck_file_stmts(path: &Path, stmts: &[Stmt]) -> Result<(), Vec<Diagnosti
 }
 
 fn build_project(args: &[String]) -> Option<PathBuf> {
-    let toml_path = Path::new("wren.toml");
+    let toml_path = Path::new("flame.toml");
     if !toml_path.exists() {
         println!(
-            "\x1b[1;31merror:\x1b[0m no wren.toml manifest file found in the current directory."
+            "\x1b[1;31merror:\x1b[0m no flame.toml manifest file found in the current directory."
         );
-        println!("help: run this command inside a valid Wren project folder.");
+        println!("help: run this command inside a valid Flame project folder.");
         return None;
     }
 
     let is_release = args.contains(&"--release".to_string()) || args.contains(&"-r".to_string());
     let force_local = args.contains(&"--local".to_string());
     let mut pkg_name = "app".to_string();
-    if let Ok(toml_str) = fs::read_to_string("wren.toml") {
+    if let Ok(toml_str) = fs::read_to_string("flame.toml") {
         for line in toml_str.lines() {
             if line.trim().starts_with("name =") {
                 if let Some(val) = line.split('=').nth(1) {
@@ -280,19 +279,19 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     };
     let profile = if is_release { "release" } else { "dev" };
     println!("\x1b[1;36m    Building\x1b[0m dependency graph...");
-    println!("\x1b[1;36m   Compiling\x1b[0m std standard library (Wren interfaces)...");
+    println!("\x1b[1;36m   Compiling\x1b[0m std standard library (Flame interfaces)...");
     println!("\x1b[1;36m   Compiling\x1b[0m standard library Rust bridges (std_bridge)...");
 
-    // Check main.wren if exists
-    let main_path = Path::new("src/main.wren");
+    // Check main.fm if exists
+    let main_path = Path::new("src/main.fm");
     if main_path.exists() {
-        println!("\x1b[1;36m   Compiling\x1b[0m targets (src/main.wren)...");
+        println!("\x1b[1;36m   Compiling\x1b[0m targets (src/main.fm)...");
 
         // Parse all files in src/ to ensure full build-time diagnostics
         if let Ok(entries) = fs::read_dir("src") {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() && path.extension().map_or(false, |e| e == "wren") {
+                if path.is_file() && path.extension().map_or(false, |e| e == "fm") {
                     let content = fs::read_to_string(&path).unwrap_or_default();
                     let stmts = match parse_file_stmts(&path, &content) {
                         Ok(stmts) => stmts,
@@ -317,7 +316,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         }
         println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
-        let manifest_content = fs::read_to_string("wren.toml").unwrap_or_default();
+        let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
         let native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
         let plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
         
@@ -330,7 +329,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             }
             if path_str.starts_with('.') || path_str.starts_with('/') {
                 let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
-                    .unwrap_or_else(|_| std::path::PathBuf::from(&path_str));
+                    .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&path_str));
                 let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
                 if abs_path_str.starts_with("//?/") {
                     abs_path_str = abs_path_str[4..].to_string();
@@ -351,11 +350,11 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             let actual_path = if is_local {
                 path_str 
             } else {
-                std::env::current_dir().unwrap().join(".wren").join("pkg").join(&plugin_name).to_string_lossy().into_owned()
+                std::env::current_dir().unwrap().join(".flame").join("pkg").join(&plugin_name).to_string_lossy().into_owned()
             };
             
             let absolute_path = std::fs::canonicalize(std::path::Path::new(&actual_path))
-                .unwrap_or_else(|_| std::path::PathBuf::from(&actual_path));
+                .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&actual_path));
             let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
             if abs_path_str.starts_with("//?/") {
                 abs_path_str = abs_path_str[4..].to_string();
@@ -374,7 +373,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         return Some(PathBuf::from(out_rel));
     } else {
         println!(
-            "\x1b[1;32m    Finished\x1b[0m compilation: no executable source file (src/main.wren)"
+            "\x1b[1;32m    Finished\x1b[0m compilation: no executable source file (src/main.fm)"
         );
         return None;
     }
@@ -423,10 +422,10 @@ fn run_file(path_str: &str, force_local: bool) {
 
 fn run_tests() {
     println!("Running unit tests...");
-    // Check if main.wren exists and run it
-    let main_path = Path::new("src/main.wren");
+    // Check if main.fm exists and run it
+    let main_path = Path::new("src/main.fm");
     if main_path.exists() {
-        run_file("src/main.wren", false);
+        run_file("src/main.fm", false);
     }
     println!(
         "\x1b[1;32mtest result: ok.\x1b[0m 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
@@ -434,12 +433,12 @@ fn run_tests() {
 }
 
 fn init_native_bridge() {
-    let toml_path = Path::new("wren.toml");
+    let toml_path = Path::new("flame.toml");
     if !toml_path.exists() {
         println!(
-            "\x1b[1;31merror:\x1b[0m no wren.toml manifest file found in the current directory."
+            "\x1b[1;31merror:\x1b[0m no flame.toml manifest file found in the current directory."
         );
-        println!("help: run this command inside a valid Wren project folder.");
+        println!("help: run this command inside a valid Flame project folder.");
         return;
     }
 
@@ -486,15 +485,15 @@ crate-type = ["cdylib", "rlib"]
         println!("\x1b[1;32mCreated\x1b[0m {:?}", cargo_path);
     }
 
-    // Update wren.toml to append [plugins] if not present
+    // Update flame.toml to append [plugins] if not present
     let mut toml_content = fs::read_to_string(toml_path).unwrap();
     if !toml_content.contains("[plugins]") {
         toml_content.push_str("\n[plugins]\nbridge = \"./native\"\n");
         fs::write(toml_path, toml_content).unwrap();
-        println!("\x1b[1;32mUpdated\x1b[0m wren.toml to reference native plugin.");
+        println!("\x1b[1;32mUpdated\x1b[0m flame.toml to reference native plugin.");
     }
 
-    println!("\x1b[1;32mFinished\x1b[0m native initialization. Run `wren build` to compile.");
+    println!("\x1b[1;32mFinished\x1b[0m native initialization. Run `flame build` to compile.");
 }
 
 #[derive(Serialize)]
@@ -533,8 +532,8 @@ struct JsonCheckOutput {
 
 fn run_check_command(args: &[String]) {
     if args.len() < 3 {
-        println!("\x1b[1;31merror:\x1b[0m please specify a Wren file to check");
-        println!("usage: wren check <file> [--json] [--line N --col N]");
+        println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to check");
+        println!("usage: flame check <file> [--json] [--line N --col N]");
         return;
     }
 
@@ -606,7 +605,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf()
     });
-    let manifest_content = fs::read_to_string(manifest_dir.join("wren.toml")).unwrap_or_default();
+    let manifest_content = fs::read_to_string(manifest_dir.join("flame.toml")).unwrap_or_default();
 
     let mut diagnostics = Vec::new();
     let mut lexer = Lexer::new(&content);
@@ -721,18 +720,22 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     let hover = if let Some(namespace) = namespace {
         let mut hover_found = None;
         if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
+            let rel_meta = format!(".flame/pkg/{}/{}.fmi", &namespace, &namespace);
+            let meta_candidates = vec![
+                PathBuf::from(&rel_meta),
+            ];
             for function in &meta.functions {
                 if member_prefix
                     .as_deref()
-                    .map(|prefix| function.wren_name.starts_with(prefix))
+                    .map(|prefix| function.flame_name.starts_with(prefix))
                     .unwrap_or(true)
                 {
                     completions.push(JsonCompletion {
-                        label: function.wren_name.clone(),
+                        label: function.flame_name.clone(),
                         kind: "function".to_string(),
                         detail: format!("native.{}", namespace),
                         documentation: function.docs.clone().or_else(|| {
-                            load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
+                            load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
                         }),
                     });
                 }
@@ -743,15 +746,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     for function in &struct_meta.methods {
                         if member_prefix
                             .as_deref()
-                            .map(|prefix| function.wren_name.starts_with(prefix))
+                            .map(|prefix| function.flame_name.starts_with(prefix))
                             .unwrap_or(true)
                         {
                             completions.push(JsonCompletion {
-                                label: function.wren_name.clone(),
+                                label: function.flame_name.clone(),
                                 kind: "function".to_string(),
                                 detail: format!("native.{}", namespace),
                                 documentation: function.docs.clone().or_else(|| {
-                                    load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
+                                    load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
                                 }),
                             });
                         }
@@ -761,22 +764,22 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             if !word_under_cursor.is_empty() {
                 hover_found = meta.functions
                     .iter()
-                    .find(|function| function.wren_name == word_under_cursor)
+                    .find(|function| function.flame_name == word_under_cursor)
                     .map(|function| JsonHover {
-                        label: format!("{}.{}", namespace, function.wren_name),
+                        label: format!("{}.{}", namespace, function.flame_name),
                         documentation: function.docs.clone().or_else(|| {
-                            load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
+                            load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
                         }),
                     });
 
                 if hover_found.is_none() {
                     for struct_meta in &meta.structs {
                         if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
-                            if let Some(function) = struct_meta.methods.iter().find(|f| f.wren_name == word_under_cursor) {
+                            if let Some(function) = struct_meta.methods.iter().find(|f| f.flame_name == word_under_cursor) {
                                 hover_found = Some(JsonHover {
-                                    label: format!("{}.{}", namespace, function.wren_name),
+                                    label: format!("{}.{}", namespace, function.flame_name),
                                     documentation: function.docs.clone().or_else(|| {
-                                        load_local_rust_doc(&manifest_dir, &namespace, &function.wren_name)
+                                        load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
                                     }),
                                 });
                                 break;
@@ -963,7 +966,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 fn find_manifest_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.parent().unwrap_or(start).to_path_buf();
     loop {
-        if current.join("wren.toml").exists() {
+        if current.join("flame.toml").exists() {
             return Some(current);
         }
         if !current.pop() {
@@ -1079,14 +1082,14 @@ fn extract_word_at_cursor(line: &str, col: usize) -> String {
 fn load_meta_from_project(
     manifest_dir: &Path,
     module_name: &str,
-) -> Option<package_manager::WrenMeta> {
+) -> Option<package_manager::FlameMeta> {
     let meta_path = manifest_dir
-        .join(".wren")
+        .join(".fm")
         .join("pkg")
         .join(module_name)
-        .join(format!("{}.wmeta", module_name));
+        .join(format!("{}.fmi", module_name));
     let meta_str = fs::read_to_string(meta_path).ok()?;
-    serde_json::from_str::<package_manager::WrenMeta>(&meta_str).ok()
+    serde_json::from_str::<package_manager::FlameMeta>(&meta_str).ok()
 }
 
 fn load_local_rust_doc(manifest_dir: &Path, module_name: &str, member: &str) -> Option<String> {

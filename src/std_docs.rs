@@ -11,7 +11,7 @@ The `thread` module allows you to spawn background threads and manage concurrent
 - **`sleep()`**: Suspends the current thread for the specified number of milliseconds.
 
 **Example**:
-```wren
+```flame
 import std.thread
 
 thread.sleep(1000) // Sleep for 1 second
@@ -25,14 +25,14 @@ The `process` module provides utilities to spawn new processes, execute commands
 - **`run()`**: Executes a system command and waits for it to finish.
 
 **Example**:
-```wren
+```flame
 import std.process
 process.run(\"echo Hello\")
 ```
 - **`spawn()`**: Spawns a background process asynchronously.
 
 **Example**:
-```wren
+```flame
 let p = process.spawn(\"sleep\", [\"10\"])
 ```
 - **`kill()`**: Kills a running process by its PID.
@@ -45,13 +45,13 @@ The `fs` module provides tools to interact with the file system (read, write, de
 - **`read()`**: Reads the entire contents of a file as a string.
 
 **Example**:
-```wren
+```flame
 let content = fs.read(\"data.txt\")
 ```
 - **`write()`**: Writes string data to a file.
 
 **Example**:
-```wren
+```flame
 fs.write(\"data.txt\", \"Hello World\")
 ```
 - **`append()`**: Appends string data to the end of a file.
@@ -85,7 +85,7 @@ The `time` module provides utilities for tracking and formatting time.
 - **`now()`**: Returns the current Unix timestamp in milliseconds.
 
 **Example**:
-```wren
+```flame
 let t = time.now()
 ```
 - **`format()`**: Formats a timestamp into a human readable string.
@@ -116,13 +116,13 @@ The `desktop.mouse` module allows you to programmatically control the mouse curs
 - **`move()`**: Moves the mouse cursor to absolute screen coordinates (x, y).
 
 **Example**:
-```wren
+```flame
 desktop.mouse.move(500, 500)
 ```
 - **`click()`**: Simulates a mouse click. Can pass 'left', 'right', or 'middle'.
 
 **Example**:
-```wren
+```flame
 desktop.mouse.click(\"left\")
 ```
 "),
@@ -134,14 +134,14 @@ The `desktop.keyboard` module allows you to programmatically type text and press
 - **`write()`**: Types out the specified text string.
 
 **Example**:
-```wren
+```flame
 desktop.keyboard.write(\"Hello World\")
 ```
 - **`key()`**: Presses a specific key (e.g., 'enter', 'esc').
 - **`hotkey()`**: Presses a combination of keys simultaneously.
 
 **Example**:
-```wren
+```flame
 desktop.keyboard.hotkey(\"ctrl\", \"c\")
 ```
 "),
@@ -157,7 +157,7 @@ The `env` module provides access to environment variables.
 - **`get()`**: Gets the value of an environment variable.
 
 **Example**:
-```wren
+```flame
 let path = env.get(\"PATH\")
 ```
 - **`set()`**: Sets the value of an environment variable.
@@ -195,7 +195,7 @@ The `serial` module provides RS-232 serial port communication (useful for Arduin
 - **`open()`**: Opens a serial port connection at a specific baud rate.
 
 **Example**:
-```wren
+```flame
 let port = serial.open(\"COM3\", 9600)
 ```
 "),
@@ -208,7 +208,7 @@ pub fn get_std_function_doc(module: &str, function: &str) -> Option<&'static str
         ("thread" | "std.thread", "sleep") => Some("Suspends the current thread for the specified number of milliseconds.
 
 **Example**:
-```wren
+```flame
 import std.thread
 
 thread.sleep(1000) // Sleep for 1 second
@@ -216,27 +216,27 @@ thread.sleep(1000) // Sleep for 1 second
         ("process" | "std.process", "run") => Some("Executes a system command and waits for it to finish.
 
 **Example**:
-```wren
+```flame
 import std.process
 process.run(\"echo Hello\")
 ```"),
         ("process" | "std.process", "spawn") => Some("Spawns a background process asynchronously.
 
 **Example**:
-```wren
+```flame
 let p = process.spawn(\"sleep\", [\"10\"])
 ```"),
         ("process" | "std.process", "kill") => Some("Kills a running process by its PID."),
         ("fs" | "std.fs", "read") => Some("Reads the entire contents of a file as a string.
 
 **Example**:
-```wren
+```flame
 let content = fs.read(\"data.txt\")
 ```"),
         ("fs" | "std.fs", "write") => Some("Writes string data to a file.
 
 **Example**:
-```wren
+```flame
 fs.write(\"data.txt\", \"Hello World\")
 ```"),
         ("fs" | "std.fs", "append") => Some("Appends string data to the end of a file."),
@@ -258,7 +258,7 @@ fs.write(\"data.txt\", \"Hello World\")
         ("time" | "std.time", "now") => Some("Returns the current Unix timestamp in milliseconds.
 
 **Example**:
-```wren
+```flame
 let t = time.now()
 ```"),
         ("time" | "std.time", "format") => Some("Formats a timestamp into a human readable string."),
@@ -271,32 +271,32 @@ let t = time.now()
         ("desktop.mouse" | "std.desktop.mouse", "move") => Some("Moves the mouse cursor to absolute screen coordinates (x, y).
 
 **Example**:
-```wren
+```flame
 desktop.mouse.move(500, 500)
 ```"),
         ("desktop.mouse" | "std.desktop.mouse", "click") => Some("Simulates a mouse click. Can pass 'left', 'right', or 'middle'.
 
 **Example**:
-```wren
+```flame
 desktop.mouse.click(\"left\")
 ```"),
         ("desktop.keyboard" | "std.desktop.keyboard", "write") => Some("Types out the specified text string.
 
 **Example**:
-```wren
+```flame
 desktop.keyboard.write(\"Hello World\")
 ```"),
         ("desktop.keyboard" | "std.desktop.keyboard", "key") => Some("Presses a specific key (e.g., 'enter', 'esc')."),
         ("desktop.keyboard" | "std.desktop.keyboard", "hotkey") => Some("Presses a combination of keys simultaneously.
 
 **Example**:
-```wren
+```flame
 desktop.keyboard.hotkey(\"ctrl\", \"c\")
 ```"),
         ("env" | "std.env", "get") => Some("Gets the value of an environment variable.
 
 **Example**:
-```wren
+```flame
 let path = env.get(\"PATH\")
 ```"),
         ("env" | "std.env", "set") => Some("Sets the value of an environment variable."),
@@ -310,7 +310,7 @@ let path = env.get(\"PATH\")
         ("serial" | "std.serial", "open") => Some("Opens a serial port connection at a specific baud rate.
 
 **Example**:
-```wren
+```flame
 let port = serial.open(\"COM3\", 9600)
 ```"),
         _ => None,

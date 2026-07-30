@@ -1,15 +1,15 @@
 {
-  "name": "wrenlang",
+  "name": "flamelang",
   "version": "1.0.6",
   "description": "",
   "license": "ISC",
   "author": "shoya-129",
   "type": "module",
-  "main": "wren.js",
+  "main": "flame.js",
   "scripts": {
-    "build:npm": "cargo build --release && mkdir -p bin && cp target/release/wrenlang.exe bin/"
+    "build:npm": "cargo build --release && mkdir -p bin && cp target/release/flamelang.exe bin/"
   },
   "bin": {
-    "wren": "bin/wrenlang.exe"
+    "flame": "bin/flamelang.exe"
   }
 }

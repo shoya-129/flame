@@ -1,8 +1,8 @@
-# Wren Standard Library
+# Flame Standard Library
 
 > **Version:** Current Runtime Implementation
 
-The Wren Standard Library provides native modules for filesystem access, process
+The Flame Standard Library provides native modules for filesystem access, process
 management, automation, hardware inspection, environment variables, mathematics,
 timing, threading, operating system information, and device integration.
 
@@ -12,7 +12,7 @@ Only APIs that currently exist in the runtime are documented below.
 
 # Imports
 
-```wren
+```flame
 import std.automation
 import std.fs
 import std.hardware
@@ -55,7 +55,7 @@ Desktop keyboard and mouse automation.
 
 Moves the cursor to an absolute screen position.
 
-```wren
+```flame
 desktop.mouse.move(500, 300)
 ```
 
@@ -79,7 +79,7 @@ Supported buttons:
 - right
 - middle
 
-```wren
+```flame
 desktop.mouse.click()
 desktop.mouse.click("right")
 ```
@@ -92,7 +92,7 @@ Returns `Nil`.
 
 Types text into the focused application.
 
-```wren
+```flame
 desktop.keyboard.write("Hello World")
 ```
 
@@ -112,7 +112,7 @@ Actions:
 
 Examples:
 
-```wren
+```flame
 desktop.keyboard.key("A")
 desktop.keyboard.key("enter")
 desktop.keyboard.key("f5")
@@ -154,7 +154,7 @@ Functions:
 
 Examples:
 
-```wren
+```flame
 fs.write("hello.txt","Hello")
 
 print(fs.read("hello.txt"))
@@ -221,7 +221,7 @@ Returns
 
 Example
 
-```wren
+```flame
 let result = process.exec("git", ["--version"])
 
 print(result.stdout)
@@ -259,7 +259,7 @@ Functions
 
 Example
 
-```wren
+```flame
 env.set("MODE","debug")
 
 print(env.get("MODE"))
@@ -285,7 +285,7 @@ Functions
 
 Example
 
-```wren
+```flame
 print(math.pi())
 print(math.sqrt(81))
 ```
@@ -315,13 +315,13 @@ Functions
 
 Example
 
-```wren
+```flame
 thread.sleep(1000)
 
 print(thread.id())
 ```
 
-```wren
+```flame
 // create another thread
 let t = thread {
     print("worker start")
@@ -345,7 +345,7 @@ Functions
 
 Example
 
-```wren
+```flame
 print(os.name())
 print(os.arch())
 print(os.family())
@@ -395,7 +395,7 @@ Returns
 
 Captures a photo.
 
-```wren
+```flame
 camera.capture(0,"photo.png")
 ```
 
@@ -450,7 +450,7 @@ Planned:
 
 # Complete Example
 
-```wren
+```flame
 import std.fs
 import std.hardware
 import std.process
