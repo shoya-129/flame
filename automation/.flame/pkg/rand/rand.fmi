@@ -1,0 +1,142 @@
+{
+  "module": "rand",
+  "kind": "native",
+  "lib": "rand.dll",
+  "functions": [
+    {
+      "name": "random",
+      "flame_name": "random",
+      "params": [],
+      "return_type": "Generic",
+      "is_static": true,
+      "is_generic": true,
+      "docs": "Generate a random value using the thread-local random number generator.\n\nThis function is shorthand for <code>[rng()].[random()](RngExt::random)</code>:\n\n-   See [`ThreadRng`] for documentation of the generator and security\n-   See [`StandardUniform`] for documentation of supported types and distributions\n\n# Examples\n\n```\nlet x = rand::random::<u8>();\nprintln!(\"{}\", x);\n\nlet y = rand::random::<f64>();\nprintln!(\"{}\", y);\n\nif rand::random() { // generates a boolean\n    println!(\"Better lucky than good!\");\n}\n```\n\nIf you're calling `random()` repeatedly, consider using a local `rng`\nhandle to save an initialization-check on each usage:\n\n```\nuse rand::RngExt; // provides the `random` method\n\nlet mut rng = rand::rng(); // a local handle to the generator\n\nlet mut v = vec![1, 2, 3];\n\nfor x in v.iter_mut() {\n    *x = rng.random();\n}\n```\n\n[`StandardUniform`]: distr::StandardUniform\n[`ThreadRng`]: rngs::ThreadRng"
+    },
+    {
+      "name": "random_ratio",
+      "flame_name": "random_ratio",
+      "params": [
+        {
+          "name": "arg0",
+          "type_name": "u32"
+        },
+        {
+          "name": "arg1",
+          "type_name": "u32"
+        }
+      ],
+      "return_type": "bool",
+      "is_static": true,
+      "is_generic": false,
+      "docs": "Return a bool with a probability of `numerator/denominator` of being\ntrue.\n\nThat is, `random_ratio(2, 3)` has chance of 2 in 3, or about 67%, of\nreturning true. If `numerator == denominator`, then the returned value\nis guaranteed to be `true`. If `numerator == 0`, then the returned\nvalue is guaranteed to be `false`.\n\nSee also the [`Bernoulli`] distribution, which may be faster if\nsampling from the same `numerator` and `denominator` repeatedly.\n\nThis function is shorthand for\n<code>[rng()].[random_ratio](RngExt::random_ratio)(<var>numerator</var>, <var>denominator</var>)</code>.\n\n# Panics\n\nIf `denominator == 0` or `numerator > denominator`.\n\n# Example\n\n```\nprintln!(\"{}\", rand::random_ratio(2, 3));\n```\n\n[`Bernoulli`]: distr::Bernoulli"
+    }
+  ],
+  "structs": [
+    {
+      "name": "SmallRng",
+      "methods": [],
+      "docs": "A small-state, fast, non-crypto, non-portable PRNG\n\nThis is the \"standard small\" RNG, a generator with the following properties:\n\n- Non-[portable]: any future library version may replace the algorithm\n  and results may be platform-dependent.\n  (For a small portable generator, use the [rand_pcg] or [rand_xoshiro] crate.)\n- Non-cryptographic: output is easy to predict (insecure)\n- [Quality]: statistically good quality\n- Fast: the RNG is fast for both bulk generation and single values, with\n  consistent cost of method calls\n- Fast initialization\n- Small state: little memory usage (current state size is 16-32 bytes\n  depending on platform)\n\nThe current algorithm is\n`Xoshiro256PlusPlus` on 64-bit platforms and `Xoshiro128PlusPlus` on 32-bit\nplatforms. Both are also implemented by the [rand_xoshiro] crate.\n\n## Seeding (construction)\n\nThis generator implements the [`SeedableRng`] trait. All methods are\nsuitable for seeding, but note that, even with a fixed seed, output is not\n[portable]. Some suggestions:\n\n1.  To automatically seed with a unique seed, use [`rand::make_rng()`]:\n    ```\n    use rand::rngs::SmallRng;\n    let mut rng: SmallRng = rand::make_rng();\n    # let _ = rand::Rng::next_u32(&mut rng);\n    ```\n2.  To use a deterministic integral seed, use `seed_from_u64`. This uses a\n    hash function internally to yield a (typically) good seed from any\n    input.\n    ```\n    # use rand::{SeedableRng, rngs::SmallRng};\n    let rng = SmallRng::seed_from_u64(1);\n    # let _: SmallRng = rng;\n    ```\n3.  To seed deterministically from text or other input, use [`rand_seeder`].\n\nSee also [Seeding RNGs] in the book.\n\n## Generation\n\nThe generator implements [`Rng`] and thus also [`RngExt`].\nSee also the [Random Values] chapter in the book.\n\n[portable]: https://rust-random.github.io/book/crate-reprod.html\n[Seeding RNGs]: https://rust-random.github.io/book/guide-seeding.html\n[Random Values]: https://rust-random.github.io/book/guide-values.html\n[Quality]: https://rust-random.github.io/book/guide-rngs.html#quality\n[`StdRng`]: crate::rngs::StdRng\n[rand_pcg]: https://crates.io/crates/rand_pcg\n[rand_xoshiro]: https://crates.io/crates/rand_xoshiro\n[`rand_seeder`]: https://docs.rs/rand_seeder/latest/rand_seeder/\n[`Rng`]: rand_core::Rng\n[`RngExt`]: crate::RngExt\n[`rand::make_rng()`]: crate::make_rng"
+    },
+    {
+      "name": "StdRng",
+      "methods": [],
+      "docs": "A strong, fast (amortized), non-portable RNG\n\nThis is the \"standard\" RNG, a generator with the following properties:\n\n- Non-[portable]: any future library version may replace the algorithm\n  and results may be platform-dependent.\n  (For a portable version, use the [chacha20] crate directly.)\n- [CSPRNG]: statistically good quality of randomness and [unpredictable]\n- Fast ([amortized](https://en.wikipedia.org/wiki/Amortized_analysis)):\n  the RNG is fast for bulk generation, but the cost of method calls is not\n  consistent due to usage of an output buffer.\n\nThe current algorithm used is the ChaCha block cipher with 12 rounds. Please\nsee this relevant [rand issue] for the discussion. This may change as new\nevidence of cipher security and performance becomes available.\n\n## Seeding (construction)\n\nThis generator implements the [`SeedableRng`] trait. Any method may be used,\nbut note that `seed_from_u64` is not suitable for usage where security is\nimportant. Also note that, even with a fixed seed, output is not [portable].\n\nUsing a fresh seed **direct from the OS** is the most secure option:\n```\n# use rand::{SeedableRng, rngs::{StdRng, SysRng}};\nlet rng = StdRng::try_from_rng(&mut SysRng).unwrap();\n# let _: StdRng = rng;\n```\n\nSeeding via [`rand::make_rng()`] or [`rand::rng()`] may be\nfaster:\n```\n# use rand::rngs::StdRng;\nlet mut rng: StdRng = rand::make_rng();\n# let _ = rand::Rng::next_u32(&mut rng);\n```\n\nAny [`SeedableRng`] method may be used, but note that `seed_from_u64` is not\nsuitable where security is required. See also [Seeding RNGs] in the book.\n\n## Generation\n\nThe generator implements [`Rng`] and thus also [`RngExt`].\nSee also the [Random Values] chapter in the book.\n\n[portable]: https://rust-random.github.io/book/crate-reprod.html\n[Seeding RNGs]: https://rust-random.github.io/book/guide-seeding.html\n[unpredictable]: https://rust-random.github.io/book/guide-rngs.html#security\n[Random Values]: https://rust-random.github.io/book/guide-values.html\n[CSPRNG]: https://rust-random.github.io/book/guide-gen.html#cryptographically-secure-pseudo-random-number-generator\n[chacha20]: https://crates.io/crates/chacha20\n[rand issue]: https://github.com/rust-random/rand/issues/932\n[`Rng`]: rand_core::Rng\n[`RngExt`]: crate::RngExt\n[`rand::make_rng()`]: crate::make_rng\n[`rand::rng()`]: crate::rng"
+    },
+    {
+      "name": "Iter",
+      "methods": [],
+      "docs": "An iterator over a [`Distribution`]\n\nThis iterator yields random values of type `T` with distribution `D`\nfrom a random generator of type `R`.\n\nConstruct this `struct` using [`Distribution::sample_iter`] or\n[`RngExt::sample_iter`]. It is also used by [`RngExt::random_iter`] and\n[`crate::random_iter`]."
+    },
+    {
+      "name": "Map",
+      "methods": [],
+      "docs": "A [`Distribution`] which maps sampled values to type `S`\n\nThis `struct` is created by the [`Distribution::map`] method.\nSee its documentation for more."
+    },
+    {
+      "name": "Xoshiro128PlusPlus",
+      "methods": [],
+      "docs": "A xoshiro128++ random number generator.\n\nThe xoshiro128++ algorithm is not suitable for cryptographic purposes, but\nis very fast and has excellent statistical properties.\n\nThe algorithm used here is translated from [the `xoshiro128plusplus.c`\nreference source code](http://xoshiro.di.unimi.it/xoshiro128plusplus.c) by\nDavid Blackman and Sebastiano Vigna."
+    },
+    {
+      "name": "Xoshiro256PlusPlus",
+      "methods": [],
+      "docs": "A xoshiro256++ random number generator.\n\nThe xoshiro256++ algorithm is not suitable for cryptographic purposes, but\nis very fast and has excellent statistical properties.\n\nThe algorithm used here is translated from [the `xoshiro256plusplus.c`\nreference source code](http://xoshiro.di.unimi.it/xoshiro256plusplus.c) by\nDavid Blackman and Sebastiano Vigna."
+    },
+    {
+      "name": "StandardUniform",
+      "methods": [],
+      "docs": "The Standard Uniform distribution\n\nThis [`Distribution`] is the *standard* parameterization of [`Uniform`]. Bounds\nare selected according to the output type.\n\nAssuming the provided `Rng` is well-behaved, these implementations\ngenerate values with the following ranges and distributions:\n\n* Integers (`i8`, `i32`, `u64`, etc.) are uniformly distributed\n  over the whole range of the type (thus each possible value may be sampled\n  with equal probability).\n* `char` is uniformly distributed over all Unicode scalar values, i.e. all\n  code points in the range `0...0x10_FFFF`, except for the range\n  `0xD800...0xDFFF` (the surrogate code points). This includes\n  unassigned/reserved code points.\n  For some uses, the [`Alphanumeric`] or [`Alphabetic`] distribution will be more\n  appropriate.\n* `bool` samples `false` or `true`, each with probability 0.5.\n* Floating point types (`f32` and `f64`) are uniformly distributed in the\n  half-open range `[0, 1)`. See also the [notes below](#floating-point-implementation).\n* Wrapping integers ([`Wrapping<T>`]), besides the type identical to their\n  normal integer variants.\n* Non-zero integers ([`NonZeroU8`]), which are like their normal integer\n  variants but cannot sample zero.\n\nThe `StandardUniform` distribution also supports generation of the following\ncompound types where all component types are supported:\n\n* Tuples (up to 12 elements): each element is sampled sequentially and\n  independently (thus, assuming a well-behaved RNG, there is no correlation\n  between elements).\n* Arrays `[T; n]` where `T` is supported. Each element is sampled\n  sequentially and independently. Note that for small `T` this usually\n  results in the RNG discarding random bits; see also [`RngExt::fill`] which\n  offers a more efficient approach to filling an array of integer types\n  with random data.\n* SIMD types (requires [`simd_support`] feature) like x86's [`__m128i`]\n  and `std::simd`'s [`u32x4`], [`f32x4`] and [`mask32x4`] types are\n  effectively arrays of integer or floating-point types. Each lane is\n  sampled independently, potentially with more efficient random-bit-usage\n  (and a different resulting value) than would be achieved with sequential\n  sampling (as with the array types above).\n\n## Custom implementations\n\nThe [`StandardUniform`] distribution may be implemented for user types as follows:\n\n```\n# #![allow(dead_code)]\nuse rand::{Rng, RngExt};\nuse rand::distr::{Distribution, StandardUniform};\n\nstruct MyF32 {\n    x: f32,\n}\n\nimpl Distribution<MyF32> for StandardUniform {\n    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MyF32 {\n        MyF32 { x: rng.random() }\n    }\n}\n```\n\n## Example usage\n```\nuse rand::prelude::*;\nuse rand::distr::StandardUniform;\n\nlet val: f32 = rand::rng().sample(StandardUniform);\nprintln!(\"f32 from [0, 1): {}\", val);\n```\n\n# Floating point implementation\nThe floating point implementations for `StandardUniform` generate a random value in\nthe half-open interval `[0, 1)`, i.e. including 0 but not 1.\n\nAll values that can be generated are of the form `n * ε/2`. For `f32`\nthe 24 most significant random bits of a `u32` are used and for `f64` the\n53 most significant bits of a `u64` are used. The conversion uses the\nmultiplicative method: `(rng.gen::<$uty>() >> N) as $ty * (ε/2)`.\n\nSee also: [`Open01`] which samples from `(0, 1)`, [`OpenClosed01`] which\nsamples from `(0, 1]` and `Rng::random_range(0..1)` which also samples from\n`[0, 1)`. Note that `Open01` uses transmute-based methods which yield 1 bit\nless precision but may perform faster on some architectures (on modern Intel\nCPUs all methods have approximately equal performance).\n\n[`Uniform`]: uniform::Uniform\n[`Wrapping<T>`]: std::num::Wrapping\n[`NonZeroU8`]: std::num::NonZeroU8\n[`__m128i`]: https://doc.rust-lang.org/core/arch/x86/struct.__m128i.html\n[`u32x4`]: std::simd::u32x4\n[`f32x4`]: std::simd::f32x4\n[`mask32x4`]: std::simd::mask32x4\n[`simd_support`]: https://github.com/rust-random/rand#crate-features"
+    },
+    {
+      "name": "OpenClosed01",
+      "methods": [],
+      "docs": "A distribution to sample floating point numbers uniformly in the half-open\ninterval `(0, 1]`, i.e. including 1 but not 0.\n\nAll values that can be generated are of the form `n * ε/2`. For `f32`\nthe 24 most significant random bits of a `u32` are used and for `f64` the\n53 most significant bits of a `u64` are used. The conversion uses the\nmultiplicative method.\n\nSee also: [`StandardUniform`] which samples from `[0, 1)`, [`Open01`]\nwhich samples from `(0, 1)` and [`Uniform`] which samples from arbitrary\nranges.\n\n# Example\n```\nuse rand::RngExt;\nuse rand::distr::OpenClosed01;\n\nlet val: f32 = rand::rng().sample(OpenClosed01);\nprintln!(\"f32 from (0, 1): {}\", val);\n```\n\n[`StandardUniform`]: crate::distr::StandardUniform\n[`Open01`]: crate::distr::Open01\n[`Uniform`]: crate::distr::uniform::Uniform"
+    },
+    {
+      "name": "Open01",
+      "methods": [],
+      "docs": "A distribution to sample floating point numbers uniformly in the open\ninterval `(0, 1)`, i.e. not including either endpoint.\n\nAll values that can be generated are of the form `n * ε + ε/2`. For `f32`\nthe 23 most significant random bits of an `u32` are used, for `f64` 52 from\nan `u64`. The conversion uses a transmute-based method.\n\nSee also: [`StandardUniform`] which samples from `[0, 1)`, [`OpenClosed01`]\nwhich samples from `(0, 1]` and [`Uniform`] which samples from arbitrary\nranges.\n\n# Example\n```\nuse rand::RngExt;\nuse rand::distr::Open01;\n\nlet val: f32 = rand::rng().sample(Open01);\nprintln!(\"f32 from (0, 1): {}\", val);\n```\n\n[`StandardUniform`]: crate::distr::StandardUniform\n[`OpenClosed01`]: crate::distr::OpenClosed01\n[`Uniform`]: crate::distr::uniform::Uniform"
+    },
+    {
+      "name": "IndexedSamples",
+      "methods": [],
+      "docs": "An iterator over multiple slice elements.\n\nThis struct is created by\n[`IndexedRandom::sample`](trait.IndexedRandom.html#tymethod.sample)."
+    },
+    {
+      "name": "RngReader",
+      "methods": [],
+      "docs": "Adapter to support [`std::io::Read`] over a [`TryRng`]\n\n# Examples\n\n```no_run\nuse std::{io, io::Read};\nuse std::fs::File;\nuse rand::{rngs::SysRng, RngReader};\n\nio::copy(\n    &mut RngReader(SysRng).take(100),\n    &mut File::create(\"/tmp/random.bytes\").unwrap()\n).unwrap();\n```"
+    },
+    {
+      "name": "Alphanumeric",
+      "methods": [],
+      "docs": "Sample a `u8`, uniformly distributed over ASCII letters and numbers:\na-z, A-Z and 0-9.\n\n# Example\n\n```\nuse rand::RngExt;\nuse rand::distr::Alphanumeric;\n\nlet mut rng = rand::rng();\nlet chars: String = (0..7).map(|_| rng.sample(Alphanumeric) as char).collect();\nprintln!(\"Random chars: {}\", chars);\n```\n\nThe [`SampleString`] trait provides an easier method of generating\na random [`String`], and offers more efficient allocation:\n```\nuse rand::distr::{Alphanumeric, SampleString};\nlet string = Alphanumeric.sample_string(&mut rand::rng(), 16);\nprintln!(\"Random string: {}\", string);\n```\n\n# Passwords\n\nUsers sometimes ask whether it is safe to use a string of random characters\nas a password. In principle, all RNGs in Rand implementing `CryptoRng` are\nsuitable as a source of randomness for generating passwords (if they are\nproperly seeded), but it is more conservative to only use randomness\ndirectly from the operating system via the `getrandom` crate, or the\ncorresponding bindings of a crypto library.\n\nWhen generating passwords or keys, it is important to consider the threat\nmodel and in some cases the memorability of the password. This is out of\nscope of the Rand project, and therefore we defer to the following\nreferences:\n\n- [Wikipedia article on Password Strength](https://en.wikipedia.org/wiki/Password_strength)\n- [Diceware for generating memorable passwords](https://en.wikipedia.org/wiki/Diceware)"
+    },
+    {
+      "name": "Alphabetic",
+      "methods": [],
+      "docs": "Sample a [`u8`], uniformly distributed over letters:\na-z and A-Z.\n\n# Example\n\nYou're able to generate random Alphabetic characters via mapping or via the\n[`SampleString::sample_string`] method like so:\n\n```\nuse rand::RngExt;\nuse rand::distr::{Alphabetic, SampleString};\n\n// Manual mapping\nlet mut rng = rand::rng();\nlet chars: String = (0..7).map(|_| rng.sample(Alphabetic) as char).collect();\nprintln!(\"Random chars: {}\", chars);\n\n// Using [`SampleString::sample_string`]\nlet string = Alphabetic.sample_string(&mut rand::rng(), 16);\nprintln!(\"Random string: {}\", string);\n```\n\n# Passwords\n\nRefer to [`Alphanumeric#Passwords`]."
+    },
+    {
+      "name": "Uniform",
+      "methods": [],
+      "docs": "Sample values uniformly between two bounds.\n\n# Construction\n\n[`Uniform::new`] and [`Uniform::new_inclusive`] construct a uniform\ndistribution sampling from the given `low` and `high` limits. `Uniform` may\nalso be constructed via [`TryFrom`] as in `Uniform::try_from(1..=6).unwrap()`.\n\nConstructors may do extra work up front to allow faster sampling of multiple\nvalues. Where only a single sample is required it is suggested to use\n[`Rng::random_range`] or one of the `sample_single` methods instead.\n\nWhen sampling from a constant range, many calculations can happen at\ncompile-time and all methods should be fast; for floating-point ranges and\nthe full range of integer types, this should have comparable performance to\nthe [`StandardUniform`](super::StandardUniform) distribution.\n\n# Provided implementations\n\n- `char` ([`UniformChar`]): samples a range over the implementation for `u32`\n- `f32`, `f64` ([`UniformFloat`]): samples approximately uniformly within a\n  range; bias may be present in the least-significant bit of the significand\n  and the limits of the input range may be sampled even when an open\n  (exclusive) range is used\n- Integer types ([`UniformInt`]) may show a small bias relative to the\n  expected uniform distribution of output. In the worst case, bias affects\n  1 in `2^n` samples where n is 56 (`i8` and `u8`), 48 (`i16` and `u16`), 96\n  (`i32` and `u32`), 64 (`i64` and `u64`), 128 (`i128` and `u128`).\n  The `unbiased` feature flag fixes this bias.\n- `usize` ([`UniformUsize`]) is handled specially, using the `u32`\n  implementation where possible to enable portable results across 32-bit and\n  64-bit CPU architectures.\n- `Duration` ([`UniformDuration`]): samples a range over the implementation\n  for `u32` or `u64`\n- SIMD types (requires [`simd_support`] feature) like x86's [`__m128i`]\n  and `std::simd`'s [`u32x4`], [`f32x4`] and [`mask32x4`] types are\n  effectively arrays of integer or floating-point types. Each lane is\n  sampled independently from its own range, potentially with more efficient\n  random-bit-usage than would be achieved with sequential sampling.\n\n# Example\n\n```\nuse rand::distr::{Distribution, Uniform};\n\nlet between = Uniform::try_from(10..10000).unwrap();\nlet mut rng = rand::rng();\nlet mut sum = 0;\nfor _ in 0..1000 {\n    sum += between.sample(&mut rng);\n}\nprintln!(\"{}\", sum);\n```\n\nFor a single sample, [`Rng::random_range`] may be preferred:\n\n```\nuse rand::RngExt;\n\nlet mut rng = rand::rng();\nprintln!(\"{}\", rng.random_range(0..10));\n```\n\n[`new`]: Uniform::new\n[`new_inclusive`]: Uniform::new_inclusive\n[`Rng::random_range`]: RngExt::random_range\n[`__m128i`]: https://doc.rust-lang.org/core/arch/x86/struct.__m128i.html\n[`u32x4`]: std::simd::u32x4\n[`f32x4`]: std::simd::f32x4\n[`mask32x4`]: std::simd::mask32x4\n[`simd_support`]: https://github.com/rust-random/rand#crate-features"
+    },
+    {
+      "name": "Empty",
+      "methods": [],
+      "docs": "Error: empty slice\n\nThis error is returned when [`Choose::new`] is given an empty slice."
+    },
+    {
+      "name": "UniformFloat",
+      "methods": [],
+      "docs": "The back-end implementing [`UniformSampler`] for floating-point types.\n\nUnless you are implementing [`UniformSampler`] for your own type, this type\nshould not be used directly, use [`Uniform`] instead.\n\n# Implementation notes\n\n`UniformFloat` implementations convert RNG output to a float in the range\n`[1, 2)` via transmutation, map this to `[0, 1)`, then scale and translate\nto the desired range. Values produced this way have what equals 23 bits of\nrandom digits for an `f32` and 52 for an `f64`.\n\n# Bias and range errors\n\nBias may be expected within the least-significant bit of the significand.\nIt is not guaranteed that exclusive limits of a range are respected; i.e.\nwhen sampling the range `[a, b)` it is not guaranteed that `b` is never\nsampled.\n\n[`new`]: UniformSampler::new\n[`new_inclusive`]: UniformSampler::new_inclusive\n[`StandardUniform`]: crate::distr::StandardUniform\n[`Uniform`]: super::Uniform"
+    },
+    {
+      "name": "UniformInt",
+      "methods": [],
+      "docs": "The back-end implementing [`UniformSampler`] for integer types.\n\nUnless you are implementing [`UniformSampler`] for your own type, this type\nshould not be used directly, use [`Uniform`] instead.\n\n# Implementation notes\n\nFor simplicity, we use the same generic struct `UniformInt<X>` for all\ninteger types `X`. This gives us only one field type, `X`; to store unsigned\nvalues of this size, we take use the fact that these conversions are no-ops.\n\nFor a closed range, the number of possible numbers we should generate is\n`range = (high - low + 1)`. To avoid bias, we must ensure that the size of\nour sample space, `zone`, is a multiple of `range`; other values must be\nrejected (by replacing with a new random sample).\n\nAs a special case, we use `range = 0` to represent the full range of the\nresult type (i.e. for `new_inclusive($ty::MIN, $ty::MAX)`).\n\nThe optimum `zone` is the largest product of `range` which fits in our\n(unsigned) target type. We calculate this by calculating how many numbers we\nmust reject: `reject = (MAX + 1) % range = (MAX - range + 1) % range`. Any (large)\nproduct of `range` will suffice, thus in `sample_single` we multiply by a\npower of 2 via bit-shifting (faster but may cause more rejections).\n\nThe smallest integer PRNGs generate is `u32`. For 8- and 16-bit outputs we\nuse `u32` for our `zone` and samples (because it's not slower and because\nit reduces the chance of having to reject a sample). In this case we cannot\nstore `zone` in the target type since it is too large, however we know\n`ints_to_reject < range <= $uty::MAX`.\n\nAn alternative to using a modulus is widening multiply: After a widening\nmultiply by `range`, the result is in the high word. Then comparing the low\nword against `zone` makes sure our distribution is uniform.\n\n# Bias\n\nUnless the `unbiased` feature flag is used, outputs may have a small bias.\nIn the worst case, bias affects 1 in `2^n` samples where n is\n56 (`i8` and `u8`), 48 (`i16` and `u16`), 96 (`i32` and `u32`), 64 (`i64`\nand `u64`), 128 (`i128` and `u128`).\n\n[`Uniform`]: super::Uniform"
+    },
+    {
+      "name": "UniformUsize",
+      "methods": [],
+      "docs": "The back-end implementing [`UniformSampler`] for `usize`.\n\n# Implementation notes\n\nSampling a `usize` value is usually used in relation to the length of an\narray or other memory structure, thus it is reasonable to assume that the\nvast majority of use-cases will have a maximum size under [`u32::MAX`].\nIn part to optimise for this use-case, but mostly to ensure that results\nare portable across 32-bit and 64-bit architectures (as far as is possible),\nthis implementation will use 32-bit sampling when possible."
+    },
+    {
+      "name": "UniformChar",
+      "methods": [],
+      "docs": "The back-end implementing [`UniformSampler`] for `char`.\n\nUnless you are implementing [`UniformSampler`] for your own type, this type\nshould not be used directly, use [`Uniform`] instead.\n\nThis differs from integer range sampling since the range `0xD800..=0xDFFF`\nare used for surrogate pairs in UCS and UTF-16, and consequently are not\nvalid Unicode code points. We must therefore avoid sampling values in this\nrange."
+    },
+    {
+      "name": "UniformDuration",
+      "methods": [],
+      "docs": "The back-end implementing [`UniformSampler`] for `Duration`.\n\nUnless you are implementing [`UniformSampler`] for your own types, this type\nshould not be used directly, use [`Uniform`] instead."
+    },
+    {
+      "name": "WeightedIndexIter",
+      "methods": [],
+      "docs": "A lazy-loading iterator over the weights of a `WeightedIndex` distribution.\nThis is returned by [`WeightedIndex::weights`]."
+    }
+  ],
+  "docs": null
+}

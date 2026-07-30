@@ -1,0 +1,27 @@
+{
+  "module": "bridge",
+  "kind": "native",
+  "lib": "bridge.dll",
+  "functions": [
+    {
+      "name": "rust_add",
+      "flame_name": "rust_add",
+      "params": [
+        {
+          "name": "arg0",
+          "type_name": "i64"
+        },
+        {
+          "name": "arg1",
+          "type_name": "i64"
+        }
+      ],
+      "return_type": "i64",
+      "is_static": true,
+      "is_generic": false,
+      "docs": null
+    }
+  ],
+  "structs": [],
+  "docs": null
+}
