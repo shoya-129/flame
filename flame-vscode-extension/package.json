@@ -10,7 +10,9 @@
   },
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:flame"
+    "onLanguage:flame",
+    "onLanguage:flame-wn",
+    "onLanguage:flame-config"
   ],
   "categories": [
     "Programming Languages"
@@ -53,12 +55,17 @@
     "grammars": [
       {
         "language": "flame",
-        "scopeName": "source.fm",
+        "scopeName": "source.flame",
         "path": "./syntaxes/flame.tmLanguage.json"
       },
       {
         "language": "flame-wn",
-        "scopeName": "source.fm",
+        "scopeName": "source.flame",
+        "path": "./syntaxes/flame.tmLanguage.json"
+      },
+      {
+        "language": "flame-config",
+        "scopeName": "source.flame",
         "path": "./syntaxes/flame.tmLanguage.json"
       }
     ],

@@ -99,7 +99,8 @@ function activate(context) {
     context.subscriptions.push(diagnostics)
 
     async function refreshDiagnostics(document) {
-        if (!document || document.languageId !== 'flame') return
+        const supportedLanguages = ['flame', 'flame-wn', 'flame-config']
+        if (!document || !supportedLanguages.includes(document.languageId)) return
         const result = await runCheck(document)
         if (!result) return
 
@@ -131,7 +132,7 @@ function activate(context) {
         refreshDiagnostics(vscode.window.activeTextEditor.document)
     }
 
-    context.subscriptions.push(vscode.languages.registerCompletionItemProvider('flame', {
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(['flame', 'flame-wn', 'flame-config'], {
         async provideCompletionItems(document, position) {
             const result = await runCheck(document, position)
             if (!result) return []
@@ -139,7 +140,7 @@ function activate(context) {
         }
     }, '.', '@'))
 
-    context.subscriptions.push(vscode.languages.registerHoverProvider('flame', {
+    context.subscriptions.push(vscode.languages.registerHoverProvider(['flame', 'flame-wn', 'flame-config'], {
         async provideHover(document, position) {
             const result = await runCheck(document, position)
             if (!result || !result.hover) return null
