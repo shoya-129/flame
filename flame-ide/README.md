@@ -13,7 +13,7 @@ Rich IDE syntax highlighting and configuration for the Flame programming languag
 
 ## Repository
 
-[GitHub Repository](https://github.com/shoya-129/flame/tree/main/flame-vscode-extension)
+[GitHub Repository](https://github.com/shoya-129/flame)
 
 ## License
 
