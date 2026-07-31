@@ -10,7 +10,7 @@ To make a function, struct, or variable accessible to other modules, you must pr
 
 ```flame
 // math.fm
-export fn add(a: I32, b: I32) -> I32 {
+export fn add(a: Int, b: Int) -> Int {
     return a + b
 }
 

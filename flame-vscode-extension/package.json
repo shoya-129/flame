@@ -5,6 +5,8 @@
   "version": "0.1.0",
   "icon": "flame.png",
   "publisher": "flame-lang",
+  "license": "ISC",
+  "repository": "https://github.com/shoya-129/flame/tree/main/flame-vscode-extension",
   "engines": {
     "vscode": "^1.60.0"
   },
