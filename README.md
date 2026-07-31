@@ -1,4 +1,7 @@
-# Flame
+<h1 style="display:flex; align-items: center; gap: 8px;">
+  <img src="./docs/assets/flame.png" alt="Flame Logo" width="46" height="46" style="vertical-align: middle;" />
+  Flame
+</h1>
 
 Flame is a statically typed, fast, and modern programming language built in Rust. It serves as a comprehensive toolchain containing a compiler, an ahead-of-time (AOT) builder, and native FFI bridging capabilities.
 

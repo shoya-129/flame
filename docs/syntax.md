@@ -2,6 +2,22 @@
 
 Flame is a modern, statically typed language that combines performance with expressive, high-level abstractions. This document provides a comprehensive guide to all built-in types, keywords, control flow mechanics, and concurrent programming models available in Flame.
 
+## Table of Contents
+* [1. Data Types](#1-data-types)
+  * [Primitive Types](#primitive-types) (`Int`, `Float`, `String`, `Bool`, `Nil`)
+  * [Composite Types](#composite-types) (`Vec<T>`, `Tuples`, `formula`)
+  * [References (Borrowing)](#references-borrowing) (`&T`, `&mut T`)
+* [2. Variables and Constants](#2-variables-and-constants) (`let`, `mut`, `const`)
+* [3. Functions](#3-functions) (`fn`, `async fn`)
+* [4. Control Flow](#4-control-flow)
+  * [Conditionals](#conditionals) (`if`, `else`, `match`)
+  * [Loops](#loops) (`while`, `loop`, `for`, `in`)
+  * [Flow Modifiers](#flow-modifiers) (`break`, `continue`, `return`, `defer`)
+* [5. Object-Oriented and Custom Types](#5-object-oriented-and-custom-types) (`struct`, `impl`, `enum`, `trait`)
+* [6. Concurrency (`thread`, `await`)](#6-concurrency-thread-await)
+* [7. Modules and Standard Library](#7-modules-and-standard-library) (`import`)
+* [8. Built-in I/O Functions](#8-built-in-io-functions) (`print`, `eprint`, `input`)
+
 ---
 
 ## 1. Data Types
@@ -22,7 +38,13 @@ Flame is statically typed. Types are either inferred or explicitly declared.
 
 ### Composite Types
 * **`Vec<T>`**: A dynamically-sized array (vector) containing elements of type `T`.
-  * *Usage*: `let numbers: Vec<Int> = [1, 2, 3]`
+  * *Usage*: `let mut numbers: Vec<Int> = [1, 2, 3]`
+  * *Methods*:
+    * `push(value)`: Appends an element to the back of the collection.
+    * `pop()`: Removes the last element from a vector and returns it.
+    * `len()`: Returns the number of elements in the vector.
+    * `map(closure)`: Transforms each element of the collection using the provided closure and returns a new collection. Example: `let mapped = numbers.map((x: Int) { return x * 2 })`
+    * `filter(closure)`: Filters the collection using the provided closure, retaining only elements for which it returns true. Example: `let filtered = numbers.filter((x: Int) { return x > 1 })`
 * **Tuples**: Fixed-size, ordered collections of potentially different types.
   * *Usage*: `let coordinates: (Int, String) = (10, "North")`
 * **`formula` (Map/Dictionary)**: A structured map-like data literal, ideal for configuration, JSON-like objects, or named key-value collections. Keys must be identifiers, and values can be literals, lists, closures (anonymous functions), or nested formulas. Duplicate keys are supported; if a key is assigned multiple times within the same formula, the latter value overwrites the previous one without needing the `mut` keyword.
@@ -50,6 +72,8 @@ Flame uses references to borrow data without copying it.
   * *Usage*: `let ref = &coordinates`
 * **`&mut T`**: A mutable reference. Allows modifying the borrowed value.
   * *Usage*: `let ref = &mut coordinates`
+
+*For more in-depth documentation on how Borrowing and Ownership works, please refer to the [Index Guide](index.md).*
 
 ---
 
@@ -233,18 +257,30 @@ Flame handles concurrency using a thread-based background task system.
 
 ## 7. Modules and Standard Library
 
-* **`import`**: Includes code from other modules.
+* **`export`**: Exposes functions, structs, or constants so they can be imported and used by other files.
+* **`import`**: Includes code from other modules or local files.
+  * **Local Files**: You can import other `.fm` files in the same directory by simply using their filename (without the `.fm` extension).
   * **`std`**: The standard library prefix (e.g., `import std.fs` for file system, `import std.thread`, `import std.math`).
+    * *For a complete list of standard library modules and functions, please see the [Standard Library Documentation](stddocs.md).*
   * **`native`**: Used to import native Rust plugins/dependencies (e.g., `import native.mysql`).
 
-  ```flame
-  import std.fs
-  
-  fn read_config() {
-      let data = fs.read_to_string("config.json")
-      print(data)
-  }
-  ```
+### Export and Import Example
+**`hello.fm`**
+```flame
+export fn sayhello(user: formula) -> String {
+    print($"hello {user.name}-{user.id}")
+}
+```
+
+**`main.fm`**
+```flame
+import hello
+
+fn main() {
+    let my_user = formula { name: "Alice", id: 123 }
+    hello.sayhello(my_user)
+}
+```
 
 * **`@plugin`**: A macro/decorator used in manifest or code configurations to declare external dependencies.
 
@@ -259,4 +295,8 @@ Flame handles concurrency using a thread-based background task system.
 * **`eprint`**: Prints a value to standard error, followed by a newline. Useful for warnings and diagnostics.
   ```flame
   eprint("Failed to load file!")
+  ```
+* **`input`**: Prompts the user with a message and reads a line of text from standard input.
+  ```flame
+  let name = input("Enter your name: ")
   ```

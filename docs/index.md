@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="./assets/config.svg" alt="Config Icon" width="64" height="64" />
+</p>
+
 # Flame Language Documentation
 
-Welcome to the official documentation for the Flame programming language. Flame is a fast, safe, and modern systems language that directly understands and compiles Rust crates.
+Welcome to the official documentation for the Flame programming language. Flame is a fast, safe, and modern systems language powered by the Blaze compiler and VM that directly understands and compiles Rust crates.
 
 ## Core Language
 
@@ -12,6 +16,6 @@ Welcome to the official documentation for the Flame programming language. Flame 
 ## Ecosystem and Tooling
 
 * **[Standard Library](./stdlib.md)**: Built-in functions, primitive types (Strings, Vectors, HashMaps), and standard utilities.
-* **[Using Native Rust Crates](./native_crates.md)**: How to add Rust crates to `flame.toml`, how the AOT compiler statically links them, and how to use VS Code intellisense to discover APIs natively from docs.rs.
-* **[Plugins & `@plugin`](./plugins.md)**: How to dynamically load native logic using the `@plugin` decorator.
+* **[Using Native Rust Crates](./native_crates.md)**: How to add Rust crates to `flame.toml`, how the Blaze AOT compiler statically links them, and how to use VS Code intellisense to discover APIs natively from docs.rs.
+* **[Plugins & `@plugin`](./plugins.md)**: How to dynamically load native logic.
 * **[Modules and Imports](./modules.md)**: Organizing your Flame codebase with imports and exports.
