@@ -1,12 +1,12 @@
 {
-  "name": "flame-vscode",
-  "displayName": "Flame Language Support",
+  "name": "flame-language-support",
+  "displayName": "Flame",
   "description": "Rich IDE syntax highlighting and configuration for the Flame programming language.",
   "version": "0.1.0",
   "icon": "flame.png",
-  "publisher": "flame-lang",
+  "publisher": "ezet-galaxy",
   "license": "ISC",
-  "repository": "https://github.com/shoya-129/flame/tree/main/flame-vscode-extension",
+  "repository": "https://github.com/shoya-129/flame/tree/main/flame-ide",
   "engines": {
     "vscode": "^1.60.0"
   },
