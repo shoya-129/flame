@@ -1,7 +1,5 @@
 import std.thread
 import hello
-
-
 let user: Formula = formula {
     name: "soham",
     id: 89,
@@ -11,10 +9,30 @@ let user: Formula = formula {
         print(a);
     }
 }
-
 const t: ThreadHandler = thread {
     user.status("online")
-    hello.sayhello(user)
+    hello.sayhello(&user)
 }
-
 t.join()
+print(user.name)
+
+// let mut arr: Vec<Int> = [99, 99]
+// arr.push(100)
+// print(arr)
+
+// let filtered: Vec<Int> = arr.filter(
+//     (x: Int) {
+//         return x>99
+//     }
+// )
+// print($"Filtered: {filtered}")
+
+// let mapped: Vec<Int> = arr.map(
+//     (x: Int) {
+//         return x * 2
+//     }
+// )
+// print($"Mapped: {mapped}")
+
+// let name: String = input("Enter your name: ")
+// print($"Hello {name}")

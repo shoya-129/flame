@@ -2,6 +2,7 @@ pub mod aot_compiler;
 mod diagnostics;
 pub mod ide;
 mod lexer;
+mod formatter;
 pub mod native_std;
 mod package_manager;
 mod parser;
@@ -58,6 +59,31 @@ fn main() {
         }
         "check" => {
             run_check_command(&args);
+        }
+        "format" => {
+            if args.len() < 3 {
+                println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to format");
+                println!("usage: flame format <file_path.fm> [--stdout]");
+                return;
+            }
+            let filepath = &args[2];
+            let source = match fs::read_to_string(filepath) {
+                Ok(content) => content,
+                Err(err) => {
+                    println!("\x1b[1;31merror:\x1b[0m failed to read '{}': {}", filepath, err);
+                    return;
+                }
+            };
+            let formatted = formatter::format_code(&source);
+            if args.contains(&"--stdout".to_string()) {
+                print!("{}", formatted);
+            } else {
+                if let Err(err) = fs::write(filepath, formatted) {
+                    println!("\x1b[1;31merror:\x1b[0m failed to write '{}': {}", filepath, err);
+                } else {
+                    println!("Formatted {}", filepath);
+                }
+            }
         }
         "list-plugins" => {
             list_plugins_command(&args);
@@ -145,6 +171,10 @@ fn print_help() {
     );
     println!(
         "  {}check{} <file> [--json] [--line N --col N]  Analyze a Flame file for diagnostics and IDE data",
+        cyan, reset
+    );
+    println!(
+        "  {}format{} <file> [--stdout]  Format a Flame source file",
         cyan, reset
     );
     println!(
@@ -744,14 +774,31 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     let mut ast_hover = None;
     if let Some(tc) = &tc_opt {
         if let Some(l) = line {
+            let mut best_span: Option<&crate::lexer::Span> = None;
+            let mut best_ty_str = None;
+
             for (span, ty_str) in &tc.hover_info {
-                if span.line == l && cursor_col >= span.col && cursor_col <= span.col + word_under_cursor.len() {
+                let end_col = span.col + (span.end - span.start);
+                if span.line == l && cursor_col >= span.col && cursor_col <= end_col {
+                    if let Some(best) = best_span {
+                        if (span.end - span.start) < (best.end - best.start) {
+                            best_span = Some(span);
+                            best_ty_str = Some(ty_str);
+                        }
+                    } else {
+                        best_span = Some(span);
+                        best_ty_str = Some(ty_str);
+                    }
+                }
+            }
+
+            if let Some(ty_str) = best_ty_str {
+                if !word_under_cursor.is_empty() {
                     let sig = format!("{}: {}", word_under_cursor, ty_str);
                     ast_hover = Some(JsonHover {
                         label: word_under_cursor.clone(),
                         documentation: Some(format!("```flame\n{}\n```\nInferred type from AST", sig)),
                     });
-                    break;
                 }
             }
         }
@@ -1022,6 +1069,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     ("insert", "Inserts a key-value pair (HashMap)"),
                     ("get", "Gets a value by key (HashMap)"),
                     ("remove", "Removes a key (HashMap)"),
+                    ("map", "Transforms each element of the collection using the provided closure and returns a new collection.\n\nExample:\n```flame\narr.map((x) { return x * 2 })\n```"),
+                    ("filter", "Returns a new collection containing only the elements for which the provided closure returns true.\n\nExample:\n```flame\narr.filter((x) { return x > 0 })\n```"),
                 ];
 
                 for (method, doc) in &builtin_methods {
@@ -1114,9 +1163,9 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     };
 
-    // Override with AST hover if available, unless AST hover is just Unknown and we already have better info
+    // Override with AST hover if available, only if we don't already have better info
     if let Some(ast) = ast_hover {
-        if hover.is_none() || !ast.label.ends_with(": Unknown") {
+        if hover.is_none() {
             hover = Some(ast);
         }
     }

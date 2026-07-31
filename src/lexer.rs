@@ -35,6 +35,8 @@ pub enum TokenKind {
     True,
     False,
     Nil,
+    Comment,
+    Newline,
 
     // Literals
     Identifier,
@@ -54,7 +56,9 @@ pub enum TokenKind {
     Equal,          // =
     EqualEqual,     // ==
     Plus,           // +
+    PlusEqual,      // +=
     Minus,          // -
+    MinusEqual,     // -=
     Star,           // *
     Slash,          // /
     Percent,        // %
@@ -110,7 +114,8 @@ pub struct Lexer<'a> {
     col: usize,
     // Stack to keep track of string interpolation state
     // true = inside an interpolation block `%{ ... }`, false = in a normal string
-    interpolation_stack: Vec<bool>,
+    pub interpolation_stack: Vec<bool>,
+    pub keep_comments: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -122,6 +127,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             col: 1,
             interpolation_stack: Vec::new(),
+            keep_comments: false,
         }
     }
 
@@ -158,7 +164,22 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Token {
-        self.skip_whitespace_and_comments();
+        let start_pos_before_skip = self.index;
+        let start_line_before_skip = self.line;
+        let start_col_before_skip = self.col;
+
+        if let Some(kind) = self.skip_whitespace_and_comments() {
+            return Token {
+                kind,
+                lexeme: self.source[start_pos_before_skip..self.index].to_string(),
+                span: Span {
+                    start: start_pos_before_skip,
+                    end: self.index,
+                    line: start_line_before_skip,
+                    col: start_col_before_skip,
+                },
+            };
+        }
 
         let start_pos = self.index;
         let start_line = self.line;
@@ -255,17 +276,51 @@ impl<'a> Lexer<'a> {
             '@' => TokenKind::At,
             '?' => TokenKind::Question,
             '!' => TokenKind::Exclamation,
-            '+' => TokenKind::Plus,
+            '+' => {
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::PlusEqual
+                } else {
+                    TokenKind::Plus
+                }
+            },
             '-' => {
                 if self.peek() == Some('>') {
                     self.advance();
                     TokenKind::Arrow
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::MinusEqual
                 } else {
                     TokenKind::Minus
                 }
             }
             '*' => TokenKind::Star,
-            '/' => TokenKind::Slash,
+            '/' => {
+                if self.keep_comments && self.peek() == Some('/') {
+                    self.advance();
+                    while let Some(ch) = self.peek() {
+                        if ch == '\n' {
+                            break;
+                        }
+                        self.advance();
+                    }
+                    TokenKind::Comment
+                } else if self.keep_comments && self.peek() == Some('*') {
+                    self.advance();
+                    while let Some(ch) = self.peek() {
+                        if ch == '*' && self.peek_next() == Some('/') {
+                            self.advance();
+                            self.advance();
+                            break;
+                        }
+                        self.advance();
+                    }
+                    TokenKind::Comment
+                } else {
+                    TokenKind::Slash
+                }
+            }
             '%' => TokenKind::Percent,
             '^' => TokenKind::Caret,
             '.' => {
@@ -482,13 +537,22 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn skip_whitespace_and_comments(&mut self) {
+    fn skip_whitespace_and_comments(&mut self) -> Option<TokenKind> {
         loop {
             match self.peek() {
-                Some(' ') | Some('\t') | Some('\r') | Some('\n') | Some(';') => {
+                Some(' ') | Some('\t') | Some('\r') => {
                     self.advance();
                 }
+                Some('\n') | Some(';') => {
+                    self.advance();
+                    if self.keep_comments {
+                        return Some(TokenKind::Newline);
+                    }
+                }
                 Some('/') => {
+                    if self.keep_comments {
+                        break None;
+                    }
                     if self.peek_next() == Some('/') {
                         // Line comment
                         self.advance();
@@ -512,10 +576,10 @@ impl<'a> Lexer<'a> {
                             self.advance();
                         }
                     } else {
-                        break;
+                        break None;
                     }
                 }
-                _ => break,
+                _ => break None,
             }
         }
     }

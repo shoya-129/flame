@@ -55,8 +55,8 @@ pub enum Value {
 
 #[derive(Debug, Clone)]
 pub enum RefPath {
-    Var(String),
-    Field { owner: String, member: String },
+    Var(String, Arc<Mutex<Env>>),
+    Field { owner: String, member: String, env: Arc<Mutex<Env>> },
 }
 
 #[derive(Debug, Clone)]
@@ -177,14 +177,14 @@ impl fmt::Display for Value {
                 write!(f, "<enum constructor: {}.{}>", enum_name, var_name)
             }
             Value::RefPath(path, mutable) => match path {
-                RefPath::Var(name) => {
+                RefPath::Var(name, _) => {
                     if *mutable {
                         write!(f, "&mut {name}")
                     } else {
                         write!(f, "&{name}")
                     }
                 }
-                RefPath::Field { owner, member } => {
+                RefPath::Field { owner, member, .. } => {
                     if *mutable {
                         write!(f, "&mut {owner}.{member}")
                     } else {

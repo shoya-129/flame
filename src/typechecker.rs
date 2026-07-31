@@ -148,6 +148,18 @@ impl TypeChecker {
                 return_type: Type::Named("ServerHandle".to_string()),
             },
         );
+        self.functions.insert(
+            "input".to_string(),
+            FunctionSig {
+                params: vec![ParamInfo {
+                    name: "prompt".to_string(),
+                    ty: Type::String,
+                    is_ref: false,
+                    is_mut: false,
+                }],
+                return_type: Type::String,
+            },
+        );
     }
 
     fn collect_top_level_declarations(&mut self, stmts: &[Stmt]) {
@@ -665,7 +677,7 @@ impl TypeChecker {
     }
 
     fn infer_binary_type(&mut self, left: &Expr, op: &BinaryOp, right: &Expr, span: &Span) -> Type {
-        if matches!(op, BinaryOp::Assign) {
+        if matches!(op, BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
             if let Expr::Identifier(name, left_span) = left {
                 let rhs_ty = self.infer_expr_type(right);
                 if let Some(var) = self.lookup_var(name).cloned() {
@@ -678,6 +690,15 @@ impl TypeChecker {
                             ),
                             None,
                         );
+                    }
+                    if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                        if !self.is_numeric(&var.ty) || !self.is_numeric(&rhs_ty) {
+                            if matches!(op, BinaryOp::PlusAssign) && matches!(var.ty, Type::String) && matches!(rhs_ty, Type::String) {
+                                // String concatenation
+                            } else {
+                                self.error_binary_mismatch(op, &var.ty, &rhs_ty, span);
+                            }
+                        }
                     }
                     self.expect_assignable(&var.ty, &rhs_ty, span, "assignment");
                 } else {
@@ -693,6 +714,17 @@ impl TypeChecker {
                 // con.name = expr: resolve the field type and ensure RHS matches
                 let lhs_ty = self.infer_dot_type(inner, member, span);
                 let rhs_ty = self.infer_expr_type(right);
+                
+                if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                    if !self.is_numeric(&lhs_ty) || !self.is_numeric(&rhs_ty) {
+                        if matches!(op, BinaryOp::PlusAssign) && matches!(lhs_ty, Type::String) && matches!(rhs_ty, Type::String) {
+                            // String concatenation
+                        } else {
+                            self.error_binary_mismatch(op, &lhs_ty, &rhs_ty, span);
+                        }
+                    }
+                }
+                
                 self.expect_assignable(&lhs_ty, &rhs_ty, span, "field assignment");
                 return rhs_ty;
             }
@@ -759,7 +791,7 @@ impl TypeChecker {
                 self.expect_assignable(&Type::Int, &right_ty, span, "range end");
                 Type::Named("Range".to_string())
             }
-            BinaryOp::Assign => Type::Unknown,
+            BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign => Type::Unknown,
         }
     }
 
@@ -847,6 +879,9 @@ impl TypeChecker {
                 Type::Unknown
             }
             Type::Formula(ref fmap) => fmap.get(member).cloned().unwrap_or(Type::Unknown),
+            Type::Vector(_) => {
+                Type::Named("Function".into())
+            }
             Type::Unknown | Type::Named(_) => Type::Unknown,
             other => {
                 self.error(
@@ -1025,6 +1060,56 @@ impl TypeChecker {
                     None,
                 );
                 return Type::Unknown;
+            }
+
+            if let Type::Vector(element_ty) = &inner_ty {
+                match member.as_str() {
+                    "push" => {
+                        self.check_call_args(
+                            &[ParamInfo { name: "item".into(), ty: *element_ty.clone(), is_ref: false, is_mut: false }],
+                            args,
+                            span,
+                            member
+                        );
+                        return Type::Nil;
+                    }
+                    "pop" => {
+                        self.check_call_args(&[], args, span, member);
+                        return *element_ty.clone();
+                    }
+                    "len" => {
+                        self.check_call_args(&[], args, span, member);
+                        return Type::Int;
+                    }
+                    "filter" => {
+                        let cb_ty = Type::Function(vec![*element_ty.clone()], Box::new(Type::Bool));
+                        self.check_call_args(
+                            &[ParamInfo { name: "cb".into(), ty: cb_ty, is_ref: false, is_mut: false }],
+                            args,
+                            span,
+                            member
+                        );
+                        return Type::Vector(element_ty.clone());
+                    }
+                    "map" => {
+                        if let Some((_, arg)) = args.get(0) {
+                            let arg_ty = self.infer_expr_type(arg);
+                            if let Type::Function(_, ret) = arg_ty {
+                                return Type::Vector(ret);
+                            }
+                        }
+                        return Type::Unknown;
+                    }
+                    _ => {
+                        self.error(
+                            format!("array has no method '{}'", member),
+                            span.clone(),
+                            None,
+                            None,
+                        );
+                        return Type::Unknown;
+                    }
+                }
             }
 
             if let Type::Enum(enum_name) = inner_ty {

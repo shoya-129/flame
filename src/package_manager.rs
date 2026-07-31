@@ -237,10 +237,27 @@ pub fn ensure_dependencies_installed() {
     // Compile std_bridge directly since it uses #[flame_export] now
     let std_bridge_path = Path::new("flame-stdlib").join("native").join("std_bridge");
     if std_bridge_path.exists() {
-        let _ = std::process::Command::new("cargo")
-            .arg("build")
-            .current_dir(&std_bridge_path)
-            .output();
+        let lib_out = std_bridge_path.join("target").join("debug").join("libstd_bridge.rlib");
+        let mut needs_build = true;
+        if lib_out.exists() {
+            if let Ok(out_meta) = fs::metadata(&lib_out) {
+                if let Ok(out_mtime) = out_meta.modified() {
+                    if let Ok(src_meta) = fs::metadata(std_bridge_path.join("src").join("lib.rs")) {
+                        if let Ok(src_mtime) = src_meta.modified() {
+                            if out_mtime > src_mtime {
+                                needs_build = false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if needs_build {
+            let _ = std::process::Command::new("cargo")
+                .arg("build")
+                .current_dir(&std_bridge_path)
+                .output();
+        }
     }
     let toml_path = Path::new("flame.toml");
     if !toml_path.exists() {
@@ -401,6 +418,40 @@ pub fn ensure_dependencies_installed() {
 }
 
 pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
+    let pkg_dir = Path::new(".flame").join("pkg").join(target);
+    let fmi_path = pkg_dir.join(format!("{}.fmi", target));
+
+    let mut needs_update = true;
+    if fmi_path.exists() {
+        if let Ok(fmi_meta) = fs::metadata(&fmi_path) {
+            if let Ok(fmi_mtime) = fmi_meta.modified() {
+                needs_update = false;
+                
+                // Check src/lib.rs
+                if let Ok(src_meta) = fs::metadata(plugin_path.join("src").join("lib.rs")) {
+                    if let Ok(src_mtime) = src_meta.modified() {
+                        if src_mtime > fmi_mtime {
+                            needs_update = true;
+                        }
+                    }
+                }
+                
+                // Check Cargo.toml
+                if let Ok(cargo_meta) = fs::metadata(plugin_path.join("Cargo.toml")) {
+                    if let Ok(cargo_mtime) = cargo_meta.modified() {
+                        if cargo_mtime > fmi_mtime {
+                            needs_update = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !needs_update {
+        return;
+    }
+
     println!(
         "\x1b[1;36m  Inspecting\x1b[0m native Rust plugin '{}' via cargo rustdoc...",
         target

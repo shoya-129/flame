@@ -661,7 +661,7 @@ impl Runner {
                             if let Value::RefPath(path, _) = val {
                                 return Ok(Value::RefPath(path, *is_mut));
                             }
-                            return Ok(Value::RefPath(RefPath::Var(name.clone()), *is_mut));
+                            return Ok(Value::RefPath(RefPath::Var(name.clone(), env.clone()), *is_mut));
                         }
                     }
                     Expr::Dot(inner_id, member, _) => {
@@ -670,6 +670,7 @@ impl Runner {
                                 RefPath::Field {
                                     owner: owner.clone(),
                                     member: member.clone(),
+                                    env: env.clone(),
                                 },
                                 *is_mut,
                             ));
@@ -681,15 +682,31 @@ impl Runner {
                 Ok(Value::Ref(Box::new(val)))
             }
             Expr::Binary(left, op, right, _) => {
-                if let BinaryOp::Assign = op {
+                if matches!(op, BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
                     // Support assignment to identifiers, references, and simple dot paths
                     if let Expr::Identifier(var_name, _) = &**left {
-                        let r_val = self.eval_expr(right, env.clone())?;
-                        // If the identifier currently holds a reference path, write through it
+                        let mut r_val = self.eval_expr(right, env.clone())?;
+                        
                         let current = {
                             let e = env.lock().unwrap();
                             e.get(var_name)
                         };
+
+                        if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                            let l_val = match &current {
+                                Some(Value::RefPath(path, _)) => self.read_target(env.clone(), path.clone())?,
+                                Some(val) => val.clone(),
+                                None => return Err(format!("undefined variable '{}'", var_name)),
+                            };
+                            r_val = match (op, l_val, &r_val) {
+                                (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a + b),
+                                (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+                                (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => Value::String(format!("{}{}", a, b)),
+                                (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a - b),
+                                (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a - b),
+                                _ => return Err(format!("invalid operands for compound assignment")),
+                            };
+                        }
 
                         if let Some(Value::RefPath(path, mutable)) = current {
                             if !mutable {
@@ -716,12 +733,26 @@ impl Runner {
                         return Ok(r_val);
                     } else if let Expr::Dot(inner, member, _) = &**left {
                         if let Expr::Identifier(owner, _) = &**inner {
-                            let r_val = self.eval_expr(right, env.clone())?;
+                            let mut r_val = self.eval_expr(right, env.clone())?;
+                            
+                            if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                                let l_val = self.eval_expr(left, env.clone())?;
+                                r_val = match (op, l_val, &r_val) {
+                                    (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a + b),
+                                    (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a + b),
+                                    (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => Value::String(format!("{}{}", a, b)),
+                                    (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a - b),
+                                    (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a - b),
+                                    _ => return Err(format!("invalid operands for compound assignment")),
+                                };
+                            }
+
                             self.write_back(
                                 env.clone(),
                                 RefPath::Field {
                                     owner: owner.clone(),
                                     member: member.clone(),
+                                    env: env.clone(),
                                 },
                                 r_val.clone(),
                             )?;
@@ -890,6 +921,17 @@ impl Runner {
                         }
                         return Ok(Value::Nil);
                     }
+                    if name == "input" {
+                        use std::io::{self, Write};
+                        if !args.is_empty() {
+                            let arg_v = self.eval_expr(&args[0].1, env.clone())?;
+                            print!("{}", arg_v.to_string());
+                        }
+                        let _ = io::stdout().flush();
+                        let mut buffer = String::new();
+                        let _ = io::stdin().read_line(&mut buffer);
+                        return Ok(Value::String(buffer.trim_end().to_string()));
+                    }
                 }
 
                 // Method / Namespace Member Call Interception
@@ -979,6 +1021,61 @@ impl Runner {
                                     return Ok(popped);
                                 }
                                 return Ok(Value::Nil);
+                            }
+                            "filter" => {
+                                if !args.is_empty() {
+                                    let cb_val = self.eval_expr(&args[0].1, env.clone())?;
+                                    if let Value::Function { params, body, env: closure_env } = cb_val {
+                                        let mut res = Vec::new();
+                                        for item in vec {
+                                            let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                                            if !params.is_empty() {
+                                                self.bind_param(child_env.clone(), &params[0], item.clone());
+                                            }
+                                            let mut matched = false;
+                                            for stmt in &body {
+                                                let stmt_res = self.execute_statement(stmt, child_env.clone())?;
+                                                if let Value::Return(ret_val) = stmt_res {
+                                                    if let Value::Bool(b) = *ret_val {
+                                                        matched = b;
+                                                    }
+                                                    break;
+                                                }
+                                            }
+                                            if matched {
+                                                res.push(item.clone());
+                                            }
+                                        }
+                                        return Ok(Value::Tuple(res));
+                                    }
+                                }
+                                return Ok(Value::Tuple(vec.clone()));
+                            }
+                            "map" => {
+                                if !args.is_empty() {
+                                    let cb_val = self.eval_expr(&args[0].1, env.clone())?;
+                                    if let Value::Function { params, body, env: closure_env } = cb_val {
+                                        let mut res = Vec::new();
+                                        for item in vec {
+                                            let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                                            if !params.is_empty() {
+                                                self.bind_param(child_env.clone(), &params[0], item.clone());
+                                            }
+                                            let mut map_res = Value::Nil;
+                                            for stmt in &body {
+                                                let stmt_res = self.execute_statement(stmt, child_env.clone())?;
+                                                if let Value::Return(ret_val) = stmt_res {
+                                                    map_res = *ret_val;
+                                                    break;
+                                                }
+                                                map_res = stmt_res;
+                                            }
+                                            res.push(map_res);
+                                        }
+                                        return Ok(Value::Tuple(res));
+                                    }
+                                }
+                                return Ok(Value::Tuple(vec.clone()));
                             }
                             _ => {}
                         },
@@ -1408,7 +1505,7 @@ impl Runner {
                                         Arc::new(Mutex::new(Env::new_child(env.clone())));
                                     let mut self_val = inner_val.clone();
                                     if let Expr::Identifier(var_name, _) = &**inner_expr {
-                                        self_val = Value::RefPath(crate::vm::RefPath::Var(var_name.clone()), true);
+                                        self_val = Value::RefPath(crate::vm::RefPath::Var(var_name.clone(), env.clone()), true);
                                     }
                                     child_env.lock().unwrap().define(
                                         "self".to_string(),
@@ -1570,9 +1667,7 @@ impl Runner {
             }
             Expr::ThreadSpawn(expr_block, _) => {
                 let expr_clone = expr_block.clone();
-
-                let thread_env = Arc::new(Mutex::new(env.lock().unwrap().fork()));
-
+                let thread_env = Arc::new(Mutex::new(Env::new_child(env.clone())));
                 let mut runner = self.clone_for_thread(thread_env.clone());
 
                 let mut counter = get_thread_counter().lock().unwrap();
@@ -1630,10 +1725,9 @@ impl Runner {
         }
     }
 
-    fn read_target(&self, env: Arc<Mutex<Env>>, path: RefPath) -> Result<Value, String> {
+    fn read_target(&self, _env: Arc<Mutex<Env>>, path: RefPath) -> Result<Value, String> {
         match path {
-            RefPath::Var(name) => {
-                println!("read_target {}", name);
+            RefPath::Var(name, env) => {
                 let val = {
                     let e = env.lock().unwrap();
                     e.get(&name)
@@ -1649,7 +1743,7 @@ impl Runner {
                     None => Err(format!("undefined variable '{}'", name)),
                 }
             }
-            RefPath::Field { owner, member } => {
+            RefPath::Field { owner, member, env } => {
                 let owner_val = {
                     let e = env.lock().unwrap();
                     e.get(&owner)
@@ -1721,12 +1815,12 @@ impl Runner {
 
     fn write_back(
         &self,
-        env: Arc<Mutex<Env>>,
+        _env: Arc<Mutex<Env>>,
         path: RefPath,
         new_val: Value,
     ) -> Result<(), String> {
         match path {
-            RefPath::Var(name) => {
+            RefPath::Var(name, env) => {
                 let current = {
                     let e = env.lock().unwrap();
                     e.get(&name)
@@ -1738,7 +1832,7 @@ impl Runner {
 
                 env.lock().unwrap().assign(name, new_val)
             }
-            RefPath::Field { owner, member } => {
+            RefPath::Field { owner, member, env } => {
                 let mut owner_val = {
                     let e = env.lock().unwrap();
                     e.get(&owner)
@@ -1746,10 +1840,12 @@ impl Runner {
                 
                 // Follow reference paths to get the actual value to modify
                 let mut final_owner = owner.clone();
-                while let Some(Value::RefPath(RefPath::Var(ref next_owner), _)) = owner_val {
+                let mut final_env = env.clone();
+                while let Some(Value::RefPath(RefPath::Var(ref next_owner, ref next_env), _)) = owner_val {
                     final_owner = next_owner.clone();
+                    final_env = next_env.clone();
                     owner_val = {
-                        let e = env.lock().unwrap();
+                        let e = final_env.lock().unwrap();
                         e.get(&final_owner)
                     };
                 }
@@ -1799,7 +1895,7 @@ impl Runner {
                         );
                     }
                 }
-                env.lock().unwrap().assign(final_owner, owner_val)
+                final_env.lock().unwrap().assign(final_owner, owner_val)
             }
         }
     }

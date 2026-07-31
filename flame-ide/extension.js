@@ -56,7 +56,7 @@ async function runCheck(document, position) {
     const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
     
     // Write unsaved content to a temporary file so the compiler sees exactly what the user is typing
-    const tempFilePath = document.uri.fsPath + '.ftmp'
+    const tempFilePath = document.uri.fsPath + '.fmi'
     try {
         fs.writeFileSync(tempFilePath, document.getText())
     } catch (e) {
@@ -150,6 +150,53 @@ function activate(context) {
                 blocks.push(new vscode.MarkdownString(result.hover.documentation))
             }
             return new vscode.Hover(blocks)
+        }
+    }))
+
+    context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['flame', 'flame-wn', 'flame-config'], {
+        async provideDocumentFormattingEdits(document) {
+            const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
+            
+            const tempFilePath = document.uri.fsPath + '.fmt.fmi'
+            try {
+                fs.writeFileSync(tempFilePath, document.getText())
+            } catch (e) {
+                return []
+            }
+
+            const args = ['format', tempFilePath, '--stdout']
+            
+            const compiler = findCompilerBinary(workspaceRoot)
+            if (!compiler) return []
+
+            return new Promise((resolve) => {
+                let options = { cwd: workspaceRoot }
+                if (process.platform === 'win32' && compiler === 'flame') {
+                    options.shell = true
+                }
+                child_process.execFile(compiler, args, options, (error, stdout, stderr) => {
+                    try {
+                        if (fs.existsSync(tempFilePath)) {
+                            fs.unlinkSync(tempFilePath)
+                        }
+                    } catch (e) {}
+
+                    if (error) {
+                        resolve([])
+                        return
+                    }
+
+                    if (stdout) {
+                        const fullRange = new vscode.Range(
+                            document.positionAt(0),
+                            document.positionAt(document.getText().length)
+                        )
+                        resolve([vscode.TextEdit.replace(fullRange, stdout)])
+                    } else {
+                        resolve([])
+                    }
+                })
+            })
         }
     }))
 }

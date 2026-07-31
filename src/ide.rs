@@ -38,6 +38,13 @@ const KEYWORDS: &[(&str, &str)] = &[
     ("Nil", "Built-in Type: Represents the absence of a value."),
     ("Vec", "Built-in Type: A dynamically-sized array."),
     ("ThreadHandler", "Built-in Type: A handle to a spawned background thread."),
+    ("input", "```flame\nfn input(prompt: String) -> String\n```\nTakes a line of text input from standard input.\n\nExample:\n```flame\nlet name = input(\"Name: \")\n```"),
+    ("push", "Built-in Method: Appends an element to the back of a collection. Example: `arr.push(100)`"),
+    ("pop", "Built-in Method: Removes the last element from a collection and returns it. Example: `let last = arr.pop()`"),
+    ("len", "Built-in Method: Returns the number of elements in the collection. Example: `let l = arr.len()`"),
+    ("is_empty", "Built-in Method: Returns true if the collection contains no elements. Example: `if arr.is_empty() { ... }`"),
+    ("filter", "Built-in Method: Creates a new array containing elements that pass the provided test function. Example: `let filtered = arr.filter((x: Int) { return x > 10 })`"),
+    ("map", "Built-in Method: Creates a new array populated with the results of calling a provided function on every element. Example: `let mapped = arr.map((x: Int) { return x * 2 })`"),
 ];
 
 pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
@@ -56,12 +63,19 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
     KEYWORDS.iter()
         .find(|(kw, _)| *kw == word)
         .map(|(kw, doc)| {
-            let mut formatted_doc = String::new();
+            let formatted_doc;
             if let Some((desc, ex)) = doc.split_once("Example: `") {
                 let clean_ex = ex.trim_end_matches('`');
-                formatted_doc = format!("```flame\nkeyword {}\n```\n{}\n\n**Example:**\n```flame\n{}\n```", kw, desc.trim(), clean_ex);
+                let kind = if desc.starts_with("Built-in Function:") || desc.starts_with("Built-in Method:") {
+                    "fn"
+                } else {
+                    "keyword"
+                };
+                formatted_doc = format!("```flame\n{} {}\n```\n{}\n\n**Example:**\n```flame\n{}\n```", kind, kw, desc.trim(), clean_ex);
             } else if doc.starts_with("Built-in Type:") {
                 formatted_doc = format!("```flame\ntype {}\n```\n{}", kw, doc.trim());
+            } else if doc.starts_with("Built-in Function:") || doc.starts_with("Built-in Method:") {
+                formatted_doc = format!("```flame\nfn {}\n```\n{}", kw, doc.trim());
             } else {
                 formatted_doc = format!("```flame\nkeyword {}\n```\n{}", kw, doc.trim());
             }

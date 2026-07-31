@@ -10,6 +10,8 @@ pub enum BinaryOp {
     Div,
     Mod,
     Assign,
+    PlusAssign,
+    MinusAssign,
     Eq,
     Ne,
     Lt,
@@ -902,7 +904,17 @@ impl Parser {
 
     fn parse_assignment(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_or()?;
-        if self.match_token(TokenKind::Equal) {
+        let op = if self.match_token(TokenKind::Equal) {
+            Some(BinaryOp::Assign)
+        } else if self.match_token(TokenKind::PlusEqual) {
+            Some(BinaryOp::PlusAssign)
+        } else if self.match_token(TokenKind::MinusEqual) {
+            Some(BinaryOp::MinusAssign)
+        } else {
+            None
+        };
+
+        if let Some(binary_op) = op {
             let value = self.parse_assignment()?;
             let span = Span {
                 start: expr.span().start,
@@ -910,7 +922,7 @@ impl Parser {
                 line: expr.span().line,
                 col: expr.span().col,
             };
-            expr = Expr::Binary(Box::new(expr), BinaryOp::Assign, Box::new(value), span);
+            expr = Expr::Binary(Box::new(expr), binary_op, Box::new(value), span);
         }
         Ok(expr)
     }
