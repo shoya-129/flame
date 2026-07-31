@@ -8,7 +8,7 @@ let user: Formula = formula {
     isAdmin: true,
     numbers: [9,9],
     status: (a: String) {
-        print(b);
+        print(a);
     }
 }
 
