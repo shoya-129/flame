@@ -79,7 +79,6 @@ pub fn format_code(source: &str) -> String {
                     } else {
                         out.push_str("\n\n\n");
                     }
-                    empty_line_pending = false;
                 } else if empty_line_pending {
                     if !out.ends_with("\n\n") {
                         if !out.ends_with('\n') {
@@ -144,9 +143,11 @@ pub fn format_code(source: &str) -> String {
                     TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Type | TokenKind::Where | TokenKind::Comma | TokenKind::Colon | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow
                 );
 
-                if (is_last_ident_like && is_current_ident_like) || is_last_keyword {
-                    if !out.ends_with(' ') && !out.ends_with('\n') {
-                        out.push(' ');
+                if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot {
+                    if (is_last_ident_like && is_current_ident_like) || is_last_keyword {
+                        if !out.ends_with(' ') && !out.ends_with('\n') {
+                            out.push(' ');
+                        }
                     }
                 }
             }

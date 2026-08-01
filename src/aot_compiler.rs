@@ -65,8 +65,20 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+tokio = {{ version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }}
 {flame_dep}
 {deps}
+
+[profile.dev]
+split-debuginfo = "unpacked"
+codegen-units = 256
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = "fat"
+codegen-units = 1
+panic = "abort"
 "#,
         pkg_name = pkg_name,
         flame_dep = flame_dep,
@@ -172,54 +184,40 @@ edition = "2021"
                     main_rs.push_str(&format!("// Wrapper for crate {}\n", name));
                     main_rs.push_str(&format!("mod bridge_{} {{\n", name));
                     main_rs.push_str("    use super::*;\n");
+                    main_rs.push_str("    #[allow(unused_imports, dead_code)]\n");
+                    main_rs.push_str(&format!("    use {}::*;\n", name));
+                    main_rs.push_str("    type NativeObject = std::ffi::c_void;\n");
                     let mut generated_methods = std::collections::HashSet::new();
 
                     for func in meta.functions {
-                        if !generated_methods.insert(func.name.clone()) {
+                        if !generated_methods.insert(func.name.clone()) || should_skip_bridge_function(&func) {
                             continue;
                         }
+
                         let f_name = &func.flame_name;
                         main_rs.push_str(&format!(
                             "    pub fn {}(_args: *const CValue, _len: usize) -> CValue {{\n",
                             f_name
                         ));
                         // Start generated function body
-                        main_rs.push_str("        let mut c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
+                        main_rs.push_str("        let c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
                         let mut call_args = Vec::new();
                         for (idx, p) in func.params.iter().enumerate() {
-                            let p_type = p.type_name.to_lowercase();
-                            if p_type.contains("range") {
-                                main_rs.push_str(&format!("        let arg{} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n", idx, idx, idx));
-                            } else if p_type.contains("str") {
-                                main_rs.push_str(&format!("        let arg{}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", idx, idx));
-                                main_rs.push_str(&format!("        let arg{} = arg{}_cstr.to_str().unwrap_or_default();\n", idx, idx));
-                            } else if p_type.contains("bool") {
-                                main_rs.push_str(&format!(
-                                    "        let arg{} = c_args[{}].bool_val;\n",
-                                    idx, idx
-                                ));
-                                } else if p_type == "i32" || p_type == "i64" || p_type == "u32" || p_type == "u64" || p_type == "usize" || p_type == "i16" || p_type == "u16" || p_type == "i8" || p_type == "u8" || p_type == "u128" || p_type == "i128" {
-                                    main_rs.push_str(&format!(
-                                        "        let arg{} = c_args[{}].int_val as {};\n",
-                                        idx, idx, p.type_name
-                                    ));
-                                } else {
-                                    main_rs.push_str(&format!(
-                                        "        let arg{} = c_args[{}].int_val;\n",
-                                        idx, idx
-                                    ));
-                                }
-                            call_args.push(format!("arg{}", idx));
+                            let (ext_code, var_name) = generate_param_extraction(p, idx, &func.name);
+                            main_rs.push_str(&ext_code);
+                            call_args.push(var_name);
                         }
 
                         let args_str = call_args.join(", ");
+                        let requires_prim = func.is_generic && (func.name == "gen" || func.params.is_empty());
+                        let is_async = func.is_async || func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") || func.return_type.contains("Future") || func.return_type.contains("async");
 
-                        if func.is_generic {
+                        if requires_prim {
                             let generic_idx = func.params.len();
                             main_rs.push_str(&format!("        let generic_type_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", generic_idx));
                             main_rs.push_str("        let generic_type = generic_type_cstr.to_str().unwrap_or_default();\n");
                             main_rs.push_str("        match generic_type {\n");
-                            let primitives = vec!["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "bool"];
+                            let primitives = vec!["i64", "f64", "bool"];
                             for prim in primitives {
                                 main_rs.push_str(&format!("            \"{}\" => {{\n", prim));
                                 main_rs.push_str(&format!("                let res = {}::{}::<{}>({});\n", name, func.name, prim, args_str));
@@ -244,45 +242,18 @@ edition = "2021"
                             main_rs.push_str("            _ => return CValue::null(),\n");
                             main_rs.push_str("        }\n");
                         } else {
-                            // Execute the call
-                            main_rs.push_str(&format!(
-                                "        let res = {}::{}({});\n",
-                                name, func.name, args_str
-                            ));
-
-                            // Convert result to CValue
-                            let rt = func.return_type.to_lowercase();
-                            if rt == "()" {
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv\n");
-                            } else if rt == "string" || rt == "&str" || rt.contains("uuid") {
-                                main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
-                                main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
-                                main_rs.push_str("        cv\n");
-                            } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" || rt == "i16" || rt == "u16" || rt == "i8" || rt == "u8" {
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
-                                main_rs.push_str("        cv.int_val = res as i64;\n");
-                                main_rs.push_str("        cv\n");
-                            } else if rt == "bool" {
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Bool;\n");
-                                main_rs.push_str("        cv.bool_val = res;\n");
-                                main_rs.push_str("        cv\n");
-                            } else if rt == "f32" || rt == "f64" {
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Float;\n");
-                                main_rs.push_str("        cv.float_val = res as f64;\n");
-                                main_rs.push_str("        cv\n");
+                            if is_async {
+                                if func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") {
+                                    main_rs.push_str("        flamelang::vm::set_event_loop_active(true);\n");
+                                    main_rs.push_str(&format!("        std::thread::spawn(move || {{ let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(async move {{ {}::{}({}).await }}); }});\n", name, func.name, args_str));
+                                    main_rs.push_str("        CValue::null()\n");
+                                } else {
+                                    main_rs.push_str(&format!("        let res = tokio::runtime::Runtime::new().unwrap().block_on(async move {{ {}::{}({}).await }});\n", name, func.name, args_str));
+                                    main_rs.push_str(&generate_return_conversion(&func.return_type, ""));
+                                }
                             } else {
-                                main_rs.push_str("        let boxed = Box::new(res);\n");
-                                main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
-                                main_rs.push_str("        let mut cv = CValue::null();\n");
-                                main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
-                                main_rs.push_str("        cv.obj_ptr = ptr;\n");
-                                main_rs.push_str("        cv\n");
+                                main_rs.push_str(&format!("        let res = {}::{}({});\n", name, func.name, args_str));
+                                main_rs.push_str(&generate_return_conversion(&func.return_type, ""));
                             }
                         }
                         main_rs.push_str("    }\n");
@@ -293,7 +264,7 @@ edition = "2021"
                         for func in struct_meta.methods {
                             let f_name = &func.flame_name;
                             let combined_name = format!("{}_{}", s_name, f_name);
-                            if !generated_methods.insert(combined_name.clone()) {
+                            if !generated_methods.insert(combined_name.clone()) || should_skip_bridge_function(&func) {
                                 continue;
                             }
 
@@ -301,49 +272,33 @@ edition = "2021"
                                 "    pub fn {}(_args: *const CValue, _len: usize) -> CValue {{\n",
                                 combined_name
                             ));
-                            main_rs.push_str("        let mut c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
+                            main_rs.push_str("        let c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
+                            let is_async = func.is_async || func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") || func.return_type.contains("Future") || func.return_type.contains("async");
                             if !func.is_static {
-                                main_rs.push_str(&format!(
-                                    "        // Self is arg 0, cast from obj_ptr\n"
-                                ));
-                                main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                                main_rs.push_str("        // Self is arg 0, cast from obj_ptr\n");
+                                if func.receiver == Some("self".to_string()) || (is_async && (func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run"))) {
+                                    main_rs.push_str(&format!("        let obj = *unsafe {{ Box::from_raw(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                                } else {
+                                    main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                                }
                             }
 
                             let mut call_args = Vec::new();
                             for (idx, p) in func.params.iter().enumerate() {
                                 let c_idx = if func.is_static { idx } else { idx + 1 };
-                                let p_type = p.type_name.to_lowercase();
-                                if p_type.contains("range") {
-                                    main_rs.push_str(&format!("        let arg{} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n", c_idx, c_idx, c_idx));
-                                } else if p_type.contains("str") {
-                                    main_rs.push_str(&format!("        let arg{}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", c_idx, c_idx));
-                                    main_rs.push_str(&format!("        let arg{} = arg{}_cstr.to_str().unwrap_or_default();\n", c_idx, c_idx));
-                                } else if p_type.contains("bool") {
-                                    main_rs.push_str(&format!(
-                                        "        let arg{} = c_args[{}].bool_val;\n",
-                                        c_idx, c_idx
-                                    ));
-                                } else if p_type == "i32" || p_type == "i64" || p_type == "u32" || p_type == "u64" || p_type == "usize" || p_type == "i16" || p_type == "u16" || p_type == "i8" || p_type == "u8" || p_type == "u128" || p_type == "i128" {
-                                    main_rs.push_str(&format!(
-                                        "        let arg{} = c_args[{}].int_val as {};\n",
-                                        c_idx, c_idx, p.type_name
-                                    ));
-                                } else {
-                                    main_rs.push_str(&format!(
-                                        "        let arg{} = c_args[{}].int_val;\n",
-                                        c_idx, c_idx
-                                    ));
-                                }
-                                call_args.push(format!("arg{}", c_idx));
+                                let (ext_code, var_name) = generate_param_extraction(p, c_idx, &func.name);
+                                main_rs.push_str(&ext_code);
+                                call_args.push(var_name);
                             }
 
                             let args_str = call_args.join(", ");
-                            if func.is_generic {
+                            let requires_prim = func.is_generic && (func.name == "gen" || func.params.is_empty());
+                            if requires_prim {
                                 let generic_idx = if func.is_static { func.params.len() } else { func.params.len() + 1 };
                                 main_rs.push_str(&format!("        let generic_type_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", generic_idx));
                                 main_rs.push_str("        let generic_type = generic_type_cstr.to_str().unwrap_or_default();\n");
                                 main_rs.push_str("        match generic_type {\n");
-                                let primitives = vec!["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "bool"];
+                                let primitives = vec!["i64", "f64", "bool"];
                                 for prim in primitives {
                                     main_rs.push_str(&format!("            \"{}\" => {{\n", prim));
                                     if func.is_static {
@@ -378,51 +333,24 @@ edition = "2021"
                                 main_rs.push_str("            _ => return CValue::null(),\n");
                                 main_rs.push_str("        }\n");
                             } else {
-                                if func.is_static {
-                                    main_rs.push_str(&format!(
-                                        "        let res = {}::{}::{}({});\n",
-                                        name, s_name, func.name, args_str
-                                    ));
+                                let call_expr = if func.is_static {
+                                    format!("{}::{}::{}({})", name, s_name, func.name, args_str)
                                 } else {
-                                    main_rs.push_str(&format!(
-                                        "        let res = obj.{}({});\n",
-                                        func.name, args_str
-                                    ));
-                                }
+                                    format!("obj.{}({})", func.name, args_str)
+                                };
 
-                                // Convert result to CValue
-                                let rt = func.return_type.to_lowercase();
-                                if rt == "()" {
-                                    main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv\n");
-                                } else if rt == "string" || rt == "&str" || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
-                                    main_rs.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
-                                    main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
-                                    main_rs.push_str("        cv.string_ptr = c_str.into_raw();\n");
-                                    main_rs.push_str("        cv\n");
-                                } else if rt == "i32" || rt == "i64" || rt == "u32" || rt == "u64" || rt == "usize" || rt == "i16" || rt == "u16" || rt == "i8" || rt == "u8" {
-                                    main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
-                                    main_rs.push_str("        cv.int_val = res as i64;\n");
-                                    main_rs.push_str("        cv\n");
-                                } else if rt == "bool" {
-                                    main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Bool;\n");
-                                    main_rs.push_str("        cv.bool_val = res;\n");
-                                    main_rs.push_str("        cv\n");
-                                } else if rt == "f32" || rt == "f64" {
-                                    main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::Float;\n");
-                                    main_rs.push_str("        cv.float_val = res as f64;\n");
-                                    main_rs.push_str("        cv\n");
+                                if is_async {
+                                    if func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") {
+                                        main_rs.push_str("        flamelang::vm::set_event_loop_active(true);\n");
+                                        main_rs.push_str(&format!("        std::thread::spawn(move || {{ let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(async move {{ {}.await }}); }});\n", call_expr));
+                                        main_rs.push_str("        CValue::null()\n");
+                                    } else {
+                                        main_rs.push_str(&format!("        let res = tokio::runtime::Runtime::new().unwrap().block_on(async move {{ {}.await }});\n", call_expr));
+                                        main_rs.push_str(&generate_return_conversion(&func.return_type, s_name));
+                                    }
                                 } else {
-                                    main_rs.push_str("        let boxed = Box::new(res);\n");
-                                    main_rs.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
-                                    main_rs.push_str("        let mut cv = CValue::null();\n");
-                                    main_rs.push_str("        cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
-                                    main_rs.push_str("        cv.obj_ptr = ptr;\n");
-                                    main_rs.push_str("        cv\n");
+                                    main_rs.push_str(&format!("        let res = {};\n", call_expr));
+                                    main_rs.push_str(&generate_return_conversion(&func.return_type, s_name));
                                 }
                             }
                             main_rs.push_str("    }\n");
@@ -445,7 +373,11 @@ edition = "2021"
         if meta_path.exists() {
             if let Ok(meta_content) = fs::read_to_string(&meta_path) {
                 if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content) {
+                    let mut generated_methods = std::collections::HashSet::new();
                     for func in meta.functions {
+                        if !generated_methods.insert(func.name.clone()) || should_skip_bridge_function(&func) {
+                            continue;
+                        }
                         let f_name = &func.flame_name;
                         let sym = format!("flame_{}_{}", name, f_name);
                         main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, f_name=f_name));
@@ -454,6 +386,10 @@ edition = "2021"
                         let s_name = &struct_meta.name;
                         for func in struct_meta.methods {
                             let f_name = &func.flame_name;
+                            let combined_name = format!("{}_{}", s_name, f_name);
+                            if !generated_methods.insert(combined_name.clone()) || should_skip_bridge_function(&func) {
+                                continue;
+                            }
                             let sym = format!("flame_{}_{}_{}", name, s_name, f_name);
                             main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, s_name=s_name, f_name=f_name));
                             if name.to_lowercase() == s_name.to_lowercase() {
@@ -535,4 +471,168 @@ edition = "2021"
         eprintln!("\x1b[1;31m     Error\x1b[0m could not invoke cargo build.");
         std::process::exit(1);
     }
+}
+
+fn should_skip_bridge_function(func: &crate::package_manager::FlameFunctionMeta) -> bool {
+    func.return_type.contains("Iter")
+        || func.return_type.contains("Iterator")
+        || func.return_type.contains("NonNil")
+        || func.name.contains("_iter")
+        || func.name.starts_with("from_")
+        || func.name.contains("unchecked")
+        || func.params.iter().any(|p| {
+            p.type_name.contains("Bytes")
+                || p.type_name.contains("Variant")
+                || p.type_name.contains("Version")
+                || p.type_name.contains("Iter")
+                || p.type_name.contains("StandardUniform")
+                || p.type_name == "Uuid"
+        })
+}
+
+fn generate_param_extraction(p: &crate::package_manager::FlameParamMeta, c_idx: usize, func_name: &str) -> (String, String) {
+    let p_type = p.type_name.to_lowercase();
+    let var_name = format!("arg{}", c_idx);
+    let mut code = String::new();
+
+    if p.is_callback || p_type.contains("callback") || p_type.contains("handler") || p.name.to_lowercase().contains("handler") || p.name.to_lowercase().contains("callback") || p.type_name.len() == 1 || p_type.contains("fn(") {
+        code.push_str(&format!("        let fn_id{} = c_args[{}].int_val as u64;\n", c_idx, c_idx));
+        if func_name == "post" || func_name == "put" || func_name == "patch" {
+            code.push_str(&format!("        let {} = move |body: String| async move {{\n", var_name));
+            code.push_str(&format!("            let cb = flamelang::vm::FlameCallback {{ function_id: fn_id{}, module_id: 0 }};\n", c_idx));
+            code.push_str("            let arg_cv = flamelang::runner::CValue::from_string(&body);\n");
+            code.push_str("            let res = flamelang::vm::enqueue_callback(cb, vec![arg_cv]).unwrap_or_else(|_| flamelang::vm::CValue::null());\n");
+            code.push_str("            if res.tag == flamelang::runner::CValueTag::String && !res.string_ptr.is_null() {\n");
+            code.push_str("                unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() }\n");
+            code.push_str("            } else {\n");
+            code.push_str("                String::new()\n");
+            code.push_str("            }\n");
+            code.push_str("        };\n");
+        } else {
+            code.push_str(&format!("        let {} = move || async move {{\n", var_name));
+            code.push_str(&format!("            let cb = flamelang::vm::FlameCallback {{ function_id: fn_id{}, module_id: 0 }};\n", c_idx));
+            code.push_str("            let res = flamelang::vm::enqueue_callback(cb, vec![]).unwrap_or_else(|_| flamelang::vm::CValue::null());\n");
+            code.push_str("            if res.tag == flamelang::runner::CValueTag::String && !res.string_ptr.is_null() {\n");
+            code.push_str("                unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() }\n");
+            code.push_str("            } else {\n");
+            code.push_str("                String::new()\n");
+            code.push_str("            }\n");
+            code.push_str("        };\n");
+        }
+    } else if p_type.contains("range") {
+        code.push_str(&format!("        let {} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n", var_name, c_idx, c_idx));
+    } else if p_type.contains("&str") || (p_type.contains("str") && !p_type.contains("string")) {
+        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
+        if p_type.contains("'static") {
+            code.push_str(&format!("        let {}: &'static str = Box::leak({}_cstr.to_string_lossy().into_owned().into_boxed_str());\n", var_name, var_name));
+        } else {
+            code.push_str(&format!("        let {} = {}_cstr.to_str().unwrap_or_default();\n", var_name, var_name));
+        }
+    } else if p_type == "string" {
+        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
+        code.push_str(&format!("        let {} = {}_cstr.to_string_lossy().into_owned();\n", var_name, var_name));
+    } else if p_type == "pathbuf" {
+        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
+        code.push_str(&format!("        let {} = std::path::PathBuf::from({}_cstr.to_string_lossy().into_owned());\n", var_name, var_name));
+    } else if p_type == "&path" {
+        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
+        code.push_str(&format!("        let {}_path = std::path::Path::new({}_cstr.to_str().unwrap_or_default());\n", var_name, var_name));
+        code.push_str(&format!("        let {} = {}_path;\n", var_name, var_name));
+    } else if p_type == "bool" {
+        code.push_str(&format!("        let {} = c_args[{}].bool_val;\n", var_name, c_idx));
+    } else if p_type == "char" {
+        code.push_str(&format!("        let {} = std::char::from_u32(c_args[{}].int_val as u32).unwrap_or(' ');\n", var_name, c_idx));
+    } else if ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize"].contains(&p_type.as_str()) {
+        code.push_str(&format!("        let {} = c_args[{}].int_val as {};\n", var_name, c_idx, p.type_name));
+    } else if ["f32", "f64"].contains(&p_type.as_str()) {
+        code.push_str(&format!("        let {} = c_args[{}].float_val as {};\n", var_name, c_idx, p.type_name));
+    } else if p_type.starts_with("option<") {
+        code.push_str(&format!("        let {} = if c_args[{}].tag == flamelang::runner::CValueTag::Null {{ None }} else {{ Some(c_args[{}].int_val) }};\n", var_name, c_idx, c_idx));
+    } else if p_type.starts_with("vec<") {
+        code.push_str(&format!("        let {} = Vec::new();\n", var_name));
+    } else {
+        if p.type_name.starts_with('&') || p_type.contains("object") || p.type_name.chars().next().map_or(false, |c| c.is_uppercase()) {
+            let clean_type = p.type_name.trim_start_matches('&').trim_start_matches("mut ").trim();
+            code.push_str(&format!("        let {} = unsafe {{ &mut *(c_args[{}].obj_ptr as *mut {}) }};\n", var_name, c_idx, clean_type));
+        } else {
+            code.push_str(&format!("        let {} = c_args[{}].int_val;\n", var_name, c_idx));
+        }
+    }
+
+    (code, var_name)
+}
+
+fn generate_return_conversion(return_type: &str, s_name: &str) -> String {
+    let rt = return_type.to_lowercase();
+    let mut code = String::new();
+    if rt == "()" {
+        code.push_str("        let mut cv = CValue::null();\n        cv\n");
+    } else if rt == "string" || rt == "&str" || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
+        code.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
+        code.push_str("        cv.string_ptr = c_str.into_raw();\n");
+        code.push_str("        cv\n");
+    } else if ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize"].contains(&rt.as_str()) {
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
+        code.push_str("        cv.int_val = res as i64;\n");
+        code.push_str("        cv\n");
+    } else if rt == "bool" {
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::Bool;\n");
+        code.push_str("        cv.bool_val = res;\n");
+        code.push_str("        cv\n");
+    } else if ["f32", "f64"].contains(&rt.as_str()) {
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::Float;\n");
+        code.push_str("        cv.float_val = res as f64;\n");
+        code.push_str("        cv\n");
+    } else if rt == "char" {
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
+        code.push_str("        cv.int_val = res as u32 as i64;\n");
+        code.push_str("        cv\n");
+    } else if rt == "pathbuf" || rt == "&path" {
+        code.push_str("        let c_str = std::ffi::CString::new(res.to_str().unwrap_or_default()).unwrap_or_default();\n");
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
+        code.push_str("        cv.string_ptr = c_str.into_raw();\n");
+        code.push_str("        cv\n");
+    } else if rt.starts_with("option<") {
+        code.push_str("        match res {\n");
+        code.push_str("            Some(val) => {\n");
+        code.push_str("                let boxed = Box::new(val);\n");
+        code.push_str("                let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+        code.push_str("                let mut cv = CValue::null();\n");
+        code.push_str("                cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
+        code.push_str("                cv.obj_ptr = ptr;\n");
+        code.push_str("                cv\n");
+        code.push_str("            }\n");
+        code.push_str("            None => CValue::null(),\n");
+        code.push_str("        }\n");
+    } else if rt.starts_with("result<") || rt.contains("::result::") || rt.starts_with("std::io::result") {
+        code.push_str("        match res {\n");
+        code.push_str("            Ok(val) => {\n");
+        code.push_str("                let boxed = Box::new(val);\n");
+        code.push_str("                let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+        code.push_str("                let mut cv = CValue::null();\n");
+        code.push_str("                cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
+        code.push_str("                cv.obj_ptr = ptr;\n");
+        code.push_str("                cv\n");
+        code.push_str("            }\n");
+        code.push_str("            Err(e) => {\n");
+        code.push_str("                eprintln!(\"Runtime bridge exception: {:?}\", e);\n");
+        code.push_str("                CValue::null()\n");
+        code.push_str("            }\n");
+        code.push_str("        }\n");
+    } else {
+        code.push_str("        let boxed = Box::new(res);\n");
+        code.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+        code.push_str("        let mut cv = CValue::null();\n");
+        code.push_str("        cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
+        code.push_str("        cv.obj_ptr = ptr;\n");
+        code.push_str("        cv\n");
+    }
+    code
 }

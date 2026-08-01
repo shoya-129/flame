@@ -37,14 +37,10 @@
         }
       },
       {
-        "id": "flame-wn",
-        "extensions": [
-          ".fmi"
+        "id": "json",
+        "aliases": [
+          "Flame Meta Interface"
         ],
-        "configuration": "./language-configuration.json"
-      },
-      {
-        "id": "flame-config",
         "extensions": [
           ".fmi"
         ],
@@ -57,16 +53,6 @@
     "grammars": [
       {
         "language": "flame",
-        "scopeName": "source.flame",
-        "path": "./syntaxes/flame.tmLanguage.json"
-      },
-      {
-        "language": "flame-wn",
-        "scopeName": "source.flame",
-        "path": "./syntaxes/flame.tmLanguage.json"
-      },
-      {
-        "language": "flame-config",
         "scopeName": "source.flame",
         "path": "./syntaxes/flame.tmLanguage.json"
       }

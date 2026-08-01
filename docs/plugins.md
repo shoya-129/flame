@@ -1,39 +1,161 @@
-# Plugins and the `@plugin` Decorator (Beta)
+# Native Plugins and Advanced FFI in Flame
 
-Flame's philosophy emphasizes robust integration with the native ecosystem. Beyond static AOT-compiled Rust crates, Flame also supports dynamically loaded plugins via the `@plugin` decorator.
+Flame's native plugin ecosystem provides zero-overhead interoperability with Rust code, allowing you to seamlessly integrate complex asynchronous frameworks like **Tokio** and **Axum**, define custom struct types, and pass parameters directly into Flame callback handlers.
 
-**The @plugin decorator is in Beta use normal import to use any another flame file as module.**
+---
 
-## What is a Plugin?
+## Why Native Local Plugins?
 
-In Flame, a plugin is a module or library that provides native code which is loaded and executed at runtime. This allows you to extend your Flame programs with dynamic capabilities without needing to recompile the main executable.
+When building high-performance networking servers, cryptographic tools, or specialized systems, writing custom native plugins allows you to leverage Rust's full speed while retaining Flame's rapid developer experience, dynamic script ergonomics, and automated IDE intellisense.
 
-Plugins are declared in the `flame.toml` file under the `[plugins]` section:
+Unlike traditional foreign function interfaces (FFI) that rely on dynamic `.dll` / `.so` library loading, Flame bridges compile Ahead-of-Time (AOT) directly into a statically linked binary.
+
+---
+
+## Developing a Local Plugin: An Axum + Tokio Web Server
+
+Let's build a fully functional asynchronous web server native plugin that exposes custom structs, route registers (`GET` and `POST`), and parameter passing into Flame callbacks.
+
+### 1. Initialize the Plugin Architecture
+
+Create a `native` Rust workspace inside your project directory (`./native/src/lib.rs` and `./native/Cargo.toml`):
 
 ```toml
-[plugins]
-my_plugin = "1.0.0"
-local_plugin = "./path/to/local"
+# native/Cargo.toml
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1.0", features = ["full"] }
 ```
 
-## The `@plugin` Decorator
+### 2. Exporting Struct Types and Methods (`lib.rs`)
 
-To use a plugin inside your flame script, you use the `@plugin` decorator on a structural component, typically preceding an import or function declaration. This tells the compiler and language server that the ensuing logic relies on a dynamically loaded plugin.
+Flame automatically extracts public struct types, documentation comments, and function signatures to generate `.fmi` interface files for IDE hover types and type checking!
 
-### Syntax
+```rust
+// native/src/lib.rs
+use axum::{routing::{get, post}, Router};
+use std::mem;
+use std::net::SocketAddr;
+
+/// Represents the core Flame web application server instance.
+pub struct FlameServer {
+    router: Router,
+}
+
+/// Represents an incoming HTTP network request payload.
+#[derive(Debug, Clone)]
+pub struct Request {
+    pub body: String,
+}
+
+/// Represents an outgoing HTTP network response payload.
+#[derive(Debug, Clone)]
+pub struct Response {
+    pub body: String,
+}
+
+/// Initialize a new FlameServer instance.
+pub fn init() -> FlameServer {
+    FlameServer {
+        router: Router::new(),
+    }
+}
+
+impl FlameServer {
+    /// Register a GET route with a zero-argument Flame callback handler.
+    pub fn get<H, T>(&mut self, path: &'static str, handler: H)
+    where
+        H: axum::handler::Handler<T, ()> + Clone + Send + Sync + 'static,
+        T: 'static,
+    {
+        let router = mem::take(&mut self.router);
+        self.router = router.route(path, get(handler));
+    }
+
+    /// Register a POST route taking a request body String argument.
+    pub fn post<H, T>(&mut self, path: &'static str, handler: H)
+    where
+        H: axum::handler::Handler<T, ()> + Clone + Send + Sync + 'static,
+        T: 'static,
+    {
+        let router = mem::take(&mut self.router);
+        self.router = router.route(path, post(handler));
+    }
+
+    /// Bind to a TCP network socket and start the asynchronous Tokio daemon loop.
+    pub async fn listen(self, port: u16) -> std::io::Result<()> {
+        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, self.router).await.map_err(std::io::Error::other)
+    }
+}
+```
+
+---
+
+## 3. Configuring the Flame Manifest (`flame.toml`)
+
+Declare your local native folder under `[plugins]` or `[native-dependencies]`:
+
+```toml
+[package]
+name = "automation"
+version = "0.1.0"
+entry = "src/main.fm"
+
+[plugins]
+server = "./native"
+```
+
+---
+
+## 4. Using Your Server and Struct Types in Flame
+
+When you build or check your project, Flame automatically generates a JSON-compatible `.fmi` file in `.flame/pkg/server/server.fmi`. Your IDE immediately reads this to provide complete type inference and inline documentation!
 
 ```flame
-@plugin "my_plugin"
-or
-import my_plugin
+import native.server
 
-// Now you can use functions and structs exported by my_plugin
+// 'app' is accurately inferred and displayed on hover as struct type: FlameServer
+let app = await server.init()
+
+// Register multiple asynchronous routes
+app.get("/", () {
+    "Welcome to Flame Multithreaded Web Server!"
+})
+
+app.get("/about", () {
+    "Built on top of Rust, Axum, and Tokio!"
+})
+
+// Register a POST handler receiving parameters directly from HTTP payloads!
+fn create_user(body: String) -> String {
+    print($"Received incoming POST data: {body}")
+    $"Successfully created record for payload: {body}"
+}
+app.post("/users", create_user)
+
+// Bind and engage multi-threaded background daemon listening on port 3000
+await app.listen(3000)
 ```
 
-### How it Works
+---
 
-1. **Resolution**: The flame package manager resolves plugins from `flame.toml`.
-2. **Intellisense**: When you type `@plugin`, the VS Code extension automatically suggests all available plugins declared in your manifest.
-3. **Runtime**: The native bridge securely loads the plugin into the VM environment, exposing its native functions directly into the flame module namespace.
+## IDE Type Inference and `.fmi` Interfaces
 
-By leveraging `@plugin`, you can build extensible architectures where third-party contributors can write native modules that plug directly into your application!
+Behind the scenes, Flame inspects your Rust plugin using `cargo rustdoc` to output standardized `.fmi` files. Unlike messy C header bindings, Flame's FMI files store elegant JSON representations of:
+1. **Modules**: Namespaces and exported functions.
+2. **Structs**: Custom types like `FlameServer`, `Request`, and `Response`.
+3. **Docstrings**: Original comments formatted in markdown directly in VS Code hover modals!
+4. **Signatures**: Exact parameter types and return values for every native function and struct method.
+
+When hovering over `app` in the example above, VS Code natively displays:
+```flame
+app: FlameServer
+```
+And typing `app.` pops up completion items for `.get()`, `.post()`, and `.listen()` with their accurate parameter types and return signatures!

@@ -76,6 +76,64 @@ pub enum CValueTag {
     String,
     NativeObject,
     Range,
+    Function,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlameCallback {
+    pub function_id: u64,
+    pub module_id: u64,
+}
+
+pub struct CallbackRequest {
+    pub callback: FlameCallback,
+    pub args: Vec<CValue>,
+    pub responder: std::sync::mpsc::Sender<CValue>,
+}
+
+static RUNTIME_QUEUE: OnceLock<(Mutex<std::sync::mpsc::Sender<CallbackRequest>>, Mutex<std::sync::mpsc::Receiver<CallbackRequest>>)> = OnceLock::new();
+static CALLBACK_REGISTRY: OnceLock<Mutex<HashMap<u64, Value>>> = OnceLock::new();
+static EVENT_LOOP_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_event_loop_active(active: bool) {
+    EVENT_LOOP_ACTIVE.store(active, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn is_event_loop_active() -> bool {
+    EVENT_LOOP_ACTIVE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub fn register_callback_value(val: Value) -> u64 {
+    static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut reg = CALLBACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+    reg.insert(id, val);
+    id
+}
+
+pub fn get_callback_value(id: u64) -> Option<Value> {
+    let reg = CALLBACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+    reg.get(&id).cloned()
+}
+
+pub fn get_runtime_queue() -> &'static (Mutex<std::sync::mpsc::Sender<CallbackRequest>>, Mutex<std::sync::mpsc::Receiver<CallbackRequest>>) {
+    RUNTIME_QUEUE.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        (Mutex::new(tx), Mutex::new(rx))
+    })
+}
+
+pub fn enqueue_callback(callback: FlameCallback, args: Vec<CValue>) -> Result<CValue, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let req = CallbackRequest {
+        callback,
+        args,
+        responder: tx,
+    };
+    let queue_sender = get_runtime_queue().0.lock().unwrap().clone();
+    queue_sender.send(req).map_err(|e| format!("Failed to enqueue callback: {}", e))?;
+    rx.recv().map_err(|e| format!("Callback evaluation failed or runtime terminated: {}", e))
 }
 
 #[repr(C)]
@@ -90,6 +148,9 @@ pub struct CValue {
     pub obj_ptr: *mut std::ffi::c_void,
 }
 
+unsafe impl Send for CValue {}
+unsafe impl Sync for CValue {}
+
 impl CValue {
     pub fn null() -> Self {
         Self {
@@ -101,6 +162,14 @@ impl CValue {
             string_ptr: std::ptr::null_mut(),
             obj_ptr: std::ptr::null_mut(),
         }
+    }
+
+    pub fn from_string(s: &str) -> Self {
+        let c_str = std::ffi::CString::new(s).unwrap_or_default();
+        let mut cv = Self::null();
+        cv.tag = CValueTag::String;
+        cv.string_ptr = c_str.into_raw();
+        cv
     }
 }
 
@@ -257,6 +326,18 @@ impl Value {
                 obj_ptr: *ptr as *mut std::ffi::c_void,
             },
             Value::Return(inner) => inner.pack(),
+            Value::Function { .. } | Value::NativeCallback(_) => {
+                let fn_id = register_callback_value(self.clone());
+                CValue {
+                    tag: CValueTag::Function,
+                    int_val: fn_id as i64,
+                    int_val2: 0,
+                    float_val: 0.0,
+                    bool_val: false,
+                    string_ptr: std::ptr::null_mut(),
+                    obj_ptr: std::ptr::null_mut(),
+                }
+            }
             _ => CValue::null(),
         }
     }
@@ -288,6 +369,10 @@ impl Value {
                 type_name: type_name.to_string(),
                 ptr: cval.obj_ptr as usize,
             },
+            CValueTag::Function => {
+                let id = cval.int_val as u64;
+                get_callback_value(id).unwrap_or(Value::Nil)
+            }
         }
     }
 
@@ -398,6 +483,23 @@ impl Env {
     pub fn fork(&self) -> Self {
         Self {
             variables: self.variables.clone(),
+            parent: None,
+        }
+    }
+
+    pub fn snapshot(&self) -> Self {
+        let mut vars = HashMap::new();
+        if let Some(parent) = &self.parent {
+            let parent_snapshot = parent.lock().unwrap().snapshot();
+            for (k, entry) in parent_snapshot.variables {
+                vars.insert(k, entry);
+            }
+        }
+        for (k, entry) in &self.variables {
+            vars.insert(k.clone(), entry.clone());
+        }
+        Self {
+            variables: vars,
             parent: None,
         }
     }

@@ -1,0 +1,57 @@
+// import std.thread
+// import hello
+// let user: Formula = formula {
+//     name: "soham",
+//     id: 89,
+//     isAdmin: true,
+//     numbers: [9,9],
+//     status: (a: String) {
+//         print(a);
+//     }
+// }
+// const t: ThreadHandler = thread {
+//     user.status("online")
+//     hello.sayhello(&user)
+// }
+// t.join()
+// print(user.name)
+// let mut arr: Vec<Int> = [99, 99]
+// arr.push(100)
+// print(arr)
+// let filtered: Vec<Int> = arr.filter(
+//     (x: Int) {
+//         return x>99
+//     }
+// )
+// print($"Filtered: {filtered}")
+// let mapped: Vec<Int> = arr.map(
+//     (x: Int) {
+//         return x * 2
+//     }
+// )
+// print($"Mapped: {mapped}")
+// let name: String = input("Enter your name: ")
+// print($"Hello {name}")
+import native.server
+
+
+
+fn home() -> String {
+    "hello from flame"
+}
+
+fn about() -> String {
+    "about page"
+}
+
+let app = await server.init()
+app.get("/", home)
+app.get("/about", about)
+fn create_user(body: String) -> String {
+    print($"Received POST data: {body}")
+
+    $"Created user with data: {body}"
+}
+
+app.post("/users", create_user)
+await app.listen(3000)

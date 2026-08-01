@@ -1,5 +1,5 @@
 use crate::parser::Param;
-use crate::vm::{self, Env, Value};
+use crate::vm::{Env, Value};
 use std::sync::{Arc, Mutex};
 
 pub fn register_global_builtins(env: Arc<Mutex<Env>>) {

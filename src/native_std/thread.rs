@@ -27,18 +27,23 @@ pub fn init() -> HashMap<String, Value> {
             if args.is_empty() {
                 return Err("thread.spawn expects 1 argument (function or callback)".to_string());
             }
-            if let Value::Function { body: _, params: _, env: _ } = &args[0] {
-                // Thread spawning a Wren function is complex natively without VM cloning,
-                // but we can return a stub thread handle for now.
-                Ok(Value::ThreadHandler(999))
+            if let Value::Function { .. } = &args[0] {
+                // Note: Real OS thread execution of Flame functions is intercepted directly
+                // in runner.rs during member evaluation, where the Runner creates an isolated
+                // environment snapshot and spawns a true std::thread with return-value futures.
+                // This fallback is only reached if invoked outside an active evaluation loop.
+                Ok(Value::ThreadHandler(0))
             } else if let Value::NativeCallback(cb) = args[0] {
-                // We can actually spawn native callbacks safely!
-                let _handle = thread::spawn(move || {
-                    let _ = cb(vec![]);
+                let mut counter = crate::vm::get_thread_counter().lock().unwrap();
+                *counter += 1;
+                let id = *counter;
+                let handle = thread::spawn(move || {
+                    cb(vec![]).unwrap_or(Value::Nil)
                 });
-                Ok(Value::ThreadHandler(998))
+                crate::vm::get_threads().lock().unwrap().insert(id, handle);
+                Ok(Value::ThreadHandler(id))
             } else {
-                Err("thread.spawn argument must be a function".to_string())
+                Err("thread.spawn argument must be a function or callback".to_string())
             }
         }),
     );
@@ -56,6 +61,27 @@ pub fn init() -> HashMap<String, Value> {
         Value::NativeCallback(|_args| {
             thread::yield_now();
             Ok(Value::Nil)
+        }),
+    );
+
+    m.insert(
+        "channel".to_string(),
+        Value::NativeCallback(|_args| {
+            let mut counter = crate::vm::get_channel_counter().lock().unwrap();
+            *counter += 1;
+            let chan_id = *counter;
+
+            let (tx, rx) = std::sync::mpsc::channel();
+            crate::vm::get_channels().lock().unwrap().insert(chan_id, tx);
+            crate::vm::get_receivers()
+                .lock()
+                .unwrap()
+                .insert(chan_id, std::sync::Arc::new(std::sync::Mutex::new(rx)));
+
+            Ok(Value::Tuple(vec![
+                Value::Sender(chan_id),
+                Value::Receiver(chan_id),
+            ]))
         }),
     );
 

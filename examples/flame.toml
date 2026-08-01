@@ -1,5 +1,5 @@
 [package]
-name = "automation"
+name = "examples"
 version = "0.1.0"
 edition = "2026"
 type = "executable"
@@ -8,8 +8,8 @@ type = "executable"
 std = "0.1.0"
 
 [native-dependencies]
-uuid = { version = "*", features = ["v4"] }
-rand = "0.10.2"
+# uuid = { version = "*", features = ["v4"] }
+# rand = "0.10.2"
 
 [plugins]
-bridge = "./native"
+server = "./native"

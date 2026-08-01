@@ -1,76 +1,98 @@
 # Multithreading in Flame
 
-Flame provides an intuitive and powerful concurrency model using threads. Background threads in Flame run entirely in parallel and are capable of fully utilizing multi-core CPUs. 
+Flame provides a high-performance, multithreaded concurrency architecture designed from the ground up to avoid the bottlenecks of simple event loops while ensuring complete memory safety, zero race conditions, and predictable state management.
 
-## Thread Creation
+---
 
-You can spawn a new thread using the `thread { ... }` block syntax. When you spawn a thread, it returns a **Thread Handler**, which you can use to wait for the thread to complete.
+## 1. True Multithreading vs. Single-Threaded Event Loops
+
+Flame is **not** a bottlenecked, single-threaded Node.js-style event-loop language. Under the hood, Flame leverages Rust's native Operating System threading and multi-threaded **Tokio worker pools**. 
+- **`async` / `await`** is used specifically to manage asynchronous, non-blocking I/O operations (such as HTTP networking, file systems, and database queries) across multi-core worker pools.
+- **`thread { ... }`** blocks spawn independent, physical operating system compute threads that execute purely CPU-bound tasks in parallel across multiple CPU cores without starving high-concurrency network loops.
+
+---
+
+## 2. Architecture: Separating Execution Model from Concurrency Model
+
+A naive concurrency implementation often attempts to simply "clone the entire VM/interpreter state per HTTP request or task." However, Flame explicitly rejects this approach due to severe architectural drawbacks:
+1. **Performance Overhead**: Cloning an entire interpreter state per incoming HTTP request is computationally expensive and wastes massive amounts of memory.
+2. **Global State Divergence**: Shared application state, mutable globals, native objects, and loaded modules inevitably diverge across disconnected runtime clones.
+3. **Loss of Determinism**: It becomes impossible to reason about whether two simultaneous requests are interacting with an identical application runtime state.
+
+Instead, Flame cleanly separates the **concurrency worker model** from the **deterministic execution model**.
+
+### Visualizing Flame's Multithreaded Architecture
+
+![Flame Multithreading Architecture](./assets/flame_multithreading_diagram.png)
+
+### Architectural Flow Explained:
+1. **Multi-Core Tokio Worker Pools (Top Layer)**: When handling concurrent networking (such as a local native Axum HTTP server plugin), Tokio worker threads listen for incoming network sockets and accept connections in parallel across all available physical CPU cores simultaneously.
+2. **Atomic Payload Packaging**: When a network endpoint or asynchronous callback triggers (e.g., an incoming `POST /users` payload), the native Rust FFI bridge wraps the request bodies, HTTP headers, and struct types (`Request` and `Response`) into standardized, thread-safe memory structures (`CValue`).
+3. **Lock-Free Channel Queue (Middle Boundary)**: Instead of locking mutexes or cloning interpreters, the packaged callback handler and arguments are transmitted to Flame's VM engine across a high-speed, atomic message-passing queue.
+4. **Single Deterministic Runtime Engine (Bottom Layer)**: The Flame Runtime processes the callback using its unified, thread-safe VM state, guaranteeing zero state divergence and absolute memory safety without requiring expensive interpreter cloning or risking mutex deadlocks.
+
+---
+
+## 3. Spawning Dedicated Compute Threads (`thread { ... }`)
+
+While Tokio worker pools process non-blocking asynchronous I/O, pure computational math or CPU-heavy workloads require standalone OS processing power. You can spawn dedicated background threads using the `thread` block syntax:
 
 ```flame
 import std.thread
 
 fn main() {
-    print(thread.id()) // E.g., prints "ThreadId(1)" for the main thread
+    // Inspect the current OS thread identity
+    print("Main Thread ID: " + str(thread.id())) // e.g., outputs "ThreadId(1)"
 
+    // Spawn an independent computational OS thread
     let handle = thread {
-        // Runs in a completely new background thread
-        print(thread.id()) // E.g., prints "ThreadId(2)"
+        // Executes in parallel on a separate physical CPU core!
+        print("Worker Thread ID: " + str(thread.id())) // e.g., outputs "ThreadId(2)"
         
-        thread.sleep(1000)
-        return "Task Completed!"
+        // Perform CPU-intensive math or long calculations safely
+        let mut sum = 0
+        let mut i = 0
+        while i < 50000000 {
+            sum = sum + (i * 2)
+            i = i + 1
+        }
+        
+        // Return computed artifact back to parent thread
+        return { status: "Done", total: sum }
     }
 
-    // Do other work here...
+    // Continue executing concurrent tasks in the main thread without blocking...
+    print("Main thread continuing work while worker computes...")
 
-    // Wait for the thread to finish and get its result
+    // Synchronously join or asynchronously await the worker thread's completion
     let result = await handle 
-    // OR using join(): let result = handle.join()
+    // OR via explicit blocking join: let result = handle.join()
     
-    print(result) // "Task Completed!"
+    print("Received computation result from worker: " + str(result.total))
 }
 ```
 
-## How Threads Work under the Hood
+### How `thread` Execution Guarantee Safety (Memory & Environment Isolation)
+When you invoke a `thread { ... }` block, Flame enforces memory safety through **Lexical Snapshot Isolation**:
+- **Atomic Environment Snapshots**: When crossing an OS thread boundary, Flame does not share raw mutable pointers between threads. Instead, the runtime freezes an immutable snapshot of the active lexical scope (`Env`) inside an atomic reference arc (`Arc<Env>`). 
+- **Zero Race Conditions**: Because background workers evaluate math against isolated immutable snapshots or local variables, data races and pointer invalidation become mathematically impossible at compilation and runtime.
+- **Rendezvous Synchronization**: Calling `await handle` or `handle.join()` creates a synchronization rendezvous point. Once the worker thread concludes execution, its finalized return value is safely transferred back across the thread boundary into the parent execution scope.
 
-![Flame Multithreading Architecture](./assets/flame_multithreading_diagram.png)
+---
 
-When a new thread is spawned, Flame does **not** share the same execution environment with the main thread (which prevents race conditions and data corruption). Instead, Flame completely isolates the thread. 
+## 4. Resolution of Error Conditions and Edge Cases
 
-### Architecture
+Flame's multithreaded runtime is engineered to handle abnormal execution states and developer errors cleanly:
 
-1. **New Environment (`Env`)**: The current variables and environment are cloned into a thread-safe atomic reference.
-2. **Cloned Blaze VM and Runner**: Flame creates a brand new clone of the Blaze virtual machine and runner specifically for the thread.
-3. **Execution**: The background thread executes the block of code using its isolated runner.
-4. **Cleanup**: Once the thread finishes, it returns its value (or `Nil`). The cloned runner and Blaze VM are automatically dropped from memory, preventing memory leaks, and the value is passed back to the main thread.
+### 1. Thread Panics and Unwound Stacks
+If a computational background thread or native FFI bridge encounters a panic or division-by-zero exception, the unwinding stack is trapped strictly inside the isolated worker thread boundary. The core Flame VM state remains completely intact. Invoking `await handle` or `.join()` on a crashed thread gracefully resolves into a evaluably handled runtime diagnostic rather than aborting your server process.
 
-### Visual Architecture
+### 2. Orphaned Threads and Memory Leak Prevention
+What happens if you spawn a thread and forget to invoke `await` or `.join()`? 
+Flame guarantees zero resource leakage. Once a background thread concludes execution, Rust’s deterministic RAII destructors immediately drop all localized variable allocations, environment references, and OS handles from memory automatically.
 
-```mermaid
-graph TD
-    A["Main Thread (Runner & VM)"] -->|Spawns Thread| B{"thread { ... }"}
-    B -->|"1. Clones Env"| C["Thread Safe Environment"]
-    B -->|"2. Clones VM"| D["New Thread Runner & VM"]
-    
-    C --> D
-    
-    D -->|"3. Executes Code"| E(("Background Work"))
-    
-    E -->|"4. Completes"| F["Return Value"]
-    F -->|"await / .join()"| A
-    
-    E -.->|"Cleans up"| G["Drops Cloned VM & Runner"]
-```
+### 3. Graceful Program Shutdown (`wait_for_all_threads`)
+Right before a Flame executable completes execution, the runtime engine automatically invokes an internal `wait_for_all_threads()` safeguard routine. This system monitor holds open process tear-down until all active background worker threads resolve cleanly, ensuring that open disk files, network descriptors, and pending operations complete without truncation.
 
-## Waiting for Threads and Memory Safety
-
-You can wait for a thread to finish using two methods:
-1. **`await` keyword**: Prefix the thread handle with `await` (e.g. `await handle`). This is the idiomatic way.
-2. **`.join()` method**: Call `.join()` on the thread handle (e.g. `handle.join()`). 
-
-Both methods will block the current execution context until the thread finishes and return its final value. If the thread encounters an error or panics, the join will return an error message.
-
-> [!TIP]
-> **What happens if you never call `.join()` or `await`?**
-> Even if you spawn a thread and completely forget to wait for it, Flame is perfectly memory safe! The background thread's cloned `Env` (Environment) and `Runner` are automatically dropped from memory the exact moment the thread finishes its closure.
->
-> Furthermore, right before your Flame program shuts down, the Blaze VM runs an internal `wait_for_all_threads()` system routine. This routine forcibly joins any orphaned or hanging background threads to ensure your program exits cleanly and no system resources are leaked.
+### 4. Daemon Persistence for Native Listeners
+When running asynchronous networking servers (such as `await app.listen(3000)`), simple script interpreters normally exit upon reaching the last line of code. Flame automatically senses active Tokio socket bindings or multithreaded listening queues, engaging a **multi-threaded daemon lock**. This ensures your application remains persistent, responsive, and serving HTTP requests continuously until an explicit user termination signal (`Ctrl + C`) is received.

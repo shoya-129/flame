@@ -6,6 +6,12 @@ use std::path::Path;
 pub struct FlameParamMeta {
     pub name: String,
     pub type_name: String,
+    #[serde(default)]
+    pub is_callback: bool,
+    #[serde(default)]
+    pub is_ref: bool,
+    #[serde(default)]
+    pub is_mut: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -18,6 +24,12 @@ pub struct FlameFunctionMeta {
     pub is_static: bool,
     #[serde(default)]
     pub is_generic: bool,
+    #[serde(default)]
+    pub is_async: bool,
+    #[serde(default)]
+    pub is_constructor: bool,
+    #[serde(default)]
+    pub receiver: Option<String>,
     #[serde(default)]
     pub docs: Option<String>,
 }
@@ -40,6 +52,7 @@ pub struct FlameMeta {
     #[serde(default)]
     pub docs: Option<String>,
 }
+
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PluginSpec {
@@ -117,44 +130,87 @@ pub fn add_package(args: &[String]) {
     if args.is_empty() {
         println!("\x1b[1;31merror:\x1b[0m please specify package name to add.");
         println!(
-            "usage: flame add <package_name> | flame add @plugin <plugin_name_or_url@version>"
+            "usage: flame add <package_name> | flame add --plugin <path> --name <plugin_name>"
         );
         return;
     }
 
-    let is_plugin = args[0] == "@plugin";
-    let raw_target = if is_plugin {
-        if args.len() < 2 {
-            println!("\x1b[1;31merror:\x1b[0m please specify plugin name or source.");
-            return;
-        }
-        &args[1]
-    } else {
-        &args[0]
-    };
+    let is_plugin = args.contains(&"--plugin".to_string()) || args.contains(&"@plugin".to_string());
     let is_native = args.contains(&"--native".to_string());
 
-    let plugin_name = raw_target
-        .rsplit('/')
-        .next()
-        .unwrap_or(raw_target)
-        .split('@')
-        .next()
-        .unwrap_or(raw_target)
-        .trim_end_matches(".git")
-        .to_string();
-    let manifest_key = &plugin_name;
-    let manifest_value = if raw_target == manifest_key {
-        "*"
+    let (manifest_key, manifest_value, section) = if is_plugin {
+        let plugin_idx = match args.iter().position(|r| r == "--plugin" || r == "@plugin") {
+            Some(idx) => idx,
+            None => {
+                println!("\x1b[1;31merror:\x1b[0m --plugin requires a file path argument (e.g. --plugin ./native).");
+                return;
+            }
+        };
+        let plugin_path = match args.get(plugin_idx + 1) {
+            Some(p) if !p.starts_with("--") => p.clone(),
+            _ => {
+                println!("\x1b[1;31merror:\x1b[0m --plugin requires a valid file path argument (e.g. --plugin ./native).");
+                return;
+            }
+        };
+        let plugin_name = if let Some(name_idx) = args.iter().position(|r| r == "--name") {
+            match args.get(name_idx + 1) {
+                Some(n) if !n.starts_with("--") => n.clone(),
+                _ => {
+                    println!("\x1b[1;31merror:\x1b[0m --name requires a valid name argument (e.g. --name server).");
+                    return;
+                }
+            }
+        } else {
+            let cargo_toml_path = Path::new(&plugin_path).join("Cargo.toml");
+            let mut extracted = None;
+            if cargo_toml_path.exists() {
+                if let Ok(content) = fs::read_to_string(&cargo_toml_path) {
+                    for line in content.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.starts_with("name") && trimmed.contains('=') {
+                            if let Some(val) = trimmed.split('=').nth(1) {
+                                let clean = val.trim().trim_matches('"').trim_matches('\'');
+                                if !clean.is_empty() {
+                                    extracted = Some(clean.to_string());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            extracted.unwrap_or_else(|| {
+                Path::new(&plugin_path)
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .unwrap_or("plugin")
+                    .to_string()
+            })
+        };
+        (plugin_name, plugin_path, "[plugins]")
     } else {
-        raw_target
-    };
-    let section = if is_plugin {
-        "[plugins]"
-    } else if is_native {
-        "[native-dependencies]"
-    } else {
-        "[dependencies]"
+        let raw_target = &args[0];
+        let name = raw_target
+            .rsplit('/')
+            .next()
+            .unwrap_or(raw_target)
+            .split('@')
+            .next()
+            .unwrap_or(raw_target)
+            .trim_end_matches(".git")
+            .to_string();
+        let val = if raw_target == &name {
+            "*".to_string()
+        } else {
+            raw_target.clone()
+        };
+        let sec = if is_native {
+            "[native-dependencies]"
+        } else {
+            "[dependencies]"
+        };
+        (name, val, sec)
     };
 
     println!(
@@ -172,7 +228,7 @@ pub fn add_package(args: &[String]) {
     let toml_path = Path::new("flame.toml");
     if toml_path.exists() {
         let mut content = fs::read_to_string(toml_path).unwrap_or_default();
-        if !content.contains(&format!("{} =", manifest_key)) {
+        if !content.contains(&format!("{} =", manifest_key)) && !content.contains(&format!("{}=", manifest_key)) {
             if !content.contains(section) {
                 content.push_str(&format!("\n{}\n", section));
                 content.push_str(&format!("{} = \"{}\"\n", manifest_key, manifest_value));
@@ -187,7 +243,7 @@ pub fn add_package(args: &[String]) {
     }
 
     if is_plugin {
-        let local_plugin = Path::new(manifest_key);
+        let local_plugin = Path::new(&manifest_value);
         if local_plugin.join("Cargo.toml").exists() {
             println!(
                 "\x1b[1;36m   Compiling\x1b[0m native plugin '{}'...",
@@ -197,7 +253,12 @@ pub fn add_package(args: &[String]) {
                 .arg("build")
                 .current_dir(local_plugin)
                 .output();
-            inspect_native_plugin(manifest_key, local_plugin);
+            inspect_native_plugin(&manifest_key, local_plugin);
+        } else {
+            println!(
+                "\x1b[1;33m   Warning:\x1b[0m local plugin path '{}' does not contain Cargo.toml yet.",
+                manifest_value
+            );
         }
     }
 
@@ -233,11 +294,12 @@ pub fn remove_package(pkg_name: &str) {
     println!("\x1b[1;32m     Removed\x1b[0m package '{}'", pkg_name);
 }
 
-pub fn ensure_dependencies_installed() {
+pub fn ensure_dependencies_installed(is_release: bool) {
     // Compile std_bridge directly since it uses #[flame_export] now
     let std_bridge_path = Path::new("flame-stdlib").join("native").join("std_bridge");
     if std_bridge_path.exists() {
-        let lib_out = std_bridge_path.join("target").join("debug").join("libstd_bridge.rlib");
+        let profile_dir = if is_release { "release" } else { "debug" };
+        let lib_out = std_bridge_path.join("target").join(profile_dir).join("libstd_bridge.rlib");
         let mut needs_build = true;
         if lib_out.exists() {
             if let Ok(out_meta) = fs::metadata(&lib_out) {
@@ -253,10 +315,12 @@ pub fn ensure_dependencies_installed() {
             }
         }
         if needs_build {
-            let _ = std::process::Command::new("cargo")
-                .arg("build")
-                .current_dir(&std_bridge_path)
-                .output();
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.arg("build");
+            if is_release {
+                cmd.arg("--release");
+            }
+            let _ = cmd.current_dir(&std_bridge_path).output();
         }
     }
     let toml_path = Path::new("flame.toml");
@@ -396,13 +460,16 @@ pub fn ensure_dependencies_installed() {
 
         if plugin_path.join("Cargo.toml").exists() {
             println!(
-                "\x1b[1;36m   Compiling\x1b[0m native plugin '{}'...",
-                target
+                "\x1b[1;36m   Compiling\x1b[0m native plugin '{}' ({})...",
+                target,
+                if is_release { "release [optimized]" } else { "dev [unoptimized]" }
             );
-            let output = std::process::Command::new("cargo")
-                .arg("build")
-                .current_dir(plugin_path)
-                .output();
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.arg("build");
+            if is_release {
+                cmd.arg("--release");
+            }
+            let output = cmd.current_dir(plugin_path).output();
             if let Ok(out) = output {
                 if !out.status.success() {
                     println!(
@@ -480,7 +547,8 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
         .join("doc")
         .join(format!("{}.json", target.replace("-", "_")));
 
-    let meta = parse_rustdoc_json(&rustdoc_json_path, target);
+    let mut meta = parse_rustdoc_json(&rustdoc_json_path, target);
+    enrich_with_syn(&mut meta, plugin_path);
 
     let pkg_dir = Path::new(".flame").join("pkg").join(target);
     let _ = fs::create_dir_all(&pkg_dir);
@@ -585,76 +653,33 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                 }
                             }
 
-                            let has_unsupported_param = param_types.iter().any(|pt| {
-                                let p = pt.to_lowercase();
-                                !p.contains("str")
-                                    && !p.contains("bool")
-                                    && !p.contains("range")
-                                    && p != "i8"
-                                    && p != "i16"
-                                    && p != "i32"
-                                    && p != "i64"
-                                    && p != "i128"
-                                    && p != "isize"
-                                    && p != "u8"
-                                    && p != "u16"
-                                    && p != "u32"
-                                    && p != "u64"
-                                    && p != "u128"
-                                    && p != "usize"
-                            });
-                            let mut generic_param_name = String::new();
-                            if let Some(func_obj) =
-                                inner.get("function").and_then(|f| f.as_object())
-                            {
-                                if let Some(generics) =
-                                    func_obj.get("generics").and_then(|g| g.as_object())
-                                {
-                                    if let Some(params) =
-                                        generics.get("params").and_then(|p| p.as_array())
-                                    {
-                                        if params.len() == 1 {
-                                            if let Some(p_name) =
-                                                params[0].get("name").and_then(|n| n.as_str())
-                                            {
-                                                generic_param_name = p_name.to_string();
-                                            }
+                            if let Some(func_obj) = inner.get("function").and_then(|f| f.as_object()) {
+                                if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
+                                    if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                                        if !params.is_empty() {
                                             is_generic = true;
                                         }
                                     }
                                 }
                             }
 
-                            if return_type.contains("(")
-                                || return_type.contains("impl ")
-                                || param_types.iter().any(|pt| pt.contains("impl "))
-                                || (has_unsupported_param && !is_generic)
-                            {
-                                continue;
-                            }
-
-                            if is_generic && !param_types.is_empty() {
-                                continue;
-                            }
-
-                            if is_generic && return_type != generic_param_name {
-                                continue;
-                            }
-
-                            if is_generic {
-                                return_type = "Generic".to_string();
-                            }
-
+                            let is_constructor = return_type == target;
                             functions.push(FlameFunctionMeta {
                                 name: name.to_string(),
                                 flame_name: name.to_string(),
                                 is_generic,
+                                is_async: false,
+                                is_constructor,
+                                receiver: None,
                                 params: param_types
                                     .iter()
                                     .enumerate()
                                     .map(|(i, pt)| FlameParamMeta {
                                         name: format!("arg{}", i),
                                         type_name: pt.clone(),
+                                        is_callback: pt == "Callback" || pt == "FlameCallback",
+                                        is_ref: false,
+                                        is_mut: false,
                                     })
                                     .collect(),
                                 return_type: return_type.clone(),
@@ -744,7 +769,6 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                         let mut consumes_self =
                                                                             false;
                                                                         let mut is_generic = false;
-                                                                        let mut has_bounds = false;
                                                                         if let Some(func_obj) =
                                                                             m_inner
                                                                                 .get("function")
@@ -768,31 +792,10 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                                         p.as_array()
                                                                                     })
                                                                                 {
-                                                                                    if !params
-                                                                                        .is_empty()
-                                                                                    {
-                                                                                        if params
-                                                                                            .len()
-                                                                                            == 1
-                                                                                        {
-                                                                                            if let Some(kind) = params[0].get("kind").and_then(|k| k.as_object()) {
-                                                                                                if let Some(type_obj) = kind.get("type").and_then(|t| t.as_object()) {
-                                                                                                    if let Some(bounds) = type_obj.get("bounds").and_then(|b| b.as_array()) {
-                                                                                                        if !bounds.is_empty() {
-                                                                                                            has_bounds = true;
-                                                                                                        }
-                                                                                                    }
-                                                                                                }
-                                                                                            }
-                                                                                            is_generic = true;
-                                                                                        } else {
-                                                                                            continue;
-                                                                                        }
+                                                                                    if !params.is_empty() {
+                                                                                        is_generic = true;
                                                                                     }
                                                                                 }
-                                                                            }
-                                                                            if has_bounds {
-                                                                                continue;
                                                                             }
                                                                             if let Some(sig) =
                                                                                 func_obj
@@ -850,99 +853,48 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                                 }
                                                                             }
                                                                         }
-                                                                        let mut generic_param_name =
-                                                                            String::new();
-                                                                        if let Some(func_obj) =
-                                                                            m_inner
-                                                                                .get("function")
-                                                                                .and_then(|f| {
-                                                                                    f.as_object()
-                                                                                })
-                                                                        {
-                                                                            if let Some(generics) =
-                                                                                func_obj
-                                                                                    .get("generics")
-                                                                                    .and_then(|g| {
-                                                                                        g.as_object(
-                                                                                        )
-                                                                                    })
-                                                                            {
-                                                                                if let Some(
-                                                                                    params,
-                                                                                ) = generics
-                                                                                    .get("params")
-                                                                                    .and_then(|p| {
-                                                                                        p.as_array()
-                                                                                    })
-                                                                                {
-                                                                                    if params.len()
-                                                                                        == 1
-                                                                                    {
-                                                                                        if let Some(p_name) = params[0].get("name").and_then(|n| n.as_str()) {
-                                                                                            generic_param_name = p_name.to_string();
-                                                                                        }
+                                                                        if let Some(func_obj) = m_inner.get("function").and_then(|f| f.as_object()) {
+                                                                            if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
+                                                                                if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                                                                                    if !params.is_empty() {
                                                                                         is_generic = true;
                                                                                     }
                                                                                 }
                                                                             }
                                                                         }
 
-                                                                        let has_unsupported_param = m_param_types.iter().any(|pt| {
-                                                                                    let p = pt.to_lowercase();
-                                                                                    !p.contains("str") && !p.contains("bool") && !p.contains("range") && 
-                                                                                    p != "i8" && p != "i16" && p != "i32" && p != "i64" && p != "i128" && p != "isize" &&
-                                                                                    p != "u8" && p != "u16" && p != "u32" && p != "u64" && p != "u128" && p != "usize"
-                                                                                });
-
-                                                                        if consumes_self
-                                                                            || m_return_type
-                                                                                .contains("(")
-                                                                            || m_return_type.contains("impl ")
-                                                                            || m_param_types
-                                                                                .iter()
-                                                                                .any(|pt| {
-                                                                                    pt.contains(
-                                                                                        "impl ",
-                                                                                    )
-                                                                                })
-                                                                            || (has_unsupported_param && !is_generic)
-                                                                        {
-                                                                            continue;
-                                                                        }
-
-                                                                        if is_generic
-                                                                            && !m_param_types
-                                                                                .is_empty()
-                                                                        {
-                                                                            continue;
-                                                                        }
-
-                                                                        if is_generic && m_return_type != generic_param_name {
-                                                                            continue;
-                                                                        }
-
-                                                                        if is_generic {
-                                                                            m_return_type =
-                                                                                "Generic"
-                                                                                    .to_string();
-                                                                        }
-
+                                                                        let receiver = if !is_static {
+                                                                            if consumes_self {
+                                                                                Some("self".to_string())
+                                                                            } else {
+                                                                                Some("&mut self".to_string())
+                                                                            }
+                                                                        } else {
+                                                                            None
+                                                                        };
+                                                                        let is_constructor = is_static && (m_return_type == "Self" || m_return_type == name);
                                                                         s_methods.push(FlameFunctionMeta {
-                                                                                    name: m_name.to_string(),
-                                                                                    flame_name: m_name.to_string(),
-                                                                                    is_generic,
-                                                                                    params: m_param_types.iter().enumerate().map(|(idx, pt)| FlameParamMeta {
-                                                                                        name: format!("arg{}", idx),
-                                                                                        type_name: pt.clone(),
-                                                                                    }).collect(),
-                                                                                    return_type: m_return_type,
-                                                                                    is_static,
-                                                                                    docs: m_item
-                                                                                        .get("docs")
-                                                                                        .and_then(|d| d.as_str())
-                                                                                        .map(|d| d.trim().to_string())
-                                                                                        .filter(|d| !d.is_empty()),
-                                                                                });
+                                                                            name: m_name.to_string(),
+                                                                            flame_name: m_name.to_string(),
+                                                                            is_generic,
+                                                                            is_async: false,
+                                                                            is_constructor,
+                                                                            receiver,
+                                                                            params: m_param_types.iter().enumerate().map(|(idx, pt)| FlameParamMeta {
+                                                                                name: format!("arg{}", idx),
+                                                                                type_name: pt.clone(),
+                                                                                is_callback: pt == "Callback" || pt == "FlameCallback",
+                                                                                is_ref: false,
+                                                                                is_mut: false,
+                                                                            }).collect(),
+                                                                            return_type: m_return_type,
+                                                                            is_static,
+                                                                            docs: m_item
+                                                                                .get("docs")
+                                                                                .and_then(|d| d.as_str())
+                                                                                .map(|d| d.trim().to_string())
+                                                                                .filter(|d| !d.is_empty()),
+                                                                        });
                                                                     }
                                                                 }
                                                             }
@@ -994,6 +946,21 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
 }
 
 fn parse_type(ty: &serde_json::Value) -> String {
+    if let Some(bref) = ty.get("borrowed_ref").and_then(|b| b.as_object()) {
+        if let Some(inner) = bref.get("type") {
+            let mut ty_str = String::from("&");
+            if let Some(lt) = bref.get("lifetime").and_then(|l| l.as_str()) {
+                if lt == "'static" {
+                    ty_str.push_str("'static ");
+                }
+            }
+            if bref.get("mutable").and_then(|m| m.as_bool()).unwrap_or(false) {
+                ty_str.push_str("mut ");
+            }
+            ty_str.push_str(&parse_type(inner));
+            return ty_str;
+        }
+    }
     if let Some(prim) = ty.get("primitive").and_then(|p| p.as_str()) {
         return prim.to_string();
     }
@@ -1016,4 +983,242 @@ fn parse_type(ty: &serde_json::Value) -> String {
         return generic.to_string();
     }
     "NativeObject".to_string()
+}
+
+pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
+    let src_dir = plugin_path.join("src");
+    if !src_dir.exists() {
+        return;
+    }
+
+    let mut files_to_scan = Vec::new();
+    if let Ok(entries) = fs::read_dir(&src_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("rs") {
+                files_to_scan.push(p);
+            }
+        }
+    }
+
+    for file_path in files_to_scan {
+        if let Ok(code) = fs::read_to_string(&file_path) {
+            if let Ok(syntax_tree) = syn::parse_file(&code) {
+                for item in syntax_tree.items {
+                    match item {
+                        syn::Item::Fn(fn_item) => {
+                            let (rename, skip, constructor) = parse_flame_attrs(&fn_item.attrs);
+                            if skip || fn_item.vis != syn::Visibility::Public(syn::token::Pub::default()) {
+                                continue;
+                            }
+                            let fn_name = fn_item.sig.ident.to_string();
+                            let flame_name = rename.unwrap_or_else(|| fn_name.clone());
+                            let is_async = fn_item.sig.asyncness.is_some();
+                            let return_type = parse_syn_return(&fn_item.sig.output);
+                            let is_constructor = constructor || return_type == meta.module;
+                            let params = parse_syn_params(&fn_item.sig.inputs, &fn_item.sig.generics);
+
+                            if let Some(existing) = meta.functions.iter_mut().find(|f| f.name == fn_name) {
+                                existing.flame_name = flame_name;
+                                existing.is_async = is_async;
+                                existing.is_constructor = is_constructor;
+                                existing.params = params;
+                                existing.return_type = return_type;
+                            } else {
+                                meta.functions.push(FlameFunctionMeta {
+                                    name: fn_name,
+                                    flame_name,
+                                    params,
+                                    return_type,
+                                    is_static: true,
+                                    is_generic: !fn_item.sig.generics.params.is_empty(),
+                                    is_async,
+                                    is_constructor,
+                                    receiver: None,
+                                    docs: None,
+                                });
+                            }
+                        }
+                        syn::Item::Struct(struct_item) => {
+                            let (_, skip, _) = parse_flame_attrs(&struct_item.attrs);
+                            if skip || struct_item.vis != syn::Visibility::Public(syn::token::Pub::default()) {
+                                continue;
+                            }
+                            let struct_name = struct_item.ident.to_string();
+                            if !meta.structs.iter().any(|s| s.name == struct_name) {
+                                meta.structs.push(FlameStructMeta {
+                                    name: struct_name,
+                                    methods: Vec::new(),
+                                    docs: None,
+                                });
+                            }
+                        }
+                        syn::Item::Impl(impl_item) => {
+                            let struct_name = quote::quote!(#impl_item.self_ty).to_string().replace(" ", "");
+                            if let Some(struct_meta) = meta.structs.iter_mut().find(|s| s.name == struct_name) {
+                                for item_in_impl in impl_item.items {
+                                    if let syn::ImplItem::Fn(method_item) = item_in_impl {
+                                        let (rename, skip, constructor) = parse_flame_attrs(&method_item.attrs);
+                                        if skip {
+                                            continue;
+                                        }
+                                        let is_pub = matches!(method_item.vis, syn::Visibility::Public(_));
+                                        if !is_pub {
+                                            continue;
+                                        }
+
+                                        let m_name = method_item.sig.ident.to_string();
+                                        let flame_name = rename.unwrap_or_else(|| m_name.clone());
+                                        let is_async = method_item.sig.asyncness.is_some();
+                                        let return_type = parse_syn_return(&method_item.sig.output);
+                                        
+                                        let mut receiver = None;
+                                        let mut is_static = true;
+                                        if let Some(first_arg) = method_item.sig.inputs.first() {
+                                            if let syn::FnArg::Receiver(rec) = first_arg {
+                                                is_static = false;
+                                                if rec.reference.is_some() {
+                                                    if rec.mutability.is_some() {
+                                                        receiver = Some("&mut self".to_string());
+                                                    } else {
+                                                        receiver = Some("&self".to_string());
+                                                    }
+                                                } else {
+                                                    receiver = Some("self".to_string());
+                                                }
+                                            }
+                                        }
+
+                                        let is_constructor = constructor || (is_static && (return_type == "Self" || return_type == struct_name));
+                                        let params = parse_syn_params(&method_item.sig.inputs, &method_item.sig.generics);
+
+                                        if let Some(existing) = struct_meta.methods.iter_mut().find(|m| m.name == m_name) {
+                                            existing.flame_name = flame_name;
+                                            existing.is_async = is_async;
+                                            existing.is_constructor = is_constructor;
+                                            existing.receiver = receiver;
+                                            existing.params = params;
+                                            existing.return_type = return_type;
+                                            existing.is_static = is_static;
+                                        } else {
+                                            struct_meta.methods.push(FlameFunctionMeta {
+                                                name: m_name,
+                                                flame_name,
+                                                params,
+                                                return_type,
+                                                is_static,
+                                                is_generic: !method_item.sig.generics.params.is_empty(),
+                                                is_async,
+                                                is_constructor,
+                                                receiver,
+                                                docs: None,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool) {
+    let mut rename = None;
+    let mut skip = false;
+    let mut constructor = false;
+    for attr in attrs {
+        if attr.path().is_ident("flame") {
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                } else if meta.path.is_ident("constructor") {
+                    constructor = true;
+                } else if meta.path.is_ident("rename") {
+                    if let Ok(value) = meta.value() {
+                        if let Ok(s) = value.parse::<syn::LitStr>() {
+                            rename = Some(s.value());
+                        }
+                    }
+                }
+                Ok(())
+            });
+        }
+    }
+    (rename, skip, constructor)
+}
+
+fn parse_syn_return(output: &syn::ReturnType) -> String {
+    match output {
+        syn::ReturnType::Default => "()".to_string(),
+        syn::ReturnType::Type(_, ty) => {
+            let ty_str = quote::quote!(#ty).to_string();
+            if ty_str.starts_with("std :: io :: Result") || ty_str.starts_with("Result") {
+                if let Some(inner) = ty_str.split('<').nth(1).and_then(|s| s.split(',').next()) {
+                    return inner.trim().to_string();
+                }
+            }
+            ty_str.replace(" ", "")
+        }
+    }
+}
+
+fn parse_syn_params(inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>, generics: &syn::Generics) -> Vec<FlameParamMeta> {
+    let mut params = Vec::new();
+    let callback_generics = find_callback_generics(generics);
+
+    for input in inputs {
+        if let syn::FnArg::Typed(pat_type) = input {
+            let name = match &*pat_type.pat {
+                syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+                _ => format!("arg{}", params.len()),
+            };
+            let ty_str = quote::quote!(&*pat_type.ty).to_string();
+            let clean_ty = ty_str.replace(" ", "");
+            let is_ref = clean_ty.starts_with('&') && !clean_ty.starts_with("&mut");
+            let is_mut = clean_ty.starts_with("&mut") || clean_ty.starts_with("mut");
+            let is_callback = clean_ty.contains("Callback") || clean_ty.contains("Handler") || clean_ty.contains("Fn(") || callback_generics.contains(&clean_ty);
+
+            params.push(FlameParamMeta {
+                name,
+                type_name: clean_ty,
+                is_callback,
+                is_ref,
+                is_mut,
+            });
+        }
+    }
+    params
+}
+
+fn find_callback_generics(generics: &syn::Generics) -> Vec<String> {
+    let mut cb_generics = Vec::new();
+    for param in &generics.params {
+        if let syn::GenericParam::Type(type_param) = param {
+            let ident = type_param.ident.to_string();
+            for bound in &type_param.bounds {
+                let b_str = quote::quote!(#bound).to_string();
+                if b_str.contains("Handler") || b_str.contains("Fn") || b_str.contains("Callback") {
+                    cb_generics.push(ident.clone());
+                }
+            }
+        }
+    }
+    if let Some(where_clause) = &generics.where_clause {
+        for pred in &where_clause.predicates {
+            if let syn::WherePredicate::Type(pred_type) = pred {
+                let target = quote::quote!(#pred_type.bounded_ty).to_string();
+                for bound in &pred_type.bounds {
+                    let b_str = quote::quote!(#bound).to_string();
+                    if b_str.contains("Handler") || b_str.contains("Fn") || b_str.contains("Callback") {
+                        cb_generics.push(target.replace(" ", ""));
+                    }
+                }
+            }
+        }
+    }
+    cb_generics
 }

@@ -77,6 +77,7 @@ pub struct TypeChecker {
     current_return_type: Option<Type>,
     pub hover_info: HashMap<Span, String>,
     pub modules: HashSet<String>,
+    pub plugins: HashSet<String>,
 }
 
 impl TypeChecker {
@@ -92,6 +93,7 @@ impl TypeChecker {
             current_return_type: None,
             hover_info: HashMap::new(),
             modules: HashSet::new(),
+            plugins: HashSet::new(),
         };
         checker.register_builtins();
         checker
@@ -278,7 +280,11 @@ impl TypeChecker {
                 }
                 Stmt::ImportDecl { path, .. } => {
                     if let Some(mod_name) = path.last() {
-                        self.modules.insert(mod_name.clone());
+                        if path.first().map_or(false, |p| p == "native") {
+                            self.plugins.insert(mod_name.clone());
+                        } else {
+                            self.modules.insert(mod_name.clone());
+                        }
                     }
                 }
                 Stmt::ExportDecl(inner, _) => {
@@ -293,10 +299,15 @@ impl TypeChecker {
         match stmt {
             Stmt::ImportDecl { path, .. } => {
                 if let Some(last) = path.last() {
+                    let kind_str = if path.first().map_or(false, |p| p == "native") {
+                        "plugin"
+                    } else {
+                        "module"
+                    };
                     self.define_var(
                         last.clone(),
                         VarInfo {
-                            ty: Type::Named("module".to_string()),
+                            ty: Type::Named(kind_str.to_string()),
                             is_mut: false,
                         },
                     );
@@ -536,6 +547,8 @@ impl TypeChecker {
                         t => format!("{:?}", t),
                     };
                     Type::Named(format!("fn({}) -> {}", params_str.join(", "), ret_str))
+                } else if self.plugins.contains(name) {
+                    Type::Named("plugin".to_string())
                 } else if self.modules.contains(name) {
                     Type::Named("module".to_string())
                 } else {
@@ -563,6 +576,8 @@ impl TypeChecker {
                     } else {
                         type_str
                     }
+                } else if self.plugins.contains(name) {
+                    "plugin".to_string()
                 } else if self.modules.contains(name) {
                     "module".to_string()
                 } else if let Type::Named(s) = &inferred {

@@ -33,12 +33,28 @@
       "patterns": [
         {
           "name": "comment.line.double-slash.flame",
-          "match": "//.*$"
+          "begin": "//",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.flame"
+            }
+          },
+          "end": "$"
         },
         {
           "name": "comment.block.flame",
           "begin": "/\\*",
-          "end": "\\*/"
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.flame"
+            }
+          },
+          "end": "\\*/",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.flame"
+            }
+          }
         }
       ]
     },

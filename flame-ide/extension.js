@@ -14,7 +14,9 @@ function findCompilerBinary(workspaceRoot) {
     if (workspaceRoot) {
         const candidates = [
             path.join(workspaceRoot, 'target', 'debug', 'flamelang.exe'),
-            path.join(workspaceRoot, 'target', 'release', 'flamelang.exe')
+            path.join(workspaceRoot, 'target', 'release', 'flamelang.exe'),
+            path.join(workspaceRoot, '..', 'target', 'debug', 'flamelang.exe'),
+            path.join(workspaceRoot, '..', 'target', 'release', 'flamelang.exe')
         ]
 
         for (const candidate of candidates) {
@@ -22,7 +24,7 @@ function findCompilerBinary(workspaceRoot) {
         }
     }
 
-    return 'flame'
+    return 'flamelang'
 }
 
 function execCompilerJson(args, cwd) {
@@ -53,10 +55,11 @@ function execCompilerJson(args, cwd) {
 }
 
 async function runCheck(document, position) {
+    if (!document || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return null
     const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
     
     // Write unsaved content to a temporary file so the compiler sees exactly what the user is typing
-    const tempFilePath = document.uri.fsPath + '.fmi'
+    const tempFilePath = document.uri.fsPath + '.tmp.fm'
     try {
         fs.writeFileSync(tempFilePath, document.getText())
     } catch (e) {
@@ -99,8 +102,8 @@ function activate(context) {
     context.subscriptions.push(diagnostics)
 
     async function refreshDiagnostics(document) {
-        const supportedLanguages = ['flame', 'flame-wn', 'flame-config']
-        if (!document || !supportedLanguages.includes(document.languageId)) return
+        const supportedLanguages = ['flame']
+        if (!document || !supportedLanguages.includes(document.languageId) || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return
         const result = await runCheck(document)
         if (!result) return
 
@@ -132,7 +135,7 @@ function activate(context) {
         refreshDiagnostics(vscode.window.activeTextEditor.document)
     }
 
-    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(['flame', 'flame-wn', 'flame-config'], {
+    context.subscriptions.push(vscode.languages.registerCompletionItemProvider(['flame'], {
         async provideCompletionItems(document, position) {
             const result = await runCheck(document, position)
             if (!result) return []
@@ -140,7 +143,7 @@ function activate(context) {
         }
     }, '.', '@'))
 
-    context.subscriptions.push(vscode.languages.registerHoverProvider(['flame', 'flame-wn', 'flame-config'], {
+    context.subscriptions.push(vscode.languages.registerHoverProvider(['flame'], {
         async provideHover(document, position) {
             const result = await runCheck(document, position)
             if (!result || !result.hover) return null
@@ -153,11 +156,12 @@ function activate(context) {
         }
     }))
 
-    context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['flame', 'flame-wn', 'flame-config'], {
+    context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['flame'], {
         async provideDocumentFormattingEdits(document) {
+            if (document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return []
             const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
             
-            const tempFilePath = document.uri.fsPath + '.fmt.fmi'
+            const tempFilePath = document.uri.fsPath + '.fmt.tmp.fm'
             try {
                 fs.writeFileSync(tempFilePath, document.getText())
             } catch (e) {

@@ -50,7 +50,77 @@ impl Runner {
                 }
             }
         }
+        if crate::vm::is_event_loop_active() {
+            println!("\x1b[1;32m    Running\x1b[0m multi-threaded runtime daemon active (press Ctrl+C to exit)");
+            self.process_callback_queue();
+        }
         Ok(last_val)
+    }
+
+    pub fn process_callback_queue(&mut self) {
+        let rx = {
+            let (_, ref receiver) = *crate::vm::get_runtime_queue();
+            receiver
+        };
+        loop {
+            let req = {
+                let guard = match rx.lock() {
+                    Ok(g) => g,
+                    Err(_) => break,
+                };
+                match guard.recv() {
+                    Ok(r) => r,
+                    Err(_) => break,
+                }
+            };
+
+            let callback_val = match crate::vm::get_callback_value(req.callback.function_id) {
+                Some(val) => val,
+                None => {
+                    let _ = req.responder.send(crate::vm::CValue::null());
+                    continue;
+                }
+            };
+
+            let mut flame_args = Vec::new();
+            for arg in req.args {
+                flame_args.push(Value::unpack(arg, "", ""));
+            }
+
+            let res_val = match self.invoke_callback_value(&callback_val, flame_args) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("Runtime error during callback execution: {}", e);
+                    Value::Nil
+                }
+            };
+
+            let _ = req.responder.send(res_val.pack());
+        }
+    }
+
+    pub fn invoke_callback_value(&mut self, callback_val: &Value, evaled_args: Vec<Value>) -> Result<Value, String> {
+        match callback_val {
+            Value::Function { params, body, env: closure_env } => {
+                let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                for (i, p) in params.iter().enumerate() {
+                    if i < evaled_args.len() {
+                        self.bind_param(child_env.clone(), p, evaled_args[i].clone());
+                    }
+                }
+                let mut last_val = Value::Nil;
+                for stmt in body {
+                    let res = self.execute_statement(stmt, child_env.clone())?;
+                    if let Value::Return(ret_val) = res {
+                        return Ok(*ret_val);
+                    }
+                    last_val = res;
+                }
+                Ok(last_val)
+            }
+            Value::NativeCallback(cb) => cb(evaled_args),
+            _ => Ok(Value::Nil),
+        }
     }
 
     fn execute_statement(&mut self, stmt: &Stmt, env: Arc<Mutex<Env>>) -> Result<Value, String> {
@@ -1170,7 +1240,15 @@ impl Runner {
                             let func = self
                                 .native_methods
                                 .get(&sym_str1)
-                                .or_else(|| self.native_methods.get(&sym_str2));
+                                .or_else(|| self.native_methods.get(&sym_str2))
+                                .or_else(|| {
+                                    let prefix = format!("flame_{}_", crate_name);
+                                    let suffix = format!("_{}", member);
+                                    self.native_methods
+                                        .iter()
+                                        .find(|(k, _)| k.starts_with(&prefix) && k.ends_with(&suffix))
+                                        .map(|(_, f)| f)
+                                });
 
                             if let Some(func) = func {
                                 let res = func(c_args.as_ptr(), c_args.len());
@@ -1302,7 +1380,41 @@ impl Runner {
                             } else {
                                 ""
                             };
-                            if namespace == "thread_bridge" && member == "create_channel" {
+                            if (namespace == "thread" || namespace == "std.thread" || map.contains_key("sleep")) && member == "spawn" {
+                                if args.is_empty() {
+                                    return Err("thread.spawn expects 1 argument (function or callback)".to_string());
+                                }
+                                let fn_val = self.eval_expr(&args[0].1, env.clone())?;
+                                let snapshot_env = Arc::new(Mutex::new(env.lock().unwrap().snapshot()));
+                                let mut runner = self.clone_for_thread(snapshot_env.clone());
+
+                                let mut counter = get_thread_counter().lock().unwrap();
+                                *counter += 1;
+                                let id = *counter;
+
+                                let handle = thread::spawn(move || {
+                                    match fn_val {
+                                        Value::Function { body, params: _, env: _ } => {
+                                            let mut last_val = Value::Nil;
+                                            for stmt in &body {
+                                                match runner.execute_statement(stmt, snapshot_env.clone()) {
+                                                    Ok(v) => last_val = v,
+                                                    Err(e) => {
+                                                        eprintln!("Thread error: {}", e);
+                                                        return Value::Nil;
+                                                    }
+                                                }
+                                            }
+                                            last_val
+                                        }
+                                        Value::NativeCallback(cb) => cb(vec![]).unwrap_or(Value::Nil),
+                                        _ => Value::Nil,
+                                    }
+                                });
+
+                                get_threads().lock().unwrap().insert(id, handle);
+                                return Ok(Value::ThreadHandler(id));
+                            } else if (namespace == "thread_bridge" && member == "create_channel") || (namespace == "thread" && member == "channel") {
                                 let mut counter = get_channel_counter().lock().unwrap();
                                 *counter += 1;
                                 let chan_id = *counter;
@@ -1667,7 +1779,7 @@ impl Runner {
             }
             Expr::ThreadSpawn(expr_block, _) => {
                 let expr_clone = expr_block.clone();
-                let thread_env = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                let thread_env = Arc::new(Mutex::new(env.lock().unwrap().snapshot()));
                 let mut runner = self.clone_for_thread(thread_env.clone());
 
                 let mut counter = get_thread_counter().lock().unwrap();
@@ -2103,7 +2215,8 @@ fn main() {
 
     change(&mut con.name)
     print("final:", con.name)
-}"#;
+}
+main()"#;
 
         run_flame(code).unwrap();
     }
@@ -2116,7 +2229,8 @@ fn main() {
     let (tx, rx) = thread.channel()
     tx.send("test_message")
     rx.recv()
-}"#;
+}
+main()"#;
 
         let result = run_flame(code).unwrap();
         assert_eq!(result.to_string(), "\"test_message\"");
