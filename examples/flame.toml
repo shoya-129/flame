@@ -1,5 +1,5 @@
 [package]
-name = "examples"
+name = "flame_examples"
 version = "0.1.0"
 edition = "2026"
 type = "executable"
