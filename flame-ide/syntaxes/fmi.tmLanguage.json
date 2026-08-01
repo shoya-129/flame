@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Flame Meta Interface",
+  "scopeName": "source.fmi",
+  "patterns": [
+    {
+      "include": "source.json.comments"
+    },
+    {
+      "include": "source.json"
+    }
+  ]
+}

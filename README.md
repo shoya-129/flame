@@ -29,7 +29,11 @@ Install the Flame toolchain directly using Cargo:
 ```bash
 cargo install flamelang
 ```
+or using npm
 
+```bash
+npm i -g flamelang
+```
 ---
 
 ## CLI & Toolchain Reference

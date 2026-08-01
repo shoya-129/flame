@@ -8,7 +8,13 @@
         }
     },
     "fileExtensions": {
+        "fm": "_flame",
         "flame": "_flame",
+        "fmi": "_flame_config",
         "wmeta": "_flame_config"
+    },
+    "languageIds": {
+        "flame": "_flame",
+        "flame-interface": "_flame_config"
     }
 }
