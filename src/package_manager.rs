@@ -53,7 +53,6 @@ pub struct FlameMeta {
     pub docs: Option<String>,
 }
 
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PluginSpec {
     pub name: String,
@@ -142,14 +141,18 @@ pub fn add_package(args: &[String]) {
         let plugin_idx = match args.iter().position(|r| r == "--plugin" || r == "@plugin") {
             Some(idx) => idx,
             None => {
-                println!("\x1b[1;31merror:\x1b[0m --plugin requires a file path argument (e.g. --plugin ./native).");
+                println!(
+                    "\x1b[1;31merror:\x1b[0m --plugin requires a file path argument (e.g. --plugin ./native)."
+                );
                 return;
             }
         };
         let plugin_path = match args.get(plugin_idx + 1) {
             Some(p) if !p.starts_with("--") => p.clone(),
             _ => {
-                println!("\x1b[1;31merror:\x1b[0m --plugin requires a valid file path argument (e.g. --plugin ./native).");
+                println!(
+                    "\x1b[1;31merror:\x1b[0m --plugin requires a valid file path argument (e.g. --plugin ./native)."
+                );
                 return;
             }
         };
@@ -157,7 +160,9 @@ pub fn add_package(args: &[String]) {
             match args.get(name_idx + 1) {
                 Some(n) if !n.starts_with("--") => n.clone(),
                 _ => {
-                    println!("\x1b[1;31merror:\x1b[0m --name requires a valid name argument (e.g. --name server).");
+                    println!(
+                        "\x1b[1;31merror:\x1b[0m --name requires a valid name argument (e.g. --name server)."
+                    );
                     return;
                 }
             }
@@ -228,14 +233,19 @@ pub fn add_package(args: &[String]) {
     let toml_path = Path::new("flame.toml");
     if toml_path.exists() {
         let mut content = fs::read_to_string(toml_path).unwrap_or_default();
-        if !content.contains(&format!("{} =", manifest_key)) && !content.contains(&format!("{}=", manifest_key)) {
+        if !content.contains(&format!("{} =", manifest_key))
+            && !content.contains(&format!("{}=", manifest_key))
+        {
             if !content.contains(section) {
                 content.push_str(&format!("\n{}\n", section));
                 content.push_str(&format!("{} = \"{}\"\n", manifest_key, manifest_value));
             } else {
                 if let Some(idx) = content.find(section) {
                     let insert_pos = idx + section.len();
-                    content.insert_str(insert_pos, &format!("\n{} = \"{}\"", manifest_key, manifest_value));
+                    content.insert_str(
+                        insert_pos,
+                        &format!("\n{} = \"{}\"", manifest_key, manifest_value),
+                    );
                 }
             }
             let _ = fs::write(toml_path, content);
@@ -299,7 +309,10 @@ pub fn ensure_dependencies_installed(is_release: bool) {
     let std_bridge_path = Path::new("flame-stdlib").join("native").join("std_bridge");
     if std_bridge_path.exists() {
         let profile_dir = if is_release { "release" } else { "debug" };
-        let lib_out = std_bridge_path.join("target").join(profile_dir).join("libstd_bridge.rlib");
+        let lib_out = std_bridge_path
+            .join("target")
+            .join(profile_dir)
+            .join("libstd_bridge.rlib");
         let mut needs_build = true;
         if lib_out.exists() {
             if let Ok(out_meta) = fs::metadata(&lib_out) {
@@ -462,7 +475,11 @@ pub fn ensure_dependencies_installed(is_release: bool) {
             println!(
                 "\x1b[1;36m   Compiling\x1b[0m native plugin '{}' ({})...",
                 target,
-                if is_release { "release [optimized]" } else { "dev [unoptimized]" }
+                if is_release {
+                    "release [optimized]"
+                } else {
+                    "dev [unoptimized]"
+                }
             );
             let mut cmd = std::process::Command::new("cargo");
             cmd.arg("build");
@@ -493,7 +510,7 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
         if let Ok(fmi_meta) = fs::metadata(&fmi_path) {
             if let Ok(fmi_mtime) = fmi_meta.modified() {
                 needs_update = false;
-                
+
                 // Check src/lib.rs
                 if let Ok(src_meta) = fs::metadata(plugin_path.join("src").join("lib.rs")) {
                     if let Ok(src_mtime) = src_meta.modified() {
@@ -502,7 +519,7 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
                         }
                     }
                 }
-                
+
                 // Check Cargo.toml
                 if let Ok(cargo_meta) = fs::metadata(plugin_path.join("Cargo.toml")) {
                     if let Ok(cargo_mtime) = cargo_meta.modified() {
@@ -653,9 +670,15 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                 }
                             }
 
-                            if let Some(func_obj) = inner.get("function").and_then(|f| f.as_object()) {
-                                if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
-                                    if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
+                            if let Some(func_obj) =
+                                inner.get("function").and_then(|f| f.as_object())
+                            {
+                                if let Some(generics) =
+                                    func_obj.get("generics").and_then(|g| g.as_object())
+                                {
+                                    if let Some(params) =
+                                        generics.get("params").and_then(|p| p.as_array())
+                                    {
                                         if !params.is_empty() {
                                             is_generic = true;
                                         }
@@ -792,7 +815,9 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                                         p.as_array()
                                                                                     })
                                                                                 {
-                                                                                    if !params.is_empty() {
+                                                                                    if !params
+                                                                                        .is_empty()
+                                                                                    {
                                                                                         is_generic = true;
                                                                                     }
                                                                                 }
@@ -853,26 +878,62 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                                 }
                                                                             }
                                                                         }
-                                                                        if let Some(func_obj) = m_inner.get("function").and_then(|f| f.as_object()) {
-                                                                            if let Some(generics) = func_obj.get("generics").and_then(|g| g.as_object()) {
-                                                                                if let Some(params) = generics.get("params").and_then(|p| p.as_array()) {
-                                                                                    if !params.is_empty() {
+                                                                        if let Some(func_obj) =
+                                                                            m_inner
+                                                                                .get("function")
+                                                                                .and_then(|f| {
+                                                                                    f.as_object()
+                                                                                })
+                                                                        {
+                                                                            if let Some(generics) =
+                                                                                func_obj
+                                                                                    .get("generics")
+                                                                                    .and_then(|g| {
+                                                                                        g.as_object(
+                                                                                        )
+                                                                                    })
+                                                                            {
+                                                                                if let Some(
+                                                                                    params,
+                                                                                ) = generics
+                                                                                    .get("params")
+                                                                                    .and_then(|p| {
+                                                                                        p.as_array()
+                                                                                    })
+                                                                                {
+                                                                                    if !params
+                                                                                        .is_empty()
+                                                                                    {
                                                                                         is_generic = true;
                                                                                     }
                                                                                 }
                                                                             }
                                                                         }
 
-                                                                        let receiver = if !is_static {
+                                                                        let receiver = if !is_static
+                                                                        {
                                                                             if consumes_self {
-                                                                                Some("self".to_string())
+                                                                                Some(
+                                                                                    "self"
+                                                                                        .to_string(
+                                                                                        ),
+                                                                                )
                                                                             } else {
-                                                                                Some("&mut self".to_string())
+                                                                                Some(
+                                                                                    "&mut self"
+                                                                                        .to_string(
+                                                                                        ),
+                                                                                )
                                                                             }
                                                                         } else {
                                                                             None
                                                                         };
-                                                                        let is_constructor = is_static && (m_return_type == "Self" || m_return_type == name);
+                                                                        let is_constructor =
+                                                                            is_static
+                                                                                && (m_return_type
+                                                                                    == "Self"
+                                                                                    || m_return_type
+                                                                                        == name);
                                                                         s_methods.push(FlameFunctionMeta {
                                                                             name: m_name.to_string(),
                                                                             flame_name: m_name.to_string(),
@@ -954,7 +1015,11 @@ fn parse_type(ty: &serde_json::Value) -> String {
                     ty_str.push_str("'static ");
                 }
             }
-            if bref.get("mutable").and_then(|m| m.as_bool()).unwrap_or(false) {
+            if bref
+                .get("mutable")
+                .and_then(|m| m.as_bool())
+                .unwrap_or(false)
+            {
                 ty_str.push_str("mut ");
             }
             ty_str.push_str(&parse_type(inner));
@@ -1008,7 +1073,7 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                     match item {
                         syn::Item::Fn(fn_item) => {
                             let (rename, skip, constructor) = parse_flame_attrs(&fn_item.attrs);
-                            if skip || fn_item.vis != syn::Visibility::Public(syn::token::Pub::default()) {
+                            if skip || !matches!(fn_item.vis, syn::Visibility::Public(_)) {
                                 continue;
                             }
                             let fn_name = fn_item.sig.ident.to_string();
@@ -1016,9 +1081,12 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                             let is_async = fn_item.sig.asyncness.is_some();
                             let return_type = parse_syn_return(&fn_item.sig.output);
                             let is_constructor = constructor || return_type == meta.module;
-                            let params = parse_syn_params(&fn_item.sig.inputs, &fn_item.sig.generics);
+                            let params =
+                                parse_syn_params(&fn_item.sig.inputs, &fn_item.sig.generics);
 
-                            if let Some(existing) = meta.functions.iter_mut().find(|f| f.name == fn_name) {
+                            if let Some(existing) =
+                                meta.functions.iter_mut().find(|f| f.name == fn_name)
+                            {
                                 existing.flame_name = flame_name;
                                 existing.is_async = is_async;
                                 existing.is_constructor = is_constructor;
@@ -1041,7 +1109,7 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                         }
                         syn::Item::Struct(struct_item) => {
                             let (_, skip, _) = parse_flame_attrs(&struct_item.attrs);
-                            if skip || struct_item.vis != syn::Visibility::Public(syn::token::Pub::default()) {
+                            if skip || !matches!(struct_item.vis, syn::Visibility::Public(_)) {
                                 continue;
                             }
                             let struct_name = struct_item.ident.to_string();
@@ -1054,15 +1122,21 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                             }
                         }
                         syn::Item::Impl(impl_item) => {
-                            let struct_name = quote::quote!(#impl_item.self_ty).to_string().replace(" ", "");
-                            if let Some(struct_meta) = meta.structs.iter_mut().find(|s| s.name == struct_name) {
+                            let struct_name = quote::quote!(#impl_item.self_ty)
+                                .to_string()
+                                .replace(" ", "");
+                            if let Some(struct_meta) =
+                                meta.structs.iter_mut().find(|s| s.name == struct_name)
+                            {
                                 for item_in_impl in impl_item.items {
                                     if let syn::ImplItem::Fn(method_item) = item_in_impl {
-                                        let (rename, skip, constructor) = parse_flame_attrs(&method_item.attrs);
+                                        let (rename, skip, constructor) =
+                                            parse_flame_attrs(&method_item.attrs);
                                         if skip {
                                             continue;
                                         }
-                                        let is_pub = matches!(method_item.vis, syn::Visibility::Public(_));
+                                        let is_pub =
+                                            matches!(method_item.vis, syn::Visibility::Public(_));
                                         if !is_pub {
                                             continue;
                                         }
@@ -1071,28 +1145,37 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                         let flame_name = rename.unwrap_or_else(|| m_name.clone());
                                         let is_async = method_item.sig.asyncness.is_some();
                                         let return_type = parse_syn_return(&method_item.sig.output);
-                                        
+
                                         let mut receiver = None;
                                         let mut is_static = true;
                                         if let Some(first_arg) = method_item.sig.inputs.first() {
                                             if let syn::FnArg::Receiver(rec) = first_arg {
                                                 is_static = false;
-                                                if rec.reference.is_some() {
-                                                    if rec.mutability.is_some() {
-                                                        receiver = Some("&mut self".to_string());
-                                                    } else {
-                                                        receiver = Some("&self".to_string());
-                                                    }
+                                                let rec_str = quote::quote!(#rec).to_string();
+                                                if rec_str.contains("mut") {
+                                                    receiver = Some("&mut self".to_string());
+                                                } else if rec_str.contains('&') {
+                                                    receiver = Some("&self".to_string());
                                                 } else {
                                                     receiver = Some("self".to_string());
                                                 }
                                             }
                                         }
 
-                                        let is_constructor = constructor || (is_static && (return_type == "Self" || return_type == struct_name));
-                                        let params = parse_syn_params(&method_item.sig.inputs, &method_item.sig.generics);
+                                        let is_constructor = constructor
+                                            || (is_static
+                                                && (return_type == "Self"
+                                                    || return_type == struct_name));
+                                        let params = parse_syn_params(
+                                            &method_item.sig.inputs,
+                                            &method_item.sig.generics,
+                                        );
 
-                                        if let Some(existing) = struct_meta.methods.iter_mut().find(|m| m.name == m_name) {
+                                        if let Some(existing) = struct_meta
+                                            .methods
+                                            .iter_mut()
+                                            .find(|m| m.name == m_name)
+                                        {
                                             existing.flame_name = flame_name;
                                             existing.is_async = is_async;
                                             existing.is_constructor = is_constructor;
@@ -1107,7 +1190,11 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                                 params,
                                                 return_type,
                                                 is_static,
-                                                is_generic: !method_item.sig.generics.params.is_empty(),
+                                                is_generic: !method_item
+                                                    .sig
+                                                    .generics
+                                                    .params
+                                                    .is_empty(),
                                                 is_async,
                                                 is_constructor,
                                                 receiver,
@@ -1166,7 +1253,10 @@ fn parse_syn_return(output: &syn::ReturnType) -> String {
     }
 }
 
-fn parse_syn_params(inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>, generics: &syn::Generics) -> Vec<FlameParamMeta> {
+fn parse_syn_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    generics: &syn::Generics,
+) -> Vec<FlameParamMeta> {
     let mut params = Vec::new();
     let callback_generics = find_callback_generics(generics);
 
@@ -1180,7 +1270,10 @@ fn parse_syn_params(inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token!
             let clean_ty = ty_str.replace(" ", "");
             let is_ref = clean_ty.starts_with('&') && !clean_ty.starts_with("&mut");
             let is_mut = clean_ty.starts_with("&mut") || clean_ty.starts_with("mut");
-            let is_callback = clean_ty.contains("Callback") || clean_ty.contains("Handler") || clean_ty.contains("Fn(") || callback_generics.contains(&clean_ty);
+            let is_callback = clean_ty.contains("Callback")
+                || clean_ty.contains("Handler")
+                || clean_ty.contains("Fn(")
+                || callback_generics.contains(&clean_ty);
 
             params.push(FlameParamMeta {
                 name,
@@ -1213,7 +1306,10 @@ fn find_callback_generics(generics: &syn::Generics) -> Vec<String> {
                 let target = quote::quote!(#pred_type.bounded_ty).to_string();
                 for bound in &pred_type.bounds {
                     let b_str = quote::quote!(#bound).to_string();
-                    if b_str.contains("Handler") || b_str.contains("Fn") || b_str.contains("Callback") {
+                    if b_str.contains("Handler")
+                        || b_str.contains("Fn")
+                        || b_str.contains("Callback")
+                    {
                         cb_generics.push(target.replace(" ", ""));
                     }
                 }

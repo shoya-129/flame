@@ -8,8 +8,11 @@ type = "executable"
 std = "0.1.0"
 
 [native-dependencies]
+# Easily pull in and AOT-compile native Rust crates directly from crates.io!
 # uuid = { version = "*", features = ["v4"] }
 # rand = "0.10.2"
 
 [plugins]
+# Local native Rust plugins generated via `flame native init <name>` or imported via `flame add --plugin <path>`.
+# Note: Initial builds compile native plugins using fast incremental dev profiles, while `flame build --release` applies maximum LTO & production speed optimizations.
 server = "./native"
