@@ -73,7 +73,7 @@ Flame uses references to borrow data without copying it.
 * **`&mut T`**: A mutable reference. Allows modifying the borrowed value.
   * *Usage*: `let ref = &mut coordinates`
 
-*For more in-depth documentation on how Borrowing and Ownership works, please refer to the [Index Guide](index.md).*
+*For more in-depth documentation on how Borrowing and Ownership works, please refer to the [Index Guide](README.md).*
 
 ---
 
