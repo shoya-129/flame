@@ -93,15 +93,7 @@ Flame is statically typed. Types are either inferred or explicitly declared.
 
 ### References (Borrowing)
 
-Flame uses references to borrow data without copying it.
-
-- **`&T`**: An immutable reference. Read-only access to a value.
-  - _Usage_: `let ref = &coordinates`
-- **`&mut T`**: A mutable reference. Allows modifying the borrowed value.
-  - _Usage_: `let ref = &mut coordinates`
-
-_For more in-depth documentation on how Borrowing and Ownership works, please
-refer to the [Index Guide](index.md)._
+*For more in-depth documentation on how Borrowing and Ownership works, please refer to the [Index Guide](README.md).*
 
 ---
 

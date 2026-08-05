@@ -13,7 +13,7 @@ Only APIs that currently exist in the runtime are documented below.
 # Imports
 
 ```flame
-import std.automation
+import std.desktop
 import std.fs
 import std.hardware
 import std.process
