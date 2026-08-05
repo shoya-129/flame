@@ -1,58 +1,55 @@
 ---
 title: File System (std.fs)
-description: File reading, writing, directory walking, metadata inspection, and streaming in Flame.
+description: File reading, writing, copying, directory creation, and deletion in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-The `std.fs` module provides comprehensive file and directory operations.
+The `std.fs` module provides direct, cross-platform operations for interacting with files and directories on the local filesystem.
 
 ---
 
-## File Reading & Writing
+## File Reading, Writing & Copying
+
+Flame executes top-level script statements directly without requiring an entry function:
 
 ```flame
 import std.fs
 
-fn main() {
-    // Write text to a file
-    fs.write("output.txt", "Hello from Flame!")
+// Write text to a file (overwriting if it already exists)
+fs.write("output.txt", "Hello from Flame!")
 
-    // Read file contents as a UTF-8 string
-    let content = fs.read("output.txt")
-    print(content) // "Hello from Flame!"
-
-    // Append to existing file
-    fs.append("output.txt", "\nSecond line added.")
-
-    // Check file existence
-    if fs.exists("output.txt") {
-        print("File confirmed on disk.")
-    }
+// Verify file existence on disk
+if fs.exists("output.txt") {
+    println("File confirmed on disk.")
 }
+
+// Read file contents as a UTF-8 string
+let content = fs.read("output.txt")
+println(content) // "Hello from Flame!"
+
+// Copy file to a new location
+fs.copy("output.txt", "backup.txt")
 ```
 
 ---
 
-## Directory Operations
+## Directory Operations & Cleanup
+
+Create directory hierarchies and clean up filesystem paths:
 
 ```flame
 import std.fs
 
-fn main() {
-    // Create directory (recursively creates parents)
-    fs.create_dir_all("data/backups/daily")
+// Create a single directory
+fs.mkdir("data")
 
-    // Read directory entries
-    let entries = fs.read_dir("data")
-    for entry in entries {
-        print($"Found: {entry.name}, is_file: {entry.is_file}")
-    }
+// Recursively create a directory tree including parent folders
+fs.mkdir_all("data/backups/daily")
 
-    // Remove file or directory
-    fs.remove_file("output.txt")
-    fs.remove_dir_all("data/backups")
-}
+// Remove files or directories recursively with a single command
+fs.remove("backup.txt")
+fs.remove("data")
 ```
 
 ---
@@ -61,11 +58,10 @@ fn main() {
 
 | Method | Arguments | Returns | Description |
 | :--- | :--- | :--- | :--- |
-| `fs.read` | `path: String` | `String` | Reads entire file into string. |
-| `fs.write` | `path: String, data: String` | `Nil` | Writes string to file. |
-| `fs.append` | `path: String, data: String` | `Nil` | Appends string to file. |
-| `fs.exists` | `path: String` | `Bool` | Checks if path exists. |
-| `fs.remove_file` | `path: String` | `Nil` | Deletes a file. |
-| `fs.create_dir` | `path: String` | `Nil` | Creates a single folder. |
-| `fs.create_dir_all` | `path: String` | `Nil` | Creates full folder tree. |
-| `fs.read_dir` | `path: String` | `Vec<DirEntry>` | Lists files in directory. |
+| `fs.read` | `path: String` | `String` | Reads entire file contents into a UTF-8 string. |
+| `fs.write` | `path: String, content: Any` | `Nil` | Writes string data to a file, overwriting existing content. |
+| `fs.exists` | `path: String` | `Bool` | Returns `true` if the filesystem path (file or directory) exists. |
+| `fs.copy` | `src: String, dest: String` | `Nil` | Copies a file from `src` to `dest`. |
+| `fs.mkdir` | `path: String` | `Nil` | Creates a single directory at the specified path. |
+| `fs.mkdir_all` | `path: String` | `Nil` | Recursively creates a directory and any missing parent directories. |
+| `fs.remove` | `path: String` | `Nil` | Removes a file, or recursively deletes a directory and all of its contents. |

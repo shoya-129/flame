@@ -1,73 +1,107 @@
 ---
 title: Threading, Math & Time (std.thread, std.math, std.time)
-description: Multi-threading primitives, mathematical operations, timing precision, and sleep utilities in Flame.
+description: Multi-threading concurrency primitives, mathematical utilities, and timestamp tracking in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Core standard modules for performance computing, mathematical calculations, and time tracking.
+Core standard library modules for concurrent execution, mathematical computing, and timestamp tracking. In Flame, code executes at the top level without needing a wrapper main function.
 
 ---
 
-## High-Precision Time (`std.time`)
+## Time Tracking (`std.time`)
+
+Retrieve accurate system epoch timestamps in seconds or milliseconds:
 
 ```flame
 import std.time
 
-fn main() {
-    // Current UNIX timestamp in milliseconds
-    let now_ms = time.now()
-    print($"Current Timestamp: {now_ms}")
+// Get current UNIX timestamp in seconds
+let secs = time.timestamp()
+println($"Current Seconds: {secs}")
 
-    // High precision benchmarking
-    let start = time.instant()
-
-    // Sleep the current thread
-    time.sleep_ms(250) // pauses for 250 milliseconds
-
-    let elapsed = time.elapsed_ms(start)
-    print($"Elapsed: {elapsed} ms")
-}
+// Get current high-resolution UNIX timestamp in milliseconds
+let now_ms = time.now()
+println($"Timestamp in Milliseconds: {now_ms}")
 ```
 
 ---
 
 ## Math Routines (`std.math`)
 
+Access mathematical constants and foundational numeric functions:
+
 ```flame
 import std.math
 
-fn main() {
-    print($"PI: {math.PI}")
-    print($"E: {math.E}")
+// Mathematical constants are accessed via function calls
+println($"PI: {math.pi()}")
+println($"E: {math.e()}")
 
-    let square_root = math.sqrt(144.0) // 12.0
-    let power = math.pow(2.0, 10.0)     // 1024.0
-    let sine = math.sin(math.PI / 2.0)  // 1.0
+// Numeric and trigonometric calculations
+let square_root = math.sqrt(144.0) // 12.0
+let absolute_val = math.abs(-42)   // 42
+let sine = math.sin(math.pi() / 2.0)  // 1.0
+let cosine = math.cos(0.0)            // 1.0
 
-    print($"Min: {math.min(10, 20)}, Max: {math.max(10, 20)}")
-}
+println($"sqrt(144) = {square_root}, abs(-42) = {absolute_val}")
 ```
 
 ---
 
-## Threading Module (`std.thread`)
+## Concurrency & Channels (`std.thread`)
+
+Manage thread execution, sleep durations, and pass messages cleanly across concurrent threads using channels:
 
 ```flame
 import std.thread
 
-fn main() {
-    print($"Active thread: {thread.id()}")
-    
-    // Channel creation
-    let (tx, rx) = thread.channel()
-    
-    let t = thread {
-        tx.send("hello from thread")
-    }
-    
-    let msg = rx.recv()
-    await t
-    print(msg)
-}
+// Display the current OS thread identifier
+println($"Active thread ID: {thread.id()}")
+
+// Pause execution of the current thread for 200 milliseconds
+thread.sleep(200)
+
+// Yield execution time back to the operating system scheduler
+thread.yield()
+
+// Create an asynchronous communication channel
+let (tx, rx) = thread.channel()
+
+// Send and receive messages across thread channels
+tx.send("Message across channel!")
+let received = rx.recv()
+println($"Received: {received}")
 ```
+
+---
+
+## API Summary Tables
+
+### Time (`std.time`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `time.now` | *None* | `Int` | Returns the current UNIX epoch timestamp in milliseconds. |
+| `time.timestamp` | *None* | `Int` | Returns the current UNIX epoch timestamp in seconds. |
+
+### Math (`std.math`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `math.pi` | *None* | `Float` | Returns the mathematical constant $\pi$. |
+| `math.e` | *None* | `Float` | Returns Euler's constant $e$. |
+| `math.abs` | `val: Int \| Float` | `Int \| Float` | Returns the absolute positive value of a number. |
+| `math.sqrt` | `val: Int \| Float` | `Float` | Returns the square root of a number. |
+| `math.sin` | `val: Int \| Float` | `Float` | Returns the sine of an angle given in radians. |
+| `math.cos` | `val: Int \| Float` | `Float` | Returns the cosine of an angle given in radians. |
+
+### Threading (`std.thread`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `thread.sleep` | `ms: Int` | `Nil` | Suspends thread execution for the specified number of milliseconds. |
+| `thread.id` | *None* | `String` | Returns a formatted string representation of the active thread ID. |
+| `thread.yield` | *None* | `Nil` | Yields the processor, allowing other threads on the OS to run. |
+| `thread.channel` | *None* | `Tuple<Sender, Receiver>` | Creates a multi-producer, single-consumer communication channel. |
+| `thread.spawn` | `callback: Function` | `ThreadHandler` | Spawns a background concurrent execution thread. |

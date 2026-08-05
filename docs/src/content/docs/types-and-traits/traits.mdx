@@ -72,11 +72,9 @@ fn render_shape(shape: &Drawable) {
     print($"Shape area: {shape.area()}")
 }
 
-fn main() {
-    let circle = Circle { radius: 5.0 }
-    let rect = Rectangle { width: 4.0, height: 6.0 }
+let circle = Circle { radius: 5.0 }
+let rect = Rectangle { width: 4.0, height: 6.0 }
 
-    render_shape(&circle)
-    render_shape(&rect)
-}
+render_shape(&circle)
+render_shape(&rect)
 ```

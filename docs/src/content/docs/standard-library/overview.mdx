@@ -1,37 +1,56 @@
 ---
 title: Standard Library Overview
-description: Overview of built-in modules, implementation status, and API coverage in Flame.
+description: Overview of built-in modules, global utility functions, and native standard library coverage in Flame.
 ---
 
 import { Aside, Card, CardGrid, Badge } from '@astrojs/starlight/components';
 
-
-Flame comes with a rich standard library (`std.*`) implemented in native Rust for maximum speed and deterministic safety.
+Flame comes with a rich standard library (`std.*`) implemented directly in native Rust for maximum speed, system compatibility, and deterministic safety. All standard modules are ready for import without requiring external third-party dependencies.
 
 ---
 
-## Module Index & Status
+## Global Built-in Functions
+
+Flame provides several built-in global functions and assertion utilities available in every scope without importing any modules:
+
+```flame
+// Console Output
+print("Hello ")
+println("Flame!")
+eprint("Error logged to stderr\n")
+
+// Assertions & Testing Utilities
+assert(1 + 1 == 2)
+assert_true(true)
+assert_false(5 < 3)
+assert_eq("flame", "flame")
+assert_ne(10, 20)
+```
+
+---
+
+## Standard Module Index & Status
 
 <CardGrid>
   <Card title="File System (std.fs)" icon="document">
-    File I/O, directory traversal, streaming, metadata, and path manipulation.
+    File reading, writing, copying, path verification, and recursive directory manipulation.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
   <Card title="Process & OS (std.process, std.os, std.env)" icon="laptop">
-    Command execution, environment variables, system signals, and OS queries.
+    Sub-process execution, working directory management, environment variables, and OS introspection.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
-  <Card title="Threading & Math (std.thread, std.math, std.time)" icon="rocket">
-    Physical OS compute threads, channels, high-precision timestamps, and math routines.
+  <Card title="Threading, Math & Time (std.thread, std.math, std.time)" icon="rocket">
+    Lightweight concurrency, message passing channels, high-precision timing, and trigonometric/math utilities.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
-  <Card title="Hardware & Desktop Automation" icon="setting">
-    Cross-platform mouse control, keyboard emulation, hotkey listening, and display queries.
-    <br/><Badge text="Available" variant="note" />
+  <Card title="Hardware & Automation (std.hardware, std.desktop)" icon="setting">
+    System CPU/memory telemetry, cross-platform simulated mouse control, keyboard input, and hotkey execution.
+    <br/><Badge text="Production Ready" variant="success" />
   </Card>
-  <Card title="Platform Devices (Bluetooth, Camera, HID, Serial)" icon="star">
-    Webcam capture, Bluetooth LE scanning, serial port communication, and raw HID streams.
-    <br/><Badge text="Available" variant="note" />
+  <Card title="Platform Devices (std.camera, std.bluetooth, std.hid, std.serial)" icon="star">
+    Webcam frame capture, Bluetooth LE scanning, raw USB HID streams, and serial port device listing.
+    <br/><Badge text="Production Ready" variant="success" />
   </Card>
 </CardGrid>
 
@@ -39,7 +58,7 @@ Flame comes with a rich standard library (`std.*`) implemented in native Rust fo
 
 ## Importing Standard Modules
 
-Standard modules are imported using the `std.` namespace:
+Standard modules are imported using the `std.` namespace. Top-level expressions execute directly without requiring an entry point function:
 
 ```flame
 import std.fs
@@ -47,4 +66,8 @@ import std.os
 import std.thread
 import std.math
 import std.time
+import std.hardware
+import std.desktop
+
+println($"Running Flame on {os.name()} ({os.arch()})")
 ```

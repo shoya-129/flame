@@ -27,15 +27,13 @@ fn consume_data(s: String) {
     print($"Received: {s}")
 } // `s` is dropped here when the function exits
 
-fn main() {
-    let original = "Hello Flame"
+let original = "Hello Flame"
+
+// Ownership is transferred (moved) to `consume_data`
+consume_data(original)
     
-    // Ownership is transferred (moved) to `consume_data`
-    consume_data(original)
-    
-    // ERROR: `original` was moved and is no longer valid!
-    // print(original) 
-}
+// ERROR: `original` was moved and is no longer valid!
+// print(original)
 ```
 
 ---

@@ -1,34 +1,35 @@
 ---
-title: Platform Devices & Hardware Interfacing
-description: Camera frame capture, Bluetooth LE scanning, serial ports, and raw HID streams in Flame.
+title: Platform Devices (std.camera, std.bluetooth, std.serial, std.hid)
+description: Camera image capture, Bluetooth Low Energy scanning, serial port listing, and raw USB HID device communication in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-
-Flame provides native driver abstractions for embedded hardware, peripherals, and multimedia devices.
+Flame includes native hardware drivers and hardware peripheral communication bindings directly within the standard library. Scripts interact with physical devices directly from top-level code without needing boilerplate main functions.
 
 ---
 
 ## Webcam & Camera Capture (`std.camera`)
 
+Discover connected camera imaging hardware and capture high-resolution snapshots directly to disk:
+
 ```flame
 import std.camera
 
-fn main() {
-    // List available video input devices
-    let devices = camera.list_devices()
-    print($"Found {devices.len()} camera(s)")
+// List all connected video capture devices
+let cameras = camera.devices()
+println($"Detected {cameras.len()} camera device(s)")
 
-    // Open default camera (device 0)
-    let cam = camera.open(0)
+for cam in cameras {
+    println($"[{cam.index}] {cam.name}: {cam.description}")
+}
 
-    // Capture single RGB frame
-    let frame = cam.capture_frame()
-    print($"Captured frame: {frame.width}x{frame.height}")
-
-    // Save frame directly as JPEG or PNG
-    frame.save_image("snapshot.jpg")
+// Capture an image frame from device index 0 and save directly to disk
+if cameras.len() > 0 {
+    let success = camera.capture(0, "snapshot.png")
+    if success {
+        println("Snapshot successfully captured and saved to snapshot.png")
+    }
 }
 ```
 
@@ -36,57 +37,118 @@ fn main() {
 
 ## Bluetooth Low Energy (`std.bluetooth`)
 
+Check local system BLE capability, enumerate host adapters, and scan for nearby advertising peripherals:
+
 ```flame
 import std.bluetooth
 
-async fn main() {
-    let adapter = await bluetooth.default_adapter()
-    
-    print("Scanning for BLE devices for 5 seconds...")
-    let devices = await adapter.scan(timeout_seconds: 5)
-    
+// Verify host Bluetooth support
+if bluetooth.supported() {
+    println("Bluetooth is supported on this system.")
+
+    // Enumerate local Bluetooth radio adapters
+    let adapters = bluetooth.adapters()
+    println($"Found {adapters.len()} host adapter(s)")
+
+    // Scan nearby BLE peripherals (performs an active 3-second scan)
+    println("Scanning for Bluetooth LE devices...")
+    let devices = bluetooth.scan()
+
     for dev in devices {
-        print($"Device: {dev.name} [MAC: {dev.address}], RSSI: {dev.rssi} dBm")
+        println($"Device: {dev.name} | MAC Address: {dev.address} | Connected: {dev.connected}")
     }
 }
 ```
 
 ---
 
-## Serial Port Communication (`std.serial`)
+## Serial Ports (`std.serial`)
+
+Query available RS-232 / COM communication port interfaces on the host system:
 
 ```flame
 import std.serial
 
-fn main() {
-    // List serial ports (COM ports on Windows, /dev/tty on Linux/macOS)
-    let ports = serial.available_ports()
-    print($"Available serial ports: {ports}")
+// Discover available hardware serial communication ports
+let ports = serial.ports()
+println($"Detected {ports.len()} serial interface(s):")
 
-    // Open port with baud rate
-    let port = serial.open("COM3", baud_rate: 115200)
-
-    // Write binary packet
-    port.write([0xAA, 0x01, 0xFF])
-
-    // Read response
-    let response = port.read_exact(4)
-    print($"Received bytes: {response}")
+for port in ports {
+    println($"Port: {port.name}")
 }
 ```
 
 ---
 
-## Raw HID Streams (`std.hid`)
+## Raw USB HID Streams (`std.hid`)
+
+Enumerate Human Interface Devices (custom hardware, gamepads, interface controllers) and communicate via raw byte buffers:
 
 ```flame
 import std.hid
 
-fn main() {
-    // Discover connected USB HID controllers
-    let devices = hid.enumerate(vendor_id: 0x046D) // Logitech
-    for dev in devices {
-        print($"HID device: {dev.product_string}")
+// Enumerate all connected USB HID peripherals
+let devices = hid.devices()
+println($"Total HID peripherals detected: {devices.len()}")
+
+for dev in devices {
+    println($"[{dev.vendor}:{dev.product}] {dev.manufacturer} - {dev.product_name} (Path: {dev.path})")
+}
+
+// Open device connection by Vendor ID and Product ID (e.g., VID: 0x046D, PID: 0xC077)
+if devices.len() > 0 {
+    let handle = hid.open(1133, 49271)
+    if hid.isOpen(handle) {
+        println($"Successfully opened device handle: {handle}")
+
+        // Read up to 64 bytes with a 1000 millisecond timeout
+        let data = hid.readTimeout(handle, 64, 1000)
+        println($"Received payload bytes: {data}")
+
+        // Close HID device handle when finished
+        hid.close(handle)
     }
 }
 ```
+
+---
+
+## API Summary Tables
+
+### Camera (`std.camera`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `camera.devices` | *None* | `Tuple<Formula>` | Lists available imaging hardware. Each formula contains `{ index, name, description }`. |
+| `camera.capture` | `index: Int, path: String` | `Bool` | Opens camera `index`, captures a single high-resolution image, saves to `path`, and returns `true`. |
+
+### Bluetooth (`std.bluetooth`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `bluetooth.supported` | *None* | `Bool` | Checks if the host operating system supports Bluetooth capabilities. |
+| `bluetooth.adapters` | *None* | `Tuple<Formula>` | Returns a list of discovered host Bluetooth radio adapters containing `{ index, name }`. |
+| `bluetooth.scan` | *None* | `Tuple<Formula>` | Performs a 3-second scan and returns nearby peripherals containing `{ name, address, connected }`. |
+
+### Serial (`std.serial`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `serial.ports` | *None* | `Tuple<Formula>` | Lists available serial port interfaces on the host (COM ports / `/dev/tty`), returning `{ name }`. |
+
+### Human Interface Devices (`std.hid`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `hid.devices` | *None* | `Tuple<Formula>` | Lists all connected HID peripherals with vendor, product, interface, and path details. |
+| `hid.open` | `vendor: Int, product: Int` | `Int` | Opens a connection to a device by Vendor ID and Product ID, returning a handle ID. |
+| `hid.openPath` | `path: String` | `Int` | Opens a connection to a device directly by system device path string, returning a handle ID. |
+| `hid.close` | `handle: Int` | `Nil` | Closes an open HID device handle and releases system hardware resources. |
+| `hid.isOpen` | `handle: Int` | `Bool` | Returns `true` if the specified HID handle ID currently refers to an open device. |
+| `hid.read` | `handle: Int, len: Int` | `Bytes` | Reads up to `len` bytes from an open HID device handle (blocks according to blocking mode). |
+| `hid.readTimeout` | `handle: Int, len: Int, timeout_ms: Int` | `Bytes` | Reads up to `len` bytes from an open HID device with a specified millisecond timeout. |
+| `hid.poll` | `handle: Int, len: Int` | `Bytes` | Performs an immediate, non-blocking read poll of up to `len` bytes (timeout 0). |
+| `hid.write` | `handle: Int, payload: Bytes` | `Int` | Writes a raw byte array payload to an open HID device and returns the bytes written count. |
+| `hid.getFeatureReport` | `handle: Int, report_id: Int, len: Int` | `Bytes` | Requests and reads a feature report packet of up to `len` bytes starting with `report_id`. |
+| `hid.sendOutputReport` | `handle: Int, payload: Bytes` | `Int` | Transmits an output report payload to the HID device and returns the bytes written count. |
+| `hid.setBlocking` | `handle: Int, blocking: Bool` | `Nil` | Sets whether subsequent reads on the device handle block indefinitely or return immediately. |

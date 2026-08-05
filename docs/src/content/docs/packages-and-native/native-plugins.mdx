@@ -26,21 +26,41 @@ In addition to external crates, you can write **custom native Rust code** inside
    [dependencies]
    axum = "0.7"
    tokio = { version = "1.0", features = ["full"] }
-   flame-macro = { path = "../flame-macro" }
+   flame-macro = "0.1.0"
    ```
 
 2. ### Implement Structs & Methods (`lib.rs`)
    ```rust
    // native/src/lib.rs
-   use axum::{routing::get, Router};
+
+   use axum::{
+       routing::{get, post},
+       Router,
+   };
+   use flame_macro::flame;
+   use std::mem;
    use std::net::SocketAddr;
 
    pub struct FlameServer {
        router: Router,
    }
 
+   #[derive(Debug, Clone)]
+   pub struct Request {
+       pub body: String,
+   }
+
+   #[derive(Debug, Clone)]
+   pub struct Response {
+       pub body: String,
+   }
+
+   // Module-level function
+   /// Initialize a new FlameServer instance.
    pub fn init() -> FlameServer {
-       FlameServer { router: Router::new() }
+       FlameServer {
+           router: Router::new(),
+       }
    }
 
    impl FlameServer {
@@ -49,15 +69,32 @@ In addition to external crates, you can write **custom native Rust code** inside
            H: axum::handler::Handler<T, ()> + Clone + Send + Sync + 'static,
            T: 'static,
        {
-           let router = std::mem::take(&mut self.router);
+           let router = mem::take(&mut self.router);
            self.router = router.route(path, get(handler));
+       }
+
+       pub fn post<H, T>(&mut self, path: &'static str, handler: H)
+       where
+           H: axum::handler::Handler<T, ()> + Clone + Send + Sync + 'static,
+           T: 'static,
+       {
+           let router = mem::take(&mut self.router);
+           self.router = router.route(path, post(handler));
+       }
+
+       pub fn router(&mut self) -> Router {
+           mem::take(&mut self.router)
        }
 
        #[flame(daemon)]
        pub async fn listen(self, port: u16) -> std::io::Result<()> {
            let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
            let listener = tokio::net::TcpListener::bind(addr).await?;
-           axum::serve(listener, self.router).await.map_err(std::io::Error::other)
+
+           axum::serve(listener, self.router)
+               .await
+               .map_err(std::io::Error::other)
        }
    }
    ```
@@ -70,16 +107,17 @@ In addition to external crates, you can write **custom native Rust code** inside
 
 4. ### Call from Flame Source
    ```flame
-   import native.server
+   import native.flamer
 
-   async fn main() {
-       let app = await server.init()
-       
-       app.get("/", () {
-           return "Hello from Flame Axum Server!"
-       })
 
-       await app.listen(3000)
+   let app = flamer.init()
+   fn main() -> String {
+       "hello"
    }
+
+   app.get("/", main)
+   print("Server started!")
+
+   app.listen(3000)
    ```
 </Steps>

@@ -29,58 +29,57 @@ To run CPU-intensive calculations in parallel on an independent physical CPU cor
 ```flame
 import std.thread
 
-fn main() {
-    print($"Main Thread ID: {thread.id()}")
+print($"Main Thread ID: {thread.id()}")
 
-    // Spawn an independent OS thread
-    let handle = thread {
-        print($"Worker Thread ID: {thread.id()}")
+let handle = thread {
+    print($"Worker Thread ID: {thread.id()}")
         
-        let mut sum = 0
-        let mut i = 0
-        while i < 50000000 {
-            sum = sum + i
-            i = i + 1
-        }
-        return sum
+    let mut sum = 0
+    let mut i = 0
+    while i < 50000000 {
+        sum = sum + i
+        i = i + 1
     }
-
-    // Main thread continues executing without blocking...
-    print("Main thread is working...")
-
-    // Synchronize and receive the result
-    let result = await handle
-    print($"Worker computed result: {result}")
+    return sum
 }
+
+// Main thread continues executing without blocking...
+print("Main thread is working...")
+
+// Synchronize and receive the result
+let result = await handle
+print($"Worker computed result: {result}")
 ```
 
 ---
 
-## Channels: `send` & `recv`
+## Channels: `send` & `recv` (Under Development)
 
 Channels allow direct message-passing between threads:
 
 ```flame
 import std.thread
 
-fn main() {
-    // Create a channel: (Sender, Receiver)
-    let (tx, rx) = thread.channel()
+// Create a channel: (Sender, Receiver)
+let (tx, rx) = thread.channel()
 
-    let worker = thread {
-        tx.send(formula {
-            kind: "task_complete",
-            processed_items: 500
-        })
-    }
-
-    // Receive message (blocks until ready)
-    let message = rx.recv()
-    await worker
-
-    print($"Received message: {message.kind}, count: {message.processed_items}")
+let worker = thread {
+    tx.send(formula {
+        kind: "task_complete",
+        processed_items: 500
+    })
 }
+
+// Receive message (blocks until ready)
+let message = rx.recv()
+await worker
+
+print($"Received message: {message.kind}, count: {message.processed_items}")
+
 ```
+<Aside type="caution" title="thread.channel() is under development">
+Note: `thread.channel()` is still under development and may not work properly.
+</Aside>
 
 ---
 

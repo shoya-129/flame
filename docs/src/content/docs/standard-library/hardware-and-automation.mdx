@@ -1,60 +1,103 @@
 ---
-title: Hardware & Desktop Automation
-description: Native mouse control, keyboard simulation, clipboard access, and screen resolution queries in Flame.
+title: Hardware Telemetry & Desktop Automation (std.hardware, std.desktop)
+description: Native hardware inspection, CPU/RAM telemetry, simulated mouse control, and keyboard input automation in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-
-The `std.desktop` module enables native cross-platform GUI automation, robot testing, and macro scripting without third-party dependencies.
+Flame provides deep hardware inspection and cross-platform desktop automation directly out of the box. Execute GUI scripts and inspect system telemetry cleanly at the top level without requiring an entry point function or external automation tools.
 
 ---
 
-## Mouse Automation
+## Hardware Telemetry (`std.hardware`)
 
-Control cursor position, simulate clicks, and scroll:
+Query live system CPU utilization, hardware clock frequencies, and RAM availability:
 
 ```flame
-import std.desktop
+import std.hardware
 
-fn main() {
-    // Get primary display resolution
-    let screen = desktop.screen_size()
-    print($"Screen resolution: {screen.width}x{screen.height}")
+// Display host kernel and system discovery metadata
+println(hardware.discover())
 
-    // Move cursor to coordinates
-    desktop.mouse_move(500, 300)
+// Inspect active RAM statistics (in bytes)
+let mem = hardware.memory()
+println($"RAM Total: {mem.total} bytes | Free: {mem.free} bytes")
 
-    // Click left / right button
-    desktop.mouse_click("left")
-    desktop.mouse_double_click("left")
+// Inspect individual CPU processor core telemetry
+let cores = hardware.cpu()
+println($"Total CPU Cores Detected: {cores.len()}")
 
-    // Scroll wheel (delta_y)
-    desktop.mouse_scroll(-5)
+for core in cores {
+    println($"[{core.name}] ({core.brand}): Usage {core.usage}% at {core.frequency} MHz")
 }
 ```
 
 ---
 
-## Keyboard Simulation & Clipboard
+## Mouse Automation (`std.desktop.mouse`)
 
-Type text, press key chords, and manipulate the OS clipboard:
+Programmatically control mouse pointer coordinates and simulate button clicks:
 
 ```flame
 import std.desktop
 
-fn main() {
-    // Type a string
-    desktop.type_text("Hello Automated World!")
+// Move mouse cursor to absolute screen coordinates (X, Y)
+desktop.mouse.move(500, 300)
 
-    // Key presses
-    desktop.key_down("ctrl")
-    desktop.key_tap("c")
-    desktop.key_up("ctrl")
-
-    // Clipboard Read / Write
-    desktop.clipboard_set("Copied text from Flame")
-    let clip = desktop.clipboard_get()
-    print($"Current Clipboard: {clip}")
-}
+// Simulate mouse button clicks ("left", "right", or "middle")
+desktop.mouse.click("left")
+desktop.mouse.click("right")
 ```
+
+---
+
+## Keyboard Input & Hotkeys (`std.desktop.keyboard`)
+
+Type text strings, trigger individual keystrokes, or press multi-key shortcut chords:
+
+```flame
+import std.desktop
+
+// Simulate typing a full text string
+desktop.keyboard.write("Hello from automated Flame!")
+
+// Tap individual keys (e.g., "enter", "escape", "tab", "backspace", "up", "down")
+desktop.keyboard.key("enter")
+desktop.keyboard.key("tab")
+
+// Hold and release key states explicitly ("click", "press", or "release")
+desktop.keyboard.key("shift", "press")
+desktop.keyboard.key("a", "click")
+desktop.keyboard.key("shift", "release")
+
+// Execute simultaneously pressed hotkey chords
+desktop.keyboard.hotkey("ctrl", "c")
+desktop.keyboard.hotkey("ctrl", "v")
+```
+
+---
+
+## API Summary Tables
+
+### Hardware (`std.hardware`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `hardware.cpu` | *None* | `Tuple<Formula>` | Returns a list of formulas containing `{ name, usage, brand, frequency }` per CPU core. |
+| `hardware.memory` | *None* | `Formula` | Returns a formula containing system memory statistics in bytes: `{ total, used, free, available }`. |
+| `hardware.discover` | *None* | `String` | Returns a human-readable discovery summary string containing system name, OS version, and kernel version. |
+
+### Desktop Mouse (`std.desktop.mouse`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `desktop.mouse.move` | `x: Int, y: Int` | `Nil` | Moves the system cursor pointer instantly to absolute pixel coordinates $(X, Y)$. |
+| `desktop.mouse.click` | `button: String?` | `Nil` | Simulates a button click. Option values: `"left"`, `"right"`, or `"middle"` (defaults to `"left"` if omitted). |
+
+### Desktop Keyboard (`std.desktop.keyboard`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `desktop.keyboard.write` | `text: String` | `Nil` | Simulates character typing for an entire UTF-8 string sequentially. |
+| `desktop.keyboard.key` | `key: String, action: String?` | `Nil` | Performs key action (`"click"`, `"press"`, or `"release"`) on specified key name. Defaults to `"click"`. |
+| `desktop.keyboard.hotkey` | `key1: String, key2: String, ...` | `Nil` | Presses all specified keys simultaneously in order, then releases them in reverse order. |

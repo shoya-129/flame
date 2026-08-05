@@ -45,26 +45,13 @@ fn main() {
 }
 ```
 
-### Specific Item Import
-You can selectively import symbols:
-
-```flame
-import math_utils.{add, PI}
-
-fn main() {
-    let sum = add(5, 10)
-    print($"Sum: {sum}")
-}
-```
-
 ---
 
 ## Module Resolution Rules
 
 Flame searches for imported modules in the following order:
 1. **Current Directory**: Relative files in the same folder.
-2. **Project Source Folders**: `src/`, `tests/`, `examples/src/`.
-3. **Project Root**: Root folder containing `flame.toml`.
+2. **Project Source Folders**: `src/`, `tests/`.
 
 ```flame
 // Cross-folder imports

@@ -1,71 +1,100 @@
 ---
 title: Process & OS (std.process, std.os, std.env)
-description: System commands, sub-processes, environment variables, and OS introspection in Flame.
+description: Sub-process execution, working directory control, environment variables, and OS system introspection in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-
-Flame provides clean access to operating system information and child process execution.
+Flame provides clean, native access to operating system metadata, process execution, and environment configuration without requiring boilerplate wrapper functions.
 
 ---
 
 ## Child Processes (`std.process`)
 
-Execute terminal commands and capture output or exit codes:
+Execute shell commands, interact with background processes, and manage working directories directly at the script top level:
 
 ```flame
 import std.process
 
-fn main() {
-    // Run a command and capture output
-    let output = process.exec("git", ["status", "--short"])
-    print($"Git status:\n{output.stdout}")
+// Execute a command synchronously and capture its standard output, error, and exit status
+let output = process.exec("git", ["status", "--short"])
+println($"Git status exit code: {output.status.code}")
+println($"Git stdout:\n{output.stdout}")
 
-    // Run command and check exit code
-    let status = process.run("cargo", ["--version"])
-    print($"Exit code: {status.code}")
+// Spawn an asynchronous background process
+let child = process.spawn("cargo", ["--version"])
 
-    // Exit the current process
-    if status.code != 0 {
-        process.exit(1)
-    }
-}
+// Inspect and change the current working directory
+let current_path = process.cwd()
+println($"CWD: {current_path}, Flame PID: {process.pid()}")
 ```
 
 ---
 
 ## Environment Variables (`std.env`)
 
+Query and modify process environment variables or locate system temporary folders:
+
 ```flame
 import std.env
 
-fn main() {
-    // Read environment variable
-    let port = env.get("PORT")
-    if port == Nil {
-        port = "8080"
-    }
-
-    // Set environment variable for child processes
-    env.set("APP_ENV", "production")
-
-    // Get current working directory
-    let current_dir = env.current_dir()
-    print($"CWD: {current_dir}")
+// Read an environment variable (returns Nil if not found)
+let port = env.get("PORT")
+if port == Nil {
+    port = "8080"
 }
+
+// Set or replace an environment variable for child processes
+env.set("APP_ENV", "production")
+
+// Retrieve the system temporary directory path
+let tmp_dir = env.temp()
+println($"Temporary Directory: {tmp_dir}")
 ```
 
 ---
 
 ## OS Introspection (`std.os`)
 
+Inspect the host operating system platform and architecture:
+
 ```flame
 import std.os
 
-fn main() {
-    print($"OS Family: {os.family()}") // "windows", "linux", or "macos"
-    print($"CPU Architecture: {os.arch()}") // "x86_64", "aarch64"
-    print($"Total Logical Cores: {os.cpu_count()}")
-}
+println($"Operating System Name: {os.name()}")   // e.g., "windows", "linux", "macos"
+println($"Operating System Family: {os.family()}") // e.g., "windows", "unix"
+println($"CPU Architecture: {os.arch()}")         // e.g., "x86_64", "aarch64"
 ```
+
+---
+
+## API Summary Tables
+
+### Process (`std.process`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `process.exec` | `cmd: String, args: Tuple<String>` | `Formula` | Runs command synchronously and returns `{ stdout, stderr, status: { code } }`. |
+| `process.spawn` | `cmd: String, args: Tuple<String>` | `ChildProcess` | Spawns an asynchronous background child process. |
+| `process.cmd` | `program: String` | `CommandBuilder` | Returns a command builder for chained argument configuration and spawning. |
+| `process.cwd` | *None* | `String` | Returns the current working directory path of the running process. |
+| `process.set_cwd` | `path: String` | `Nil` | Changes the current working directory to the specified path. |
+| `process.pid` | *None* | `Int` | Returns the operating system process ID of the running Flame process. |
+
+### Environment (`std.env`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `env.get` | `key: String` | `String \| Nil` | Retrieves the value of an environment variable, or `Nil` if unset. |
+| `env.set` | `key: String, value: String` | `Nil` | Sets or overwrites an environment variable in the current process scope. |
+| `env.remove` | `key: String` | `Nil` | Deletes an environment variable from the current process scope. |
+| `env.vars` | *None* | `Formula` | Returns a key-value formula map of all currently exported environment variables. |
+| `env.temp` | *None* | `String` | Returns the absolute path to the system temporary folder. |
+
+### Operating System (`std.os`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `os.name` | *None* | `String` | Returns the OS name identifier (e.g., `"windows"`, `"linux"`, `"macos"`). |
+| `os.arch` | *None* | `String` | Returns the host CPU processor architecture (e.g., `"x86_64"`, `"aarch64"`). |
+| `os.family` | *None* | `String` | Returns the general OS operating platform family (e.g., `"windows"`, `"unix"`). |

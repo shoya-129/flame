@@ -15,19 +15,17 @@ Instead of transferring ownership, you can **borrow** values using references. A
 An immutable reference allows read-only access to a value. You can create multiple immutable references to the same data simultaneously.
 
 ```flame
-fn calculate_length(s: &String) -> Int {
+fn calculate_length(&s: String) -> Int {
     return s.len()
 }
 
-fn main() {
-    let name = "Flame Language"
+let name = "Flame Language"
     
-    // Pass `name` as an immutable reference
-    let len = calculate_length(&name)
+// Pass `name` as an immutable reference
+let len = calculate_length(&name)
     
-    // `name` remains fully valid and owned by `main`!
-    print($"The string '{name}' has length {len}")
-}
+// `name` remains fully valid and owned by `main`!
+print($"The string '{name}' has length {len}")
 ```
 
 ---
@@ -37,15 +35,13 @@ fn main() {
 To modify a borrowed value in-place, pass a mutable reference using `&mut`:
 
 ```flame
-fn append_exclamation(s: &mut String) {
+fn append_exclamation(&mut s: String) {
     s.push_str("!")
 }
 
-fn main() {
-    let mut greeting = "Hello"
-    append_exclamation(&mut greeting)
-    print(greeting) // "Hello!"
-}
+let mut greeting = "Hello"
+append_exclamation(&mut greeting)
+print(greeting) // "Hello!"
 ```
 
 ---
