@@ -1,0 +1,58 @@
+import exports
+
+
+
+@BeforeAll
+fn setup_db() {
+    print("Initializing DB...")
+
+}
+
+@Setup
+fn clean_state() {
+    print("Resetting state...")
+
+}
+
+@Test
+fn test_type_conversions() {
+    let num_str = "42"
+    let val = num_str.toInt()
+    if val != 42 {
+        panic("Expected 42")
+    }
+
+}
+
+@Test(timeout: 2000)
+fn test_string_formatting() {
+    let pi_str = 3.14159.toString(2)
+    if pi_str != "3.14" {
+        panic("Expected 3.14")
+    }
+
+}
+
+@Test(timeout: 2000)
+fn test_imports() {
+    let user: Formula = formula {
+        name: "soham",
+        id: 89,
+        isAdmin: true,
+        numbers: [9, 9],
+        status: (a: String) {
+            print(a)
+
+        }
+
+    }
+
+    exports.sayhello(&user).assert_eq("hello soham-89")
+}
+
+
+@AfterAll
+fn teardown_db() {
+    print("Shutting down DB...")
+
+}

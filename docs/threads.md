@@ -80,7 +80,37 @@ When you invoke a `thread { ... }` block, Flame enforces memory safety through *
 
 ---
 
-## 4. Resolution of Error Conditions and Edge Cases
+## 4. Channels: `send` and `recv`
+
+Flame channels provide simple thread-to-thread message passing.
+
+```flame
+import std.thread
+
+fn main() {
+    let (tx, rx) = thread.channel()
+
+    let worker = thread {
+        tx.send(formula {
+            kind: "ready",
+            count: 3
+        })
+    }
+
+    let message = rx.recv()
+    await worker
+
+    message.kind.assert_eq("ready")
+    message.count.assert_eq(3)
+}
+```
+
+- `thread.channel()` returns `(Sender, Receiver)`.
+- `tx.send(value)` pushes a Flame value into the channel.
+- `rx.recv()` blocks until a value arrives.
+- Messages can be primitives, formulas, tuples, and other Flame runtime values.
+
+## 5. Resolution of Error Conditions and Edge Cases
 
 Flame's multithreaded runtime is engineered to handle abnormal execution states and developer errors cleanly:
 

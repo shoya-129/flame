@@ -1,0 +1,13 @@
+[package]
+name = "flame-macro"
+version = "0.1.0"
+edition = "2021"
+description = "Attribute macros for Flame native plugins and daemon persistence"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }

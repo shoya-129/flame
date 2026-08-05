@@ -1,9 +1,14 @@
 use crate::package_manager;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, String)], force_local: bool) {
+pub fn build_aot_project(
+    pkg_name: &str,
+    profile: &str,
+    native_deps: &[(String, String)],
+    force_local: bool,
+) {
     println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
     let build_cache = Path::new(".flame").join("build-cache");
@@ -15,18 +20,21 @@ pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, 
     let current_exe = std::env::current_exe().unwrap();
     let mut is_local_dev = false;
     let mut flame_source_dir = std::path::PathBuf::new();
-    
+
     if let (Some(parent1), Some(parent2), Some(parent3)) = (
         current_exe.parent(),
         current_exe.parent().and_then(|p| p.parent()),
-        current_exe.parent().and_then(|p| p.parent()).and_then(|p| p.parent()),
+        current_exe
+            .parent()
+            .and_then(|p| p.parent())
+            .and_then(|p| p.parent()),
     ) {
         if (parent1.ends_with("debug") || parent1.ends_with("release"))
             && parent2.ends_with("target")
             && parent3.join("Cargo.toml").exists()
         {
             let cargo_content = fs::read_to_string(parent3.join("Cargo.toml")).unwrap_or_default();
-            if cargo_content.contains("name = \"flame\"") {
+            if cargo_content.contains("name = \"flamelang\"") || cargo_content.contains("name = \"flame\"") {
                 is_local_dev = true;
                 flame_source_dir = parent3.to_path_buf();
             }
@@ -44,7 +52,10 @@ pub fn build_aot_project(pkg_name: &str, profile: &str, native_deps: &[(String, 
     }
 
     let flame_dep = if is_local_dev {
-        format!(r#"flamelang = {{ path = "{}" }}"#, flame_source_dir.to_string_lossy().replace("\\", "/"))
+        format!(
+            r#"flamelang = {{ path = "{}" }}"#,
+            flame_source_dir.to_string_lossy().replace("\\", "/")
+        )
     } else {
         format!(r#"flamelang = "{}""#, env!("CARGO_PKG_VERSION"))
     };
@@ -118,7 +129,7 @@ panic = "abort"
             }
         }
         let mut retry = true;
-        
+
         while retry {
             retry = false;
             let output = Command::new("cargo")
@@ -138,8 +149,13 @@ panic = "abort"
             if let Ok(out) = output {
                 if !out.status.success() {
                     let stderr = String::from_utf8_lossy(&out.stderr);
-                    println!("WARNING: rustdoc failed for {}. Stderr: {}", package_spec, stderr);
-                    if stderr.contains("is ambiguous") && stderr.contains("following specifications") {
+                    println!(
+                        "WARNING: rustdoc failed for {}. Stderr: {}",
+                        package_spec, stderr
+                    );
+                    if stderr.contains("is ambiguous")
+                        && stderr.contains("following specifications")
+                    {
                         // Extract the first specification
                         if let Some(spec_idx) = stderr.find("following specifications") {
                             let rest = &stderr[spec_idx..];
@@ -166,7 +182,10 @@ panic = "abort"
         let meta_path = meta_dir.join(format!("{}.fmi", name));
 
         if json_path.exists() {
-            let meta = crate::package_manager::parse_rustdoc_json(&json_path, name);
+            let mut meta = crate::package_manager::parse_rustdoc_json(&json_path, name);
+            if let Some(local_plugin_path) = extract_local_dependency_path(version) {
+                crate::package_manager::enrich_with_syn(&mut meta, &local_plugin_path);
+            }
             if let Ok(meta_str) = serde_json::to_string_pretty(&meta) {
                 fs::write(&meta_path, meta_str).unwrap();
             }
@@ -180,7 +199,8 @@ panic = "abort"
             .join(format!("{}.fmi", name));
         if meta_path.exists() {
             if let Ok(meta_content) = fs::read_to_string(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content) {
+                if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content)
+                {
                     main_rs.push_str(&format!("// Wrapper for crate {}\n", name));
                     main_rs.push_str(&format!("mod bridge_{} {{\n", name));
                     main_rs.push_str("    use super::*;\n");
@@ -190,7 +210,9 @@ panic = "abort"
                     let mut generated_methods = std::collections::HashSet::new();
 
                     for func in meta.functions {
-                        if !generated_methods.insert(func.name.clone()) || should_skip_bridge_function(&func) {
+                        if !generated_methods.insert(func.name.clone())
+                            || should_skip_bridge_function(&func)
+                        {
                             continue;
                         }
 
@@ -203,14 +225,20 @@ panic = "abort"
                         main_rs.push_str("        let c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
                         let mut call_args = Vec::new();
                         for (idx, p) in func.params.iter().enumerate() {
-                            let (ext_code, var_name) = generate_param_extraction(p, idx, &func.name);
+                            let (ext_code, var_name) =
+                                generate_param_extraction(p, idx, &func.name);
                             main_rs.push_str(&ext_code);
                             call_args.push(var_name);
                         }
 
                         let args_str = call_args.join(", ");
-                        let requires_prim = func.is_generic && (func.name == "gen" || func.params.is_empty());
-                        let is_async = func.is_async || func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") || func.return_type.contains("Future") || func.return_type.contains("async");
+                        let requires_prim =
+                            func.is_generic && (func.name == "gen" || func.params.is_empty());
+                        let is_persistent_async = func.persistent_runtime;
+                        let is_async = func.is_async
+                            || is_persistent_async
+                            || func.return_type.contains("Future")
+                            || func.return_type.contains("async");
 
                         if requires_prim {
                             let generic_idx = func.params.len();
@@ -220,19 +248,26 @@ panic = "abort"
                             let primitives = vec!["i64", "f64", "bool"];
                             for prim in primitives {
                                 main_rs.push_str(&format!("            \"{}\" => {{\n", prim));
-                                main_rs.push_str(&format!("                let res = {}::{}::<{}>({});\n", name, func.name, prim, args_str));
+                                main_rs.push_str(&format!(
+                                    "                let res = {}::{}::<{}>({});\n",
+                                    name, func.name, prim, args_str
+                                ));
                                 if prim == "bool" {
-                                    main_rs.push_str("                let mut cv = CValue::null();\n");
+                                    main_rs
+                                        .push_str("                let mut cv = CValue::null();\n");
                                     main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Bool;\n");
                                     main_rs.push_str("                cv.bool_val = res;\n");
                                     main_rs.push_str("                return cv;\n");
                                 } else if prim == "f32" || prim == "f64" {
-                                    main_rs.push_str("                let mut cv = CValue::null();\n");
+                                    main_rs
+                                        .push_str("                let mut cv = CValue::null();\n");
                                     main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Float;\n");
-                                    main_rs.push_str("                cv.float_val = res as f64;\n");
+                                    main_rs
+                                        .push_str("                cv.float_val = res as f64;\n");
                                     main_rs.push_str("                return cv;\n");
                                 } else {
-                                    main_rs.push_str("                let mut cv = CValue::null();\n");
+                                    main_rs
+                                        .push_str("                let mut cv = CValue::null();\n");
                                     main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Int;\n");
                                     main_rs.push_str("                cv.int_val = res as i64;\n");
                                     main_rs.push_str("                return cv;\n");
@@ -243,17 +278,26 @@ panic = "abort"
                             main_rs.push_str("        }\n");
                         } else {
                             if is_async {
-                                if func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") {
-                                    main_rs.push_str("        flamelang::vm::set_event_loop_active(true);\n");
-                                    main_rs.push_str(&format!("        std::thread::spawn(move || {{ let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(async move {{ {}::{}({}).await }}); }});\n", name, func.name, args_str));
+                                if is_persistent_async {
+                                    main_rs.push_str(
+                                        "        flamelang::vm::set_event_loop_active(true);\n",
+                                    );
+                                    main_rs.push_str(&format!("        std::thread::spawn(move || {{ let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(async move {{ {}::{}({}).await }}); flamelang::vm::set_event_loop_active(false); }});\n", name, func.name, args_str));
                                     main_rs.push_str("        CValue::null()\n");
                                 } else {
                                     main_rs.push_str(&format!("        let res = tokio::runtime::Runtime::new().unwrap().block_on(async move {{ {}::{}({}).await }});\n", name, func.name, args_str));
-                                    main_rs.push_str(&generate_return_conversion(&func.return_type, ""));
+                                    main_rs.push_str(&generate_return_conversion(
+                                        &func.return_type,
+                                        "",
+                                    ));
                                 }
                             } else {
-                                main_rs.push_str(&format!("        let res = {}::{}({});\n", name, func.name, args_str));
-                                main_rs.push_str(&generate_return_conversion(&func.return_type, ""));
+                                main_rs.push_str(&format!(
+                                    "        let res = {}::{}({});\n",
+                                    name, func.name, args_str
+                                ));
+                                main_rs
+                                    .push_str(&generate_return_conversion(&func.return_type, ""));
                             }
                         }
                         main_rs.push_str("    }\n");
@@ -264,7 +308,9 @@ panic = "abort"
                         for func in struct_meta.methods {
                             let f_name = &func.flame_name;
                             let combined_name = format!("{}_{}", s_name, f_name);
-                            if !generated_methods.insert(combined_name.clone()) || should_skip_bridge_function(&func) {
+                            if !generated_methods.insert(combined_name.clone())
+                                || should_skip_bridge_function(&func)
+                            {
                                 continue;
                             }
 
@@ -273,10 +319,16 @@ panic = "abort"
                                 combined_name
                             ));
                             main_rs.push_str("        let c_args = unsafe { std::slice::from_raw_parts(_args, _len) };\n");
-                            let is_async = func.is_async || func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") || func.return_type.contains("Future") || func.return_type.contains("async");
+                            let is_persistent_async = func.persistent_runtime;
+                            let is_async = func.is_async
+                                || is_persistent_async
+                                || func.return_type.contains("Future")
+                                || func.return_type.contains("async");
                             if !func.is_static {
                                 main_rs.push_str("        // Self is arg 0, cast from obj_ptr\n");
-                                if func.receiver == Some("self".to_string()) || (is_async && (func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run"))) {
+                                if func.receiver == Some("self".to_string())
+                                    || (is_async && is_persistent_async)
+                                {
                                     main_rs.push_str(&format!("        let obj = *unsafe {{ Box::from_raw(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
                                 } else {
                                     main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
@@ -286,15 +338,21 @@ panic = "abort"
                             let mut call_args = Vec::new();
                             for (idx, p) in func.params.iter().enumerate() {
                                 let c_idx = if func.is_static { idx } else { idx + 1 };
-                                let (ext_code, var_name) = generate_param_extraction(p, c_idx, &func.name);
+                                let (ext_code, var_name) =
+                                    generate_param_extraction(p, c_idx, &func.name);
                                 main_rs.push_str(&ext_code);
                                 call_args.push(var_name);
                             }
 
                             let args_str = call_args.join(", ");
-                            let requires_prim = func.is_generic && (func.name == "gen" || func.params.is_empty());
+                            let requires_prim =
+                                func.is_generic && (func.name == "gen" || func.params.is_empty());
                             if requires_prim {
-                                let generic_idx = if func.is_static { func.params.len() } else { func.params.len() + 1 };
+                                let generic_idx = if func.is_static {
+                                    func.params.len()
+                                } else {
+                                    func.params.len() + 1
+                                };
                                 main_rs.push_str(&format!("        let generic_type_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", generic_idx));
                                 main_rs.push_str("        let generic_type = generic_type_cstr.to_str().unwrap_or_default();\n");
                                 main_rs.push_str("        match generic_type {\n");
@@ -313,19 +371,28 @@ panic = "abort"
                                         ));
                                     }
                                     if prim == "bool" {
-                                        main_rs.push_str("                let mut cv = CValue::null();\n");
+                                        main_rs.push_str(
+                                            "                let mut cv = CValue::null();\n",
+                                        );
                                         main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Bool;\n");
                                         main_rs.push_str("                cv.bool_val = res;\n");
                                         main_rs.push_str("                return cv;\n");
                                     } else if prim == "f32" || prim == "f64" {
-                                        main_rs.push_str("                let mut cv = CValue::null();\n");
+                                        main_rs.push_str(
+                                            "                let mut cv = CValue::null();\n",
+                                        );
                                         main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Float;\n");
-                                        main_rs.push_str("                cv.float_val = res as f64;\n");
+                                        main_rs.push_str(
+                                            "                cv.float_val = res as f64;\n",
+                                        );
                                         main_rs.push_str("                return cv;\n");
                                     } else {
-                                        main_rs.push_str("                let mut cv = CValue::null();\n");
+                                        main_rs.push_str(
+                                            "                let mut cv = CValue::null();\n",
+                                        );
                                         main_rs.push_str("                cv.tag = flamelang::runner::CValueTag::Int;\n");
-                                        main_rs.push_str("                cv.int_val = res as i64;\n");
+                                        main_rs
+                                            .push_str("                cv.int_val = res as i64;\n");
                                         main_rs.push_str("                return cv;\n");
                                     }
                                     main_rs.push_str("            }\n");
@@ -340,17 +407,26 @@ panic = "abort"
                                 };
 
                                 if is_async {
-                                    if func.name.contains("listen") || func.name.contains("serve") || func.name.contains("run") {
-                                        main_rs.push_str("        flamelang::vm::set_event_loop_active(true);\n");
-                                        main_rs.push_str(&format!("        std::thread::spawn(move || {{ let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(async move {{ {}.await }}); }});\n", call_expr));
+                                    if is_persistent_async {
+                                        main_rs.push_str(
+                                            "        flamelang::vm::set_event_loop_active(true);\n",
+                                        );
+                                        main_rs.push_str(&format!("        std::thread::spawn(move || {{ let rt = tokio::runtime::Runtime::new().unwrap(); rt.block_on(async move {{ {}.await }}); flamelang::vm::set_event_loop_active(false); }});\n", call_expr));
                                         main_rs.push_str("        CValue::null()\n");
                                     } else {
                                         main_rs.push_str(&format!("        let res = tokio::runtime::Runtime::new().unwrap().block_on(async move {{ {}.await }});\n", call_expr));
-                                        main_rs.push_str(&generate_return_conversion(&func.return_type, s_name));
+                                        main_rs.push_str(&generate_return_conversion(
+                                            &func.return_type,
+                                            s_name,
+                                        ));
                                     }
                                 } else {
-                                    main_rs.push_str(&format!("        let res = {};\n", call_expr));
-                                    main_rs.push_str(&generate_return_conversion(&func.return_type, s_name));
+                                    main_rs
+                                        .push_str(&format!("        let res = {};\n", call_expr));
+                                    main_rs.push_str(&generate_return_conversion(
+                                        &func.return_type,
+                                        s_name,
+                                    ));
                                 }
                             }
                             main_rs.push_str("    }\n");
@@ -372,10 +448,13 @@ panic = "abort"
             .join(format!("{}.fmi", name));
         if meta_path.exists() {
             if let Ok(meta_content) = fs::read_to_string(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content) {
+                if let Ok(meta) = serde_json::from_str::<package_manager::FlameMeta>(&meta_content)
+                {
                     let mut generated_methods = std::collections::HashSet::new();
                     for func in meta.functions {
-                        if !generated_methods.insert(func.name.clone()) || should_skip_bridge_function(&func) {
+                        if !generated_methods.insert(func.name.clone())
+                            || should_skip_bridge_function(&func)
+                        {
                             continue;
                         }
                         let f_name = &func.flame_name;
@@ -387,7 +466,9 @@ panic = "abort"
                         for func in struct_meta.methods {
                             let f_name = &func.flame_name;
                             let combined_name = format!("{}_{}", s_name, f_name);
-                            if !generated_methods.insert(combined_name.clone()) || should_skip_bridge_function(&func) {
+                            if !generated_methods.insert(combined_name.clone())
+                                || should_skip_bridge_function(&func)
+                            {
                                 continue;
                             }
                             let sym = format!("flame_{}_{}_{}", name, s_name, f_name);
@@ -407,9 +488,8 @@ panic = "abort"
     main_rs.push_str("    // Since execute_source does not exist, we just run_file from main.rs if we had it, but here we can just parse and run\n");
     main_rs
         .push_str("    // Read the package's source at runtime from current working directory\n");
-    main_rs.push_str(
-        "    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n",
-    );
+    main_rs
+        .push_str("    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n");
     main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
     main_rs.push_str("    let mut tokens = Vec::new();\n");
     main_rs.push_str("    loop {\n");
@@ -423,7 +503,8 @@ panic = "abort"
     );
     main_rs.push_str("    match parser.parse() {\n");
     main_rs.push_str("        Ok(stmts) => {\n");
-    main_rs.push_str("            let result = runner.run(&stmts);\n");
+    main_rs.push_str("            let clean_stmts: Vec<_> = stmts.into_iter().filter(|stmt| !flamelang::parser::is_test_statement(stmt)).collect();\n");
+    main_rs.push_str("            let result = runner.run(&clean_stmts);\n");
     main_rs.push_str("            vm::wait_for_all_threads();\n");
     main_rs.push_str("            if let Err(e) = result {\n");
     main_rs.push_str("                eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m {}\", e);\n");
@@ -473,6 +554,21 @@ panic = "abort"
     }
 }
 
+fn extract_local_dependency_path(version: &str) -> Option<PathBuf> {
+    for needle in ["path = \"", "path=\""] {
+        if let Some(idx) = version.find(needle) {
+            let rest = &version[idx + needle.len()..];
+            if let Some(end_idx) = rest.find('"') {
+                let path = &rest[..end_idx];
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path));
+                }
+            }
+        }
+    }
+    None
+}
+
 fn should_skip_bridge_function(func: &crate::package_manager::FlameFunctionMeta) -> bool {
     func.return_type.contains("Iter")
         || func.return_type.contains("Iterator")
@@ -490,72 +586,161 @@ fn should_skip_bridge_function(func: &crate::package_manager::FlameFunctionMeta)
         })
 }
 
-fn generate_param_extraction(p: &crate::package_manager::FlameParamMeta, c_idx: usize, func_name: &str) -> (String, String) {
+fn generate_param_extraction(
+    p: &crate::package_manager::FlameParamMeta,
+    c_idx: usize,
+    func_name: &str,
+) -> (String, String) {
     let p_type = p.type_name.to_lowercase();
     let var_name = format!("arg{}", c_idx);
     let mut code = String::new();
 
-    if p.is_callback || p_type.contains("callback") || p_type.contains("handler") || p.name.to_lowercase().contains("handler") || p.name.to_lowercase().contains("callback") || p.type_name.len() == 1 || p_type.contains("fn(") {
-        code.push_str(&format!("        let fn_id{} = c_args[{}].int_val as u64;\n", c_idx, c_idx));
+    if p.is_callback
+        || p_type.contains("callback")
+        || p_type.contains("handler")
+        || p.name.to_lowercase().contains("handler")
+        || p.name.to_lowercase().contains("callback")
+        || p.type_name.len() == 1
+        || p_type.contains("fn(")
+    {
+        code.push_str(&format!(
+            "        let fn_id{} = c_args[{}].int_val as u64;\n",
+            c_idx, c_idx
+        ));
         if func_name == "post" || func_name == "put" || func_name == "patch" {
-            code.push_str(&format!("        let {} = move |body: String| async move {{\n", var_name));
+            code.push_str(&format!(
+                "        let {} = move |body: String| async move {{\n",
+                var_name
+            ));
             code.push_str(&format!("            let cb = flamelang::vm::FlameCallback {{ function_id: fn_id{}, module_id: 0 }};\n", c_idx));
-            code.push_str("            let arg_cv = flamelang::runner::CValue::from_string(&body);\n");
+            code.push_str(
+                "            let arg_cv = flamelang::runner::CValue::from_string(&body);\n",
+            );
             code.push_str("            let res = flamelang::vm::enqueue_callback(cb, vec![arg_cv]).unwrap_or_else(|_| flamelang::vm::CValue::null());\n");
             code.push_str("            if res.tag == flamelang::runner::CValueTag::String && !res.string_ptr.is_null() {\n");
-            code.push_str("                unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() }\n");
+            code.push_str("                let s = unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() };\n");
+            code.push_str(
+                "                unsafe { let _ = std::ffi::CString::from_raw(res.string_ptr); }\n",
+            );
+            code.push_str("                s\n");
             code.push_str("            } else {\n");
             code.push_str("                String::new()\n");
             code.push_str("            }\n");
             code.push_str("        };\n");
         } else {
-            code.push_str(&format!("        let {} = move || async move {{\n", var_name));
+            code.push_str(&format!(
+                "        let {} = move || async move {{\n",
+                var_name
+            ));
             code.push_str(&format!("            let cb = flamelang::vm::FlameCallback {{ function_id: fn_id{}, module_id: 0 }};\n", c_idx));
             code.push_str("            let res = flamelang::vm::enqueue_callback(cb, vec![]).unwrap_or_else(|_| flamelang::vm::CValue::null());\n");
             code.push_str("            if res.tag == flamelang::runner::CValueTag::String && !res.string_ptr.is_null() {\n");
-            code.push_str("                unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() }\n");
+            code.push_str("                let s = unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() };\n");
+            code.push_str(
+                "                unsafe { let _ = std::ffi::CString::from_raw(res.string_ptr); }\n",
+            );
+            code.push_str("                s\n");
             code.push_str("            } else {\n");
             code.push_str("                String::new()\n");
             code.push_str("            }\n");
             code.push_str("        };\n");
         }
     } else if p_type.contains("range") {
-        code.push_str(&format!("        let {} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n", var_name, c_idx, c_idx));
+        code.push_str(&format!(
+            "        let {} = (c_args[{}].int_val as u32)..(c_args[{}].int_val2 as u32);\n",
+            var_name, c_idx, c_idx
+        ));
     } else if p_type.contains("&str") || (p_type.contains("str") && !p_type.contains("string")) {
-        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
+        code.push_str(&format!(
+            "        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n",
+            var_name, c_idx
+        ));
         if p_type.contains("'static") {
             code.push_str(&format!("        let {}: &'static str = Box::leak({}_cstr.to_string_lossy().into_owned().into_boxed_str());\n", var_name, var_name));
         } else {
-            code.push_str(&format!("        let {} = {}_cstr.to_str().unwrap_or_default();\n", var_name, var_name));
+            code.push_str(&format!(
+                "        let {} = {}_cstr.to_str().unwrap_or_default();\n",
+                var_name, var_name
+            ));
         }
     } else if p_type == "string" {
-        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
-        code.push_str(&format!("        let {} = {}_cstr.to_string_lossy().into_owned();\n", var_name, var_name));
+        code.push_str(&format!(
+            "        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n",
+            var_name, c_idx
+        ));
+        code.push_str(&format!(
+            "        let {} = {}_cstr.to_string_lossy().into_owned();\n",
+            var_name, var_name
+        ));
     } else if p_type == "pathbuf" {
-        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
-        code.push_str(&format!("        let {} = std::path::PathBuf::from({}_cstr.to_string_lossy().into_owned());\n", var_name, var_name));
+        code.push_str(&format!(
+            "        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n",
+            var_name, c_idx
+        ));
+        code.push_str(&format!(
+            "        let {} = std::path::PathBuf::from({}_cstr.to_string_lossy().into_owned());\n",
+            var_name, var_name
+        ));
     } else if p_type == "&path" {
-        code.push_str(&format!("        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n", var_name, c_idx));
-        code.push_str(&format!("        let {}_path = std::path::Path::new({}_cstr.to_str().unwrap_or_default());\n", var_name, var_name));
+        code.push_str(&format!(
+            "        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n",
+            var_name, c_idx
+        ));
+        code.push_str(&format!(
+            "        let {}_path = std::path::Path::new({}_cstr.to_str().unwrap_or_default());\n",
+            var_name, var_name
+        ));
         code.push_str(&format!("        let {} = {}_path;\n", var_name, var_name));
     } else if p_type == "bool" {
-        code.push_str(&format!("        let {} = c_args[{}].bool_val;\n", var_name, c_idx));
+        code.push_str(&format!(
+            "        let {} = c_args[{}].bool_val;\n",
+            var_name, c_idx
+        ));
     } else if p_type == "char" {
-        code.push_str(&format!("        let {} = std::char::from_u32(c_args[{}].int_val as u32).unwrap_or(' ');\n", var_name, c_idx));
-    } else if ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize"].contains(&p_type.as_str()) {
-        code.push_str(&format!("        let {} = c_args[{}].int_val as {};\n", var_name, c_idx, p.type_name));
+        code.push_str(&format!(
+            "        let {} = std::char::from_u32(c_args[{}].int_val as u32).unwrap_or(' ');\n",
+            var_name, c_idx
+        ));
+    } else if [
+        "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize",
+    ]
+    .contains(&p_type.as_str())
+    {
+        code.push_str(&format!(
+            "        let {} = c_args[{}].int_val as {};\n",
+            var_name, c_idx, p.type_name
+        ));
     } else if ["f32", "f64"].contains(&p_type.as_str()) {
-        code.push_str(&format!("        let {} = c_args[{}].float_val as {};\n", var_name, c_idx, p.type_name));
+        code.push_str(&format!(
+            "        let {} = c_args[{}].float_val as {};\n",
+            var_name, c_idx, p.type_name
+        ));
     } else if p_type.starts_with("option<") {
         code.push_str(&format!("        let {} = if c_args[{}].tag == flamelang::runner::CValueTag::Null {{ None }} else {{ Some(c_args[{}].int_val) }};\n", var_name, c_idx, c_idx));
     } else if p_type.starts_with("vec<") {
         code.push_str(&format!("        let {} = Vec::new();\n", var_name));
     } else {
-        if p.type_name.starts_with('&') || p_type.contains("object") || p.type_name.chars().next().map_or(false, |c| c.is_uppercase()) {
-            let clean_type = p.type_name.trim_start_matches('&').trim_start_matches("mut ").trim();
-            code.push_str(&format!("        let {} = unsafe {{ &mut *(c_args[{}].obj_ptr as *mut {}) }};\n", var_name, c_idx, clean_type));
+        if p.type_name.starts_with('&')
+            || p_type.contains("object")
+            || p.type_name
+                .chars()
+                .next()
+                .map_or(false, |c| c.is_uppercase())
+        {
+            let clean_type = p
+                .type_name
+                .trim_start_matches('&')
+                .trim_start_matches("mut ")
+                .trim();
+            code.push_str(&format!(
+                "        let {} = unsafe {{ &mut *(c_args[{}].obj_ptr as *mut {}) }};\n",
+                var_name, c_idx, clean_type
+            ));
         } else {
-            code.push_str(&format!("        let {} = c_args[{}].int_val;\n", var_name, c_idx));
+            code.push_str(&format!(
+                "        let {} = c_args[{}].int_val;\n",
+                var_name, c_idx
+            ));
         }
     }
 
@@ -567,13 +752,23 @@ fn generate_return_conversion(return_type: &str, s_name: &str) -> String {
     let mut code = String::new();
     if rt == "()" {
         code.push_str("        let mut cv = CValue::null();\n        cv\n");
-    } else if rt == "string" || rt == "&str" || rt.contains("uuid") || (rt == "self" && s_name == "Uuid") {
-        code.push_str("        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n");
+    } else if rt == "string"
+        || rt == "&str"
+        || rt.contains("uuid")
+        || (rt == "self" && s_name == "Uuid")
+    {
+        code.push_str(
+            "        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n",
+        );
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
         code.push_str("        cv.string_ptr = c_str.into_raw();\n");
         code.push_str("        cv\n");
-    } else if ["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize"].contains(&rt.as_str()) {
+    } else if [
+        "i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "usize", "isize",
+    ]
+    .contains(&rt.as_str())
+    {
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
         code.push_str("        cv.int_val = res as i64;\n");
@@ -611,7 +806,10 @@ fn generate_return_conversion(return_type: &str, s_name: &str) -> String {
         code.push_str("            }\n");
         code.push_str("            None => CValue::null(),\n");
         code.push_str("        }\n");
-    } else if rt.starts_with("result<") || rt.contains("::result::") || rt.starts_with("std::io::result") {
+    } else if rt.starts_with("result<")
+        || rt.contains("::result::")
+        || rt.starts_with("std::io::result")
+    {
         code.push_str("        match res {\n");
         code.push_str("            Ok(val) => {\n");
         code.push_str("                let boxed = Box::new(val);\n");

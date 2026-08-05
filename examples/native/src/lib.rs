@@ -1,4 +1,5 @@
 use axum::{routing::{get, post}, Router};
+use flame_macro::flame;
 use std::mem;
 use std::net::SocketAddr;
 
@@ -47,6 +48,7 @@ impl FlameServer {
         mem::take(&mut self.router)
     }
 
+    #[flame(daemon)]
     pub async fn listen(self, port: u16) -> std::io::Result<()> {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
 

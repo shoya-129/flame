@@ -1,4 +1,4 @@
-use crate::vm::Value;
+use crate::vm::{get_child_process_counter, get_child_processes, Value};
 use std::collections::HashMap;
 use std::process::Command;
 
@@ -24,8 +24,11 @@ pub fn init() -> HashMap<String, Value> {
             }
             match command.spawn() {
                 Ok(child) => {
-                    // For now, we return the PID
-                    Ok(Value::ChildProcess(child.id() as u64))
+                    let mut counter = get_child_process_counter().lock().unwrap();
+                    *counter += 1;
+                    let child_id = *counter;
+                    get_child_processes().lock().unwrap().insert(child_id, child);
+                    Ok(Value::ChildProcess(child_id))
                 }
                 Err(e) => Err(format!("process.spawn error: {}", e)),
             }
@@ -92,6 +95,20 @@ pub fn init() -> HashMap<String, Value> {
                 Ok(_) => Ok(Value::Nil),
                 Err(e) => Err(format!("process.set_cwd error: {}", e)),
             }
+        }),
+    );
+
+    m.insert(
+        "cmd".to_string(),
+        Value::NativeCallback(|args| {
+            if args.is_empty() {
+                return Err("process.cmd expects 1 argument (program)".to_string());
+            }
+            let program = args[0].to_string().trim_matches('"').to_string();
+            Ok(Value::CommandBuilder {
+                program,
+                args: vec![],
+            })
         }),
     );
 

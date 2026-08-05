@@ -1,208 +1,274 @@
-const vscode = require('vscode')
-const fs = require('fs')
-const path = require('path')
-const child_process = require('child_process')
+const vscode = require('vscode');
+const { existsSync, writeFileSync, unlinkSync } = require('fs');
+const { dirname, join } = require('path');
+const { execFile } = require('child_process');
 
 function findWorkspaceRoot(documentPath) {
     if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
-        return vscode.workspace.workspaceFolders[0].uri.fsPath
+        return vscode.workspace.workspaceFolders[0].uri.fsPath;
     }
-    return path.dirname(documentPath)
+    return dirname(documentPath);
 }
 
-function findCompilerBinary(workspaceRoot) {
-    if (workspaceRoot) {
-        const candidates = [
-            path.join(workspaceRoot, 'target', 'debug', 'flamelang.exe'),
-            path.join(workspaceRoot, 'target', 'release', 'flamelang.exe'),
-            path.join(workspaceRoot, '..', 'target', 'debug', 'flamelang.exe'),
-            path.join(workspaceRoot, '..', 'target', 'release', 'flamelang.exe')
-        ]
+function findCompilerBinary(startPath) {
+    let curr = startPath;
+    for (let i = 0; i < 8; i++) {
+        if (curr) {
+            const candidates = [
+                join(curr, 'target', 'debug', 'flamelang.exe'),
+                join(curr, 'target', 'release', 'flamelang.exe'),
+                join(curr, 'target', 'debug', 'flame.exe'),
+                join(curr, 'target', 'release', 'flame.exe'),
+                join(curr, 'target', 'debug', 'flamelang'),
+                join(curr, 'target', 'release', 'flamelang'),
+                join(curr, 'target', 'debug', 'flame'),
+                join(curr, 'target', 'release', 'flame'),
+            ];
 
-        for (const candidate of candidates) {
-            if (fs.existsSync(candidate)) return candidate
+            for (const cand of candidates) {
+                if (existsSync(cand)) return cand;
+            }
+
+            const parent = dirname(curr);
+            if (parent === curr) break;
+            curr = parent;
+        } else {
+            break;
         }
     }
 
-    return 'flamelang'
+    return process.platform === 'win32' ? 'flamelang.exe' : 'flamelang';
 }
 
 function execCompilerJson(args, cwd) {
     return new Promise((resolve) => {
-        const compiler = findCompilerBinary(cwd)
+        const compiler = findCompilerBinary(cwd);
         if (!compiler) {
-            resolve(null)
-            return
+            resolve(null);
+            return;
         }
 
-        let options = { cwd }
-        if (process.platform === 'win32' && compiler === 'flame') {
-            options.shell = true
+        let options = { cwd, maxBuffer: 10 * 1024 * 1024 };
+        if (process.platform === 'win32' && !compiler.includes('\\') && !compiler.includes('/')) {
+            options.shell = true;
         }
-        child_process.execFile(compiler, args, options, (error, stdout) => {
+
+        execFile(compiler, args, options, (error, stdout) => {
             if (error && !stdout) {
-                resolve(null)
-                return
+                resolve(null);
+                return;
             }
 
             try {
-                resolve(JSON.parse(stdout))
+                resolve(JSON.parse(stdout));
             } catch (e) {
-                resolve(null)
+                resolve(null);
             }
-        })
-    })
+        });
+    });
 }
 
 async function runCheck(document, position) {
-    if (!document || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return null
-    const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
-    
+    if (!document || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return null;
+    const workspaceRoot = findWorkspaceRoot(document.uri.fsPath);
+
     // Write unsaved content to a temporary file so the compiler sees exactly what the user is typing
-    const tempFilePath = document.uri.fsPath + '.tmp.fm'
+    const tempFilePath = document.uri.fsPath + '.tmp.fm';
     try {
-        fs.writeFileSync(tempFilePath, document.getText())
+        writeFileSync(tempFilePath, document.getText());
     } catch (e) {
-        return null
+        return null;
     }
 
-    const args = ['check', tempFilePath, '--json']
+    const args = ['check', tempFilePath, '--json'];
     if (position) {
-        args.push('--line', String(position.line + 1), '--col', String(position.character + 1))
+        args.push('--line', String(position.line + 1), '--col', String(position.character + 1));
     }
-    
-    const result = await execCompilerJson(args, workspaceRoot)
-    
+
+    const result = await execCompilerJson(args, workspaceRoot);
+
     // Clean up temporary file
     try {
-        if (fs.existsSync(tempFilePath)) {
-            fs.unlinkSync(tempFilePath)
+        if (existsSync(tempFilePath)) {
+            unlinkSync(tempFilePath);
         }
     } catch (e) {}
 
-    return result
+    return result;
 }
 
 function toCompletionItem(entry) {
-    const kind = entry.kind === 'plugin'
-        ? vscode.CompletionItemKind.Module
-        : entry.kind === 'module'
-            ? vscode.CompletionItemKind.Module
-            : vscode.CompletionItemKind.Function
-    const item = new vscode.CompletionItem(entry.label, kind)
-    item.detail = entry.detail || ''
-    if (entry.documentation) {
-        item.documentation = new vscode.MarkdownString(entry.documentation)
+    let kind = vscode.CompletionItemKind.Function;
+    switch (entry.kind) {
+        case 'plugin':
+        case 'module':
+            kind = vscode.CompletionItemKind.Module;
+            break;
+        case 'keyword':
+            kind = vscode.CompletionItemKind.Keyword;
+            break;
+        case 'annotation':
+            kind = vscode.CompletionItemKind.Function;
+            break;
+        case 'struct':
+            kind = vscode.CompletionItemKind.Struct;
+            break;
+        case 'property':
+            kind = vscode.CompletionItemKind.Property;
+            break;
+        case 'method':
+            kind = vscode.CompletionItemKind.Method;
+            break;
+        case 'variable':
+            kind = vscode.CompletionItemKind.Variable;
+            break;
+        default:
+            kind = vscode.CompletionItemKind.Function;
+            break;
     }
-    return item
+
+    const item = new vscode.CompletionItem(entry.label, kind);
+    item.detail = entry.detail || '';
+    if (entry.documentation) {
+        item.documentation = new vscode.MarkdownString(entry.documentation);
+    }
+    return item;
 }
 
 function activate(context) {
-    const diagnostics = vscode.languages.createDiagnosticCollection('flame')
-    context.subscriptions.push(diagnostics)
+    const diagnostics = vscode.languages.createDiagnosticCollection('flame');
+    context.subscriptions.push(diagnostics);
 
     async function refreshDiagnostics(document) {
-        const supportedLanguages = ['flame']
-        if (!document || !supportedLanguages.includes(document.languageId) || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return
-        const result = await runCheck(document)
-        if (!result) return
+        const supportedLanguages = ['flame'];
+        if (!document || !supportedLanguages.includes(document.languageId) || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return;
+        const result = await runCheck(document);
+        if (!result) return;
 
         const mapped = (result.diagnostics || []).map((diag) => {
-            const line = Math.max(0, (diag.line || 1) - 1)
-            const col = Math.max(0, (diag.column || 1) - 1)
+            const line = Math.max(0, (diag.line || 1) - 1);
+            const col = Math.max(0, (diag.column || 1) - 1);
             const severity = diag.severity === 'warning'
                 ? vscode.DiagnosticSeverity.Warning
                 : diag.severity === 'info'
                     ? vscode.DiagnosticSeverity.Information
-                    : vscode.DiagnosticSeverity.Error
+                    : vscode.DiagnosticSeverity.Error;
             return new vscode.Diagnostic(
                 new vscode.Range(line, col, line, col + 1),
                 diag.message,
                 severity
-            )
-        })
+            );
+        });
 
-        diagnostics.set(document.uri, mapped)
+        diagnostics.set(document.uri, mapped);
     }
 
     context.subscriptions.push(
         vscode.workspace.onDidOpenTextDocument(refreshDiagnostics),
         vscode.workspace.onDidSaveTextDocument(refreshDiagnostics),
         vscode.workspace.onDidChangeTextDocument((event) => refreshDiagnostics(event.document))
-    )
+    );
 
     if (vscode.window.activeTextEditor) {
-        refreshDiagnostics(vscode.window.activeTextEditor.document)
+        refreshDiagnostics(vscode.window.activeTextEditor.document);
     }
 
     context.subscriptions.push(vscode.languages.registerCompletionItemProvider(['flame'], {
         async provideCompletionItems(document, position) {
-            const result = await runCheck(document, position)
-            if (!result) return []
-            return (result.completions || []).map(toCompletionItem)
+            const result = await runCheck(document, position);
+            if (!result) return [];
+            return (result.completions || []).map(toCompletionItem);
         }
-    }, '.', '@'))
+    }, '.', '@', ':'));
+
+    const tokenTypes = ['keyword', 'function', 'annotation'];
+    const tokenModifiers = ['declaration', 'readonly'];
+    const legend = new vscode.SemanticTokensLegend(tokenTypes, tokenModifiers);
+
+    context.subscriptions.push(vscode.languages.registerDocumentSemanticTokensProvider(['flame'], {
+        provideDocumentSemanticTokens(document) {
+            const tokensBuilder = new vscode.SemanticTokensBuilder(legend);
+            const text = document.getText();
+            const regex = /(@[a-zA-Z_][a-zA-Z0-9_]*)|(\bannotation\b)(\s+[a-zA-Z_][a-zA-Z0-9_]*)?/g;
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                if (match[1]) {
+                    const startPos = document.positionAt(match.index + 1);
+                    tokensBuilder.push(startPos.line, startPos.character, match[1].length - 1, 1, 0);
+                } else if (match[2]) {
+                    const kwPos = document.positionAt(match.index);
+                    tokensBuilder.push(kwPos.line, kwPos.character, match[2].length, 0, 0);
+                    if (match[3]) {
+                        const trimmed = match[3].trimStart();
+                        const offset = match[0].indexOf(trimmed);
+                        const namePos = document.positionAt(match.index + offset);
+                        tokensBuilder.push(namePos.line, namePos.character, trimmed.length, 1, 0);
+                    }
+                }
+            }
+            return tokensBuilder.build();
+        }
+    }, legend));
 
     context.subscriptions.push(vscode.languages.registerHoverProvider(['flame'], {
         async provideHover(document, position) {
-            const result = await runCheck(document, position)
-            if (!result || !result.hover) return null
+            const result = await runCheck(document, position);
+            if (!result || !result.hover) return null;
 
-            const blocks = [new vscode.MarkdownString('`' + result.hover.label + '`')]
+            const blocks = [new vscode.MarkdownString('`' + result.hover.label + '`')];
             if (result.hover.documentation) {
-                blocks.push(new vscode.MarkdownString(result.hover.documentation))
+                blocks.push(new vscode.MarkdownString(result.hover.documentation));
             }
-            return new vscode.Hover(blocks)
+            return new vscode.Hover(blocks);
         }
-    }))
+    }));
 
     context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['flame'], {
         async provideDocumentFormattingEdits(document) {
-            if (document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return []
-            const workspaceRoot = findWorkspaceRoot(document.uri.fsPath)
-            
-            const tempFilePath = document.uri.fsPath + '.fmt.tmp.fm'
+            if (document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return [];
+            const workspaceRoot = findWorkspaceRoot(document.uri.fsPath);
+
+            const tempFilePath = document.uri.fsPath + '.fmt.tmp.fm';
             try {
-                fs.writeFileSync(tempFilePath, document.getText())
+                writeFileSync(tempFilePath, document.getText());
             } catch (e) {
-                return []
+                return [];
             }
 
-            const args = ['format', tempFilePath, '--stdout']
-            
-            const compiler = findCompilerBinary(workspaceRoot)
-            if (!compiler) return []
+            const args = ['format', tempFilePath, '--stdout'];
+            const compiler = findCompilerBinary(workspaceRoot);
+            if (!compiler) return [];
 
             return new Promise((resolve) => {
-                let options = { cwd: workspaceRoot }
-                if (process.platform === 'win32' && compiler === 'flame') {
-                    options.shell = true
+                let options = { cwd: workspaceRoot, maxBuffer: 10 * 1024 * 1024 };
+                if (process.platform === 'win32' && !compiler.includes('\\') && !compiler.includes('/')) {
+                    options.shell = true;
                 }
-                child_process.execFile(compiler, args, options, (error, stdout, stderr) => {
+                execFile(compiler, args, options, (error, stdout) => {
                     try {
-                        if (fs.existsSync(tempFilePath)) {
-                            fs.unlinkSync(tempFilePath)
+                        if (existsSync(tempFilePath)) {
+                            unlinkSync(tempFilePath);
                         }
                     } catch (e) {}
 
                     if (error) {
-                        resolve([])
-                        return
+                        resolve([]);
+                        return;
                     }
 
                     if (stdout) {
                         const fullRange = new vscode.Range(
                             document.positionAt(0),
                             document.positionAt(document.getText().length)
-                        )
-                        resolve([vscode.TextEdit.replace(fullRange, stdout)])
+                        );
+                        resolve([vscode.TextEdit.replace(fullRange, stdout)]);
                     } else {
-                        resolve([])
+                        resolve([]);
                     }
-                })
-            })
+                });
+            });
         }
-    }))
+    }));
 }
 
 function deactivate() {}
@@ -210,4 +276,4 @@ function deactivate() {}
 module.exports = {
     activate,
     deactivate,
-}
+};

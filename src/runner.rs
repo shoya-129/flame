@@ -1,11 +1,10 @@
 use crate::lexer::{Lexer, Span};
-use crate::parser::{
-    BinaryOp, Expr, InterpolatedSegment, LiteralValue, Param, Parser, Stmt,
-};
+use crate::parser::{BinaryOp, Expr, InterpolatedSegment, LiteralValue, Param, Parser, Stmt};
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -16,6 +15,7 @@ pub struct Runner {
     pub modules: HashMap<String, Arc<Mutex<Env>>>,
     pub current_span: Option<Span>,
     pub native_methods: HashMap<String, fn(*const CValue, usize) -> CValue>,
+    pub test_mode: bool,
 }
 
 impl Runner {
@@ -26,6 +26,7 @@ impl Runner {
             modules: HashMap::new(),
             current_span: None,
             native_methods: HashMap::new(),
+            test_mode: false,
         };
         crate::stdlib::register_global_builtins(runner.env.clone());
         runner
@@ -35,7 +36,9 @@ impl Runner {
         let mut last_val = Value::Nil;
         for stmt in stmts {
             match self.execute_statement(stmt, self.env.clone()) {
-                Ok(val) => last_val = val,
+                Ok(val) => {
+                    last_val = val;
+                }
                 Err(e) => {
                     if let Some(ref span) = self.current_span {
                         return Err(format!(
@@ -50,9 +53,28 @@ impl Runner {
                 }
             }
         }
+        let main_func = self.env.lock().unwrap().get("main");
+        if let Some(main_val @ Value::Function { .. }) = main_func {
+            let explicitly_called = stmts.iter().any(|s| match s {
+                Stmt::ExprStmt(Expr::Call(callee, ..)) => match &**callee {
+                    Expr::Identifier(id, _) => id == "main",
+                    _ => false,
+                },
+                _ => false,
+            });
+            if !explicitly_called {
+                let res = self.invoke_callback_value(&main_val, Vec::new())?;
+                last_val = res;
+            }
+        }
         if crate::vm::is_event_loop_active() {
-            println!("\x1b[1;32m    Running\x1b[0m multi-threaded runtime daemon active (press Ctrl+C to exit)");
-            self.process_callback_queue();
+            println!(
+                "\x1b[1;32m    Running\x1b[0m multi-threaded runtime daemon active (press Ctrl+C to exit)"
+            );
+            while crate::vm::is_event_loop_active() {
+                self.process_callback_queue();
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
         Ok(last_val)
     }
@@ -64,13 +86,19 @@ impl Runner {
         };
         loop {
             let req = {
-                let guard = match rx.lock() {
+                let guard = match rx.try_lock() {
                     Ok(g) => g,
                     Err(_) => break,
                 };
-                match guard.recv() {
+                match guard.try_recv() {
                     Ok(r) => r,
-                    Err(_) => break,
+                    Err(TryRecvError::Empty) => {
+                        break;
+                    }
+
+                    Err(TryRecvError::Disconnected) => {
+                        break;
+                    }
                 }
             };
 
@@ -99,13 +127,134 @@ impl Runner {
         }
     }
 
-    pub fn invoke_callback_value(&mut self, callback_val: &Value, evaled_args: Vec<Value>) -> Result<Value, String> {
+    pub fn invoke_callback_value(
+        &mut self,
+        callback_val: &Value,
+        evaled_args: Vec<Value>,
+    ) -> Result<Value, String> {
         match callback_val {
-            Value::Function { params, body, env: closure_env } => {
+            Value::Function {
+                params,
+                body,
+                env: closure_env,
+                annotations,
+            } => {
                 let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
-                for (i, p) in params.iter().enumerate() {
-                    if i < evaled_args.len() {
-                        self.bind_param(child_env.clone(), p, evaled_args[i].clone());
+                for anno in annotations {
+                    if !matches!(
+                        anno.name.as_str(),
+                        "Test"
+                            | "Setup"
+                            | "Cleanup"
+                            | "BeforeAll"
+                            | "AfterAll"
+                            | "Ignore"
+                            | "Only"
+                            | "Parameterized"
+                            | "Benchmark"
+                            | "Cli"
+                            | "Command"
+                            | "ExpectPanic"
+                    ) {
+                        let mut anno_func_opt = closure_env.lock().unwrap().get(&anno.name);
+                        if anno_func_opt.is_none() {
+                            anno_func_opt = self.env.lock().unwrap().get(&anno.name);
+                        }
+                        if anno_func_opt.is_none() {
+                            for (_, mod_env) in &self.modules {
+                                if let Some(f) = mod_env.lock().unwrap().get(&anno.name) {
+                                    anno_func_opt = Some(f);
+                                    break;
+                                }
+                            }
+                        }
+                        if anno_func_opt.is_none() && anno.name.contains('.') {
+                            let parts: Vec<&str> = anno.name.split('.').collect();
+                            if let Some(mut current) = closure_env.lock().unwrap().get(parts[0]) {
+                                for part in &parts[1..] {
+                                    if let Value::Object(map) = &current {
+                                        if let Some(next) = map.get(*part) {
+                                            current = next.clone();
+                                        } else { break; }
+                                    } else if let Value::Formula(map) = &current {
+                                        if let Some(next) = map.get(*part) {
+                                            current = next.clone();
+                                        } else { break; }
+                                    } else {
+                                        break;
+                                    }
+                                }
+                                anno_func_opt = Some(current);
+                            }
+                        }
+                        
+                        if anno_func_opt.is_none() {
+                            let env_lock = closure_env.lock().unwrap();
+                            for (_, val) in env_lock.variables.iter() {
+                                if let Value::Object(map) = &val.value {
+                                    if let Some(exported_anno) = map.get(&anno.name) {
+                                        anno_func_opt = Some(exported_anno.clone());
+                                        break;
+                                    }
+                                } else if let Value::Formula(map) = &val.value {
+                                    if let Some(exported_anno) = map.get(&anno.name) {
+                                        anno_func_opt = Some(exported_anno.clone());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(anno_func) = anno_func_opt {
+                            let mut anno_args = Vec::new();
+                            for arg_str in &anno.args {
+                                let mut lexer = crate::lexer::Lexer::new(arg_str);
+                                let mut tokens = Vec::new();
+                                loop {
+                                    let tok = lexer.next_token();
+                                    let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                    tokens.push(tok);
+                                    if is_eof {
+                                        break;
+                                    }
+                                }
+                                if tokens.len() >= 2
+                                    && tokens[0].kind == crate::lexer::TokenKind::Identifier
+                                    && (tokens[1].kind == crate::lexer::TokenKind::Colon || tokens[1].kind == crate::lexer::TokenKind::Equal)
+                                {
+                                    tokens.remove(0);
+                                    tokens.remove(0);
+                                }
+                                let mut parser =
+                                    crate::parser::Parser::new(tokens, "anno_arg".to_string());
+                                if let Ok(expr) = parser.parse_expr() {
+                                    if let Ok(val) = self.eval_expr(&expr, closure_env.clone()) {
+                                        anno_args.push(val);
+                                    }
+                                }
+                            }
+                            if let Ok(anno_res) = self.invoke_callback_value(&anno_func, anno_args) {
+                                child_env.lock().unwrap().define(anno.name.to_lowercase(), anno_res.clone(), false);
+                                child_env.lock().unwrap().define(format!("__{}_data__", anno.name), anno_res, false);
+                            }
+                        }
+                    }
+                }
+                let is_cli = annotations.iter().any(|a| a.name == "Cli");
+                if is_cli {
+                    let cli_obj = self.execute_cli_dispatch(closure_env.clone())?;
+                    if let Some(first_param) = params.first() {
+                        self.bind_param(child_env.clone(), first_param, cli_obj);
+                    }
+                } else {
+                    for (i, p) in params.iter().enumerate() {
+                        if i < evaled_args.len() {
+                            self.bind_param(child_env.clone(), p, evaled_args[i].clone());
+                        } else if let Some(def_expr) = &p.default_val {
+                            if let Ok(val) = self.eval_expr(def_expr, child_env.clone()) {
+                                self.bind_param(child_env.clone(), p, val);
+                            }
+                        }
                     }
                 }
                 let mut last_val = Value::Nil;
@@ -124,24 +273,112 @@ impl Runner {
     }
 
     fn execute_statement(&mut self, stmt: &Stmt, env: Arc<Mutex<Env>>) -> Result<Value, String> {
+        if !self.test_mode && crate::parser::is_test_statement(stmt) {
+            return Ok(Value::Nil);
+        }
         self.current_span = Some(stmt.span());
         match stmt {
             Stmt::LetDecl {
                 name,
                 is_mut,
                 value,
+                annotations,
                 ..
             }
             | Stmt::ConstDecl {
                 name,
                 is_mut,
                 value,
+                annotations,
                 ..
             } => {
                 let val = self.eval_expr(value, env.clone())?;
                 if let Expr::Identifier(src_name, _) = value {
                     env.lock().unwrap().move_var(src_name);
                 }
+
+                for anno in annotations {
+                    let mut anno_func_opt = env.lock().unwrap().get(&anno.name);
+                    if anno_func_opt.is_none() {
+                        anno_func_opt = self.env.lock().unwrap().get(&anno.name);
+                    }
+                    if anno_func_opt.is_none() {
+                        for (_, mod_env) in &self.modules {
+                            if let Some(f) = mod_env.lock().unwrap().get(&anno.name) {
+                                anno_func_opt = Some(f);
+                                break;
+                            }
+                        }
+                    }
+                    if anno_func_opt.is_none() && anno.name.contains('.') {
+                        let parts: Vec<&str> = anno.name.split('.').collect();
+                        if let Some(mut current) = env.lock().unwrap().get(parts[0]) {
+                            for part in &parts[1..] {
+                                if let Value::Object(map) = &current {
+                                    if let Some(next) = map.get(*part) {
+                                        current = next.clone();
+                                    } else { break; }
+                                } else if let Value::Formula(map) = &current {
+                                    if let Some(next) = map.get(*part) {
+                                        current = next.clone();
+                                    } else { break; }
+                                } else {
+                                    break;
+                                }
+                            }
+                            anno_func_opt = Some(current);
+                        }
+                    }
+                    if anno_func_opt.is_none() {
+                        let env_lock = env.lock().unwrap();
+                        for (_, val) in env_lock.variables.iter() {
+                            if let Value::Object(map) = &val.value {
+                                if let Some(exported_anno) = map.get(&anno.name) {
+                                    anno_func_opt = Some(exported_anno.clone());
+                                    break;
+                                }
+                            } else if let Value::Formula(map) = &val.value {
+                                if let Some(exported_anno) = map.get(&anno.name) {
+                                    anno_func_opt = Some(exported_anno.clone());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(anno_func) = anno_func_opt {
+                        let mut anno_args = Vec::new();
+                        for arg_str in &anno.args {
+                            let mut lexer = crate::lexer::Lexer::new(arg_str);
+                            let mut tokens = Vec::new();
+                            loop {
+                                let tok = lexer.next_token();
+                                let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                tokens.push(tok);
+                                if is_eof {
+                                    break;
+                                }
+                            }
+                            if tokens.len() >= 2
+                                && tokens[0].kind == crate::lexer::TokenKind::Identifier
+                                && (tokens[1].kind == crate::lexer::TokenKind::Colon || tokens[1].kind == crate::lexer::TokenKind::Equal)
+                            {
+                                tokens.remove(0);
+                                tokens.remove(0);
+                            }
+                            let mut parser =
+                                crate::parser::Parser::new(tokens, "anno_arg".to_string());
+                            if let Ok(expr) = parser.parse_expr() {
+                                if let Ok(arg_val) = self.eval_expr(&expr, env.clone()) {
+                                    anno_args.push(arg_val);
+                                }
+                            }
+                        }
+
+                        let _ = self.invoke_callback_value(&anno_func, anno_args);
+                    }
+                }
+
                 if name.starts_with('(') && name.ends_with(')') {
                     let trimmed = &name[1..name.len() - 1];
                     let vars: Vec<&str> = trimmed.split(',').map(|s| s.trim()).collect();
@@ -162,12 +399,29 @@ impl Runner {
                 Ok(Value::Nil)
             }
             Stmt::FuncDecl {
+                name,
+                params,
+                body,
+                annotations,
+                ..
+            } => {
+                let func = Value::Function {
+                    params: params.clone(),
+                    body: body.clone(),
+                    env: env.clone(),
+                    annotations: annotations.clone(),
+                };
+                env.lock().unwrap().define(name.clone(), func, false);
+                Ok(Value::Nil)
+            }
+            Stmt::AnnotationDecl {
                 name, params, body, ..
             } => {
                 let func = Value::Function {
                     params: params.clone(),
                     body: body.clone(),
                     env: env.clone(),
+                    annotations: vec![],
                 };
                 env.lock().unwrap().define(name.clone(), func, false);
                 Ok(Value::Nil)
@@ -252,6 +506,7 @@ impl Runner {
                         let parsed_stmts = parser.parse().map_err(|e| e.message)?;
 
                         let mod_env = Arc::new(Mutex::new(Env::new()));
+                        crate::stdlib::register_global_builtins(mod_env.clone());
                         let mut runner = Runner::new(file_path.clone());
                         runner.env = mod_env.clone();
                         for s in &parsed_stmts {
@@ -330,6 +585,7 @@ impl Runner {
                                                     .collect(),
                                                 body: vec![],
                                                 env: mod_env.clone(),
+                                                annotations: vec![],
                                             },
                                             false,
                                         );
@@ -361,6 +617,7 @@ impl Runner {
                                                         .collect(),
                                                     body: vec![],
                                                     env: mod_env.clone(),
+                                                    annotations: vec![],
                                                 },
                                             );
                                         }
@@ -369,8 +626,10 @@ impl Runner {
                                             Value::Formula(struct_map),
                                             false,
                                         );
-                                        
-                                        if struct_meta.name.to_lowercase() == raw_mod_name.to_lowercase() {
+
+                                        if struct_meta.name.to_lowercase()
+                                            == raw_mod_name.to_lowercase()
+                                        {
                                             for method in &struct_meta.methods {
                                                 mod_env.lock().unwrap().define(
                                                     method.flame_name.clone(),
@@ -388,6 +647,7 @@ impl Runner {
                                                             .collect(),
                                                         body: vec![],
                                                         env: mod_env.clone(),
+                                                        annotations: vec![],
                                                     },
                                                     false,
                                                 );
@@ -424,10 +684,8 @@ impl Runner {
                     );
                     self.modules.insert(mod_name, mod_env);
                 } else {
-                    let mut local_file = self.resolve_path(&format!("{}.flame", path.last().unwrap()));
-                    if !local_file.exists() {
-                        local_file = self.resolve_path(&format!("{}.fm", path.last().unwrap()));
-                    }
+                    let local_file = crate::stdlib::locate_import_file(&self.filepath, path)
+                        .unwrap_or_else(|| self.resolve_path(&format!("{}.fm", path.join("/"))));
                     if local_file.exists() {
                         let content = fs::read_to_string(&local_file).map_err(|e| e.to_string())?;
                         let mut lexer = Lexer::new(&content);
@@ -445,10 +703,26 @@ impl Runner {
                         let parsed_stmts = parser.parse().map_err(|e| e.message)?;
 
                         let mod_env = Arc::new(Mutex::new(Env::new()));
+                        crate::stdlib::register_global_builtins(mod_env.clone());
                         let mut runner = Runner::new(local_file.clone());
                         runner.env = mod_env.clone();
                         for s in &parsed_stmts {
                             runner.execute_statement(s, mod_env.clone())?;
+                            if let Stmt::ExportDecl(inner, _) = s {
+                                match inner.as_ref() {
+                                    Stmt::FuncDecl { name, .. }
+                                    | Stmt::AnnotationDecl { name, .. }
+                                    | Stmt::LetDecl { name, .. }
+                                    | Stmt::ConstDecl { name, .. }
+                                    | Stmt::StructDecl { name, .. }
+                                    | Stmt::EnumDecl { name, .. } => {
+                                        if let Some(val) = mod_env.lock().unwrap().get(name) {
+                                            env.lock().unwrap().define(name.clone(), val, false);
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
                         }
 
                         for (k, v) in runner.modules {
@@ -460,7 +734,7 @@ impl Runner {
                             Value::Formula(mod_env.lock().unwrap().to_formula_map()),
                             false,
                         );
-                        self.modules.insert(path.last().unwrap().clone(), mod_env);
+                        self.modules.insert(mod_name, mod_env);
                     } else {
                         return Err(format!(
                             "Module '{}' not found at {:?}",
@@ -560,14 +834,45 @@ impl Runner {
             }
             Stmt::MatchStmt { target, arms, .. } => {
                 let target_val = self.eval_expr(target, env.clone())?;
-                let target_str = match &target_val {
-                    Value::String(s) => s.clone(),
-                    v => v.to_string(),
-                };
-                
+
                 for arm in arms {
-                    if arm.pattern == "_" || arm.pattern == target_str {
+                    if arm.pattern == "_" {
                         let res = self.eval_expr(&arm.body, env.clone())?;
+                        return Ok(res);
+                    }
+
+                    let mut is_match = false;
+                    let mut child_env_opt = None;
+
+                    match &target_val {
+                        Value::Object(map) | Value::Formula(map) => {
+                            if let Some(Value::String(variant)) = map.get("$variant") {
+                                if variant == &arm.pattern {
+                                    is_match = true;
+                                    let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                                    for field in &arm.destructure {
+                                        let field_val = map.get(field).cloned().unwrap_or(Value::Nil);
+                                        child.lock().unwrap().define(field.clone(), field_val, false);
+                                    }
+                                    child_env_opt = Some(child);
+                                }
+                            }
+                        }
+                        Value::String(s) => {
+                            if s == &arm.pattern {
+                                is_match = true;
+                            }
+                        }
+                        v => {
+                            if v.to_string() == arm.pattern {
+                                is_match = true;
+                            }
+                        }
+                    }
+
+                    if is_match {
+                        let exec_env = child_env_opt.unwrap_or_else(|| env.clone());
+                        let res = self.eval_expr(&arm.body, exec_env)?;
                         return Ok(res);
                     }
                 }
@@ -658,7 +963,155 @@ impl Runner {
         }
     }
 
-    fn eval_expr(&mut self, expr: &Expr, env: Arc<Mutex<Env>>) -> Result<Value, String> {
+    fn eval_explicit_conversion(
+        &mut self,
+        val: &Value,
+        member: &str,
+        args: &[(Option<String>, Expr)],
+        env: Arc<Mutex<Env>>,
+    ) -> Option<Result<Value, String>> {
+        match member {
+            "toString" | "to_string" => {
+                let mut prec = None;
+                if !args.is_empty() {
+                    if let Ok(Value::Int(p)) = self.eval_expr(&args[0].1, env.clone()) {
+                        prec = Some(p as usize);
+                    }
+                }
+                match val {
+                    Value::Float(f) => {
+                        if let Some(p) = prec {
+                            Some(Ok(Value::String(format!("{:.*}", p, f))))
+                        } else {
+                            Some(Ok(Value::String(f.to_string())))
+                        }
+                    }
+                    Value::String(s) => Some(Ok(Value::String(s.clone()))),
+                    _ => Some(Ok(Value::String(val.to_string()))),
+                }
+            }
+            "toInt" | "to_int" | "tryInt" | "try_int" => {
+                let is_try = member.starts_with("try");
+                let mut radix = 10;
+                if !args.is_empty() {
+                    if let Ok(Value::Int(r)) = self.eval_expr(&args[0].1, env.clone()) {
+                        if r >= 2 && r <= 36 {
+                            radix = r as u32;
+                        }
+                    }
+                }
+                match val {
+                    Value::Int(i) => Some(Ok(Value::Int(*i))),
+                    Value::Float(f) => Some(Ok(Value::Int(*f as i64))),
+                    Value::Bool(b) => Some(Ok(Value::Int(if *b { 1 } else { 0 }))),
+                    Value::String(s) => match i64::from_str_radix(s.trim(), radix) {
+                        Ok(res) => Some(Ok(Value::Int(res))),
+                        Err(_) => {
+                            if is_try {
+                                Some(Ok(Value::Nil))
+                            } else {
+                                Some(Err(format!(
+                                    "cannot convert string '{}' to Int with radix {}",
+                                    s, radix
+                                )))
+                            }
+                        }
+                    },
+                    _ => {
+                        if is_try {
+                            Some(Ok(Value::Nil))
+                        } else {
+                            Some(Err(format!("cannot convert {:?} to Int", val)))
+                        }
+                    }
+                }
+            }
+            "toFloat" | "to_float" | "toDouble" | "to_double" | "tryFloat" | "try_float"
+            | "tryDouble" | "try_double" => {
+                let is_try = member.starts_with("try");
+                match val {
+                    Value::Float(f) => Some(Ok(Value::Float(*f))),
+                    Value::Int(i) => Some(Ok(Value::Float(*i as f64))),
+                    Value::Bool(b) => Some(Ok(Value::Float(if *b { 1.0 } else { 0.0 }))),
+                    Value::String(s) => match s.trim().parse::<f64>() {
+                        Ok(res) => Some(Ok(Value::Float(res))),
+                        Err(_) => {
+                            if is_try {
+                                Some(Ok(Value::Nil))
+                            } else {
+                                Some(Err(format!("cannot convert string '{}' to Float", s)))
+                            }
+                        }
+                    },
+                    _ => {
+                        if is_try {
+                            Some(Ok(Value::Nil))
+                        } else {
+                            Some(Err(format!("cannot convert {:?} to Float", val)))
+                        }
+                    }
+                }
+            }
+            "toBool" | "to_bool" | "tryBool" | "try_bool" => {
+                let is_try = member.starts_with("try");
+                match val {
+                    Value::Bool(b) => Some(Ok(Value::Bool(*b))),
+                    Value::Int(i) => Some(Ok(Value::Bool(*i != 0))),
+                    Value::Float(f) => Some(Ok(Value::Bool(*f != 0.0))),
+                    Value::String(s) => {
+                        let lower = s.trim().to_lowercase();
+                        if lower == "true" || lower == "1" {
+                            Some(Ok(Value::Bool(true)))
+                        } else if lower == "false" || lower == "0" {
+                            Some(Ok(Value::Bool(false)))
+                        } else if is_try {
+                            Some(Ok(Value::Nil))
+                        } else {
+                            Some(Err(format!("cannot convert string '{}' to Bool", s)))
+                        }
+                    }
+                    _ => {
+                        if is_try {
+                            Some(Ok(Value::Nil))
+                        } else {
+                            Some(Err(format!("cannot convert {:?} to Bool", val)))
+                        }
+                    }
+                }
+            }
+            "toChar" | "to_char" => match val {
+                Value::Int(i) => {
+                    if let Some(c) = char::from_u32(*i as u32) {
+                        Some(Ok(Value::String(c.to_string())))
+                    } else {
+                        Some(Err(format!("invalid character integer {}", i)))
+                    }
+                }
+                Value::String(s) => {
+                    if let Some(c) = s.chars().next() {
+                        Some(Ok(Value::String(c.to_string())))
+                    } else {
+                        Some(Err("empty string has no character".to_string()))
+                    }
+                }
+                _ => Some(Err(format!("cannot convert {:?} to Char", val))),
+            },
+            "toBytes" | "to_bytes" => match val {
+                Value::String(s) => {
+                    let ints = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
+                    Some(Ok(Value::Tuple(ints)))
+                }
+                Value::Bytes(b) => {
+                    let ints = b.iter().map(|v| Value::Int(*v as i64)).collect();
+                    Some(Ok(Value::Tuple(ints)))
+                }
+                _ => Some(Err(format!("cannot convert {:?} to Bytes", val))),
+            },
+            _ => None,
+        }
+    }
+
+    pub fn eval_expr(&mut self, expr: &Expr, env: Arc<Mutex<Env>>) -> Result<Value, String> {
         self.current_span = Some(expr.span());
         match expr {
             Expr::Literal(lit, _) => match lit {
@@ -706,13 +1159,12 @@ impl Runner {
                     }
                 }
             }
-            Expr::Closure { params, body, .. } => {
-                Ok(Value::Function {
-                    params: params.clone(),
-                    body: body.clone(),
-                    env: env.clone(),
-                })
-            }
+            Expr::Closure { params, body, .. } => Ok(Value::Function {
+                params: params.clone(),
+                body: body.clone(),
+                env: env.clone(),
+                annotations: vec![],
+            }),
             Expr::Borrow(inner, is_mut, _) => {
                 // Construct a reference path when possible; fall back to Ref(value)
                 match &**inner {
@@ -731,7 +1183,10 @@ impl Runner {
                             if let Value::RefPath(path, _) = val {
                                 return Ok(Value::RefPath(path, *is_mut));
                             }
-                            return Ok(Value::RefPath(RefPath::Var(name.clone(), env.clone()), *is_mut));
+                            return Ok(Value::RefPath(
+                                RefPath::Var(name.clone(), env.clone()),
+                                *is_mut,
+                            ));
                         }
                     }
                     Expr::Dot(inner_id, member, _) => {
@@ -752,11 +1207,14 @@ impl Runner {
                 Ok(Value::Ref(Box::new(val)))
             }
             Expr::Binary(left, op, right, _) => {
-                if matches!(op, BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                if matches!(
+                    op,
+                    BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign
+                ) {
                     // Support assignment to identifiers, references, and simple dot paths
                     if let Expr::Identifier(var_name, _) = &**left {
                         let mut r_val = self.eval_expr(right, env.clone())?;
-                        
+
                         let current = {
                             let e = env.lock().unwrap();
                             e.get(var_name)
@@ -764,17 +1222,33 @@ impl Runner {
 
                         if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
                             let l_val = match &current {
-                                Some(Value::RefPath(path, _)) => self.read_target(env.clone(), path.clone())?,
+                                Some(Value::RefPath(path, _)) => {
+                                    self.read_target(env.clone(), path.clone())?
+                                }
                                 Some(val) => val.clone(),
                                 None => return Err(format!("undefined variable '{}'", var_name)),
                             };
                             r_val = match (op, l_val, &r_val) {
-                                (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a + b),
-                                (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a + b),
-                                (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => Value::String(format!("{}{}", a, b)),
-                                (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a - b),
-                                (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a - b),
-                                _ => return Err(format!("invalid operands for compound assignment")),
+                                (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => {
+                                    Value::Int(a + b)
+                                }
+                                (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => {
+                                    Value::Float(a + b)
+                                }
+                                (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => {
+                                    Value::String(format!("{}{}", a, b))
+                                }
+                                (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => {
+                                    Value::Int(a - b)
+                                }
+                                (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => {
+                                    Value::Float(a - b)
+                                }
+                                _ => {
+                                    return Err(format!(
+                                        "invalid operands for compound assignment"
+                                    ));
+                                }
                             };
                         }
 
@@ -791,7 +1265,7 @@ impl Runner {
                             if let Expr::Identifier(src_name, _) = &**right {
                                 env.lock().unwrap().move_var(src_name);
                             }
-                            
+
                             return Ok(r_val);
                         }
                         env.lock()
@@ -804,16 +1278,30 @@ impl Runner {
                     } else if let Expr::Dot(inner, member, _) = &**left {
                         if let Expr::Identifier(owner, _) = &**inner {
                             let mut r_val = self.eval_expr(right, env.clone())?;
-                            
+
                             if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
                                 let l_val = self.eval_expr(left, env.clone())?;
                                 r_val = match (op, l_val, &r_val) {
-                                    (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a + b),
-                                    (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a + b),
-                                    (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => Value::String(format!("{}{}", a, b)),
-                                    (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => Value::Int(a - b),
-                                    (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => Value::Float(a - b),
-                                    _ => return Err(format!("invalid operands for compound assignment")),
+                                    (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => {
+                                        Value::Int(a + b)
+                                    }
+                                    (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => {
+                                        Value::Float(a + b)
+                                    }
+                                    (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => {
+                                        Value::String(format!("{}{}", a, b))
+                                    }
+                                    (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => {
+                                        Value::Int(a - b)
+                                    }
+                                    (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => {
+                                        Value::Float(a - b)
+                                    }
+                                    _ => {
+                                        return Err(format!(
+                                            "invalid operands for compound assignment"
+                                        ));
+                                    }
                                 };
                             }
 
@@ -991,6 +1479,23 @@ impl Runner {
                         }
                         return Ok(Value::Nil);
                     }
+                    if name == "panic" {
+                        let mut parts = Vec::new();
+                        for (_, arg) in args {
+                            let val = self.eval_expr(arg, env.clone())?;
+                            let val_str = match val {
+                                Value::String(ref s) => s.clone(),
+                                _ => val.to_string(),
+                            };
+                            parts.push(val_str);
+                        }
+                        let msg = if parts.is_empty() {
+                            "explicit panic".to_string()
+                        } else {
+                            parts.join(" ")
+                        };
+                        return Err(msg);
+                    }
                     if name == "input" {
                         use std::io::{self, Write};
                         if !args.is_empty() {
@@ -1001,6 +1506,170 @@ impl Runner {
                         let mut buffer = String::new();
                         let _ = io::stdin().read_line(&mut buffer);
                         return Ok(Value::String(buffer.trim_end().to_string()));
+                    }
+                    if name == "assert" || name == "assert_true" {
+                        if args.is_empty() {
+                            return Err(
+                                "assert requires at least 1 argument (condition)".to_string()
+                            );
+                        }
+                        let cond = self.eval_expr(&args[0].1, env.clone())?;
+                        let msg = if args.len() > 1 {
+                            self.eval_expr(&args[1].1, env.clone())?.to_string()
+                        } else {
+                            "assertion failed: expression evaluated to false".to_string()
+                        };
+                        if let Value::Bool(true) = cond {
+                            return Ok(Value::Nil);
+                        }
+                        return Err(msg);
+                    }
+                    if name == "assert_false" {
+                        if args.is_empty() {
+                            return Err(
+                                "assert_false requires at least 1 argument (condition)".to_string()
+                            );
+                        }
+                        let cond = self.eval_expr(&args[0].1, env.clone())?;
+                        let msg = if args.len() > 1 {
+                            self.eval_expr(&args[1].1, env.clone())?.to_string()
+                        } else {
+                            "assertion failed: expression evaluated to true".to_string()
+                        };
+                        if let Value::Bool(false) = cond {
+                            return Ok(Value::Nil);
+                        }
+                        return Err(msg);
+                    }
+                    if name == "assert_eq" {
+                        if args.len() < 2 {
+                            return Err(
+                                "assert_eq requires at least 2 arguments (actual, expected)"
+                                    .to_string(),
+                            );
+                        }
+                        let act = self.eval_expr(&args[0].1, env.clone())?;
+                        let exp = self.eval_expr(&args[1].1, env.clone())?;
+                        if act.to_string() == exp.to_string() {
+                            return Ok(Value::Nil);
+                        }
+                        let msg = if args.len() > 2 {
+                            format!(": {}", self.eval_expr(&args[2].1, env.clone())?.to_string())
+                        } else {
+                            "".to_string()
+                        };
+                        return Err(format!(
+                            "Assertion failed: expected {}, got {}{}",
+                            exp.to_string(),
+                            act.to_string(),
+                            msg
+                        ));
+                    }
+                    if name == "assert_ne" {
+                        if args.len() < 2 {
+                            return Err(
+                                "assert_ne requires at least 2 arguments (actual, unexpected)"
+                                    .to_string(),
+                            );
+                        }
+                        let act = self.eval_expr(&args[0].1, env.clone())?;
+                        let exp = self.eval_expr(&args[1].1, env.clone())?;
+                        if act.to_string() != exp.to_string() {
+                            return Ok(Value::Nil);
+                        }
+                        let msg = if args.len() > 2 {
+                            format!(": {}", self.eval_expr(&args[2].1, env.clone())?.to_string())
+                        } else {
+                            "".to_string()
+                        };
+                        return Err(format!(
+                            "Assertion failed: expected values to differ, but both were {}{}",
+                            act.to_string(),
+                            msg
+                        ));
+                    }
+                    if name == "mock_data" {
+                        let schema = if !args.is_empty() {
+                            let val = self.eval_expr(&args[0].1, env.clone())?;
+                            match val {
+                                Value::String(s) => s.to_lowercase(),
+                                _ => val.to_string().to_lowercase(),
+                            }
+                        } else {
+                            "default".to_string()
+                        };
+                        let mut map = HashMap::new();
+                        if schema.contains("user") {
+                            map.insert("id".to_string(), Value::Int(1001));
+                            map.insert("name".to_string(), Value::String("Alex Flame".to_string()));
+                            map.insert(
+                                "email".to_string(),
+                                Value::String("alex@flamelang.org".to_string()),
+                            );
+                            map.insert("role".to_string(), Value::String("admin".to_string()));
+                            map.insert("active".to_string(), Value::Bool(true));
+                        } else if schema.contains("post") || schema.contains("article") {
+                            map.insert("id".to_string(), Value::Int(505));
+                            map.insert(
+                                "title".to_string(),
+                                Value::String("Flame Performance Guidance".to_string()),
+                            );
+                            map.insert(
+                                "content".to_string(),
+                                Value::String("High throughput server processing...".to_string()),
+                            );
+                            map.insert("views".to_string(), Value::Int(42));
+                            map.insert("published".to_string(), Value::Bool(true));
+                        } else if schema.contains("product") || schema.contains("item") {
+                            map.insert("id".to_string(), Value::Int(9900));
+                            map.insert(
+                                "name".to_string(),
+                                Value::String("Flame Engine v0.1.5".to_string()),
+                            );
+                            map.insert("price".to_string(), Value::Float(199.99));
+                            map.insert("in_stock".to_string(), Value::Bool(true));
+                        } else {
+                            map.insert("mock_type".to_string(), Value::String(schema));
+                            map.insert("status".to_string(), Value::String("OK".to_string()));
+                            map.insert("code".to_string(), Value::Int(200));
+                        }
+                        return Ok(Value::Formula(map));
+                    }
+                    if name == "mock_api" {
+                        let url = if !args.is_empty() {
+                            self.eval_expr(&args[0].1, env.clone())?.to_string()
+                        } else {
+                            "*".to_string()
+                        };
+                        let body = if args.len() > 1 {
+                            self.eval_expr(&args[1].1, env.clone())?.to_string()
+                        } else {
+                            "{\"status\": \"ok\"}".to_string()
+                        };
+                        let status = if args.len() > 2 {
+                            if let Value::Int(i) = self.eval_expr(&args[2].1, env.clone())? {
+                                i
+                            } else {
+                                200
+                            }
+                        } else {
+                            200
+                        };
+                        let mut map = HashMap::new();
+                        map.insert("url".to_string(), Value::String(url));
+                        map.insert("body".to_string(), Value::String(body));
+                        map.insert("status".to_string(), Value::Int(status));
+                        map.insert("ok".to_string(), Value::Bool(status >= 200 && status < 300));
+                        return Ok(Value::Formula(map));
+                    }
+                    if name == "mock_function" {
+                        if args.len() < 2 {
+                            return Err("mock_function requires 2 arguments (function_name: String, return_value: Any)".to_string());
+                        }
+                        let fn_name = self.eval_expr(&args[0].1, env.clone())?.to_string();
+                        let ret_val = self.eval_expr(&args[1].1, env.clone())?;
+                        env.lock().unwrap().define(fn_name, ret_val, false);
+                        return Ok(Value::Nil);
                     }
                 }
 
@@ -1021,6 +1690,12 @@ impl Runner {
                         return self.eval_expr(inner_expr, env.clone());
                     }
                     let inner_val = self.eval_expr(inner_expr, env.clone())?;
+                    let receiver_val = inner_val.clone();
+                    if let Some(conv_res) =
+                        self.eval_explicit_conversion(&inner_val, member, args, env.clone())
+                    {
+                        return conv_res;
+                    }
                     match inner_val {
                         Value::EnumMeta(enum_name, variants) => {
                             for var in &variants {
@@ -1048,17 +1723,94 @@ impl Runner {
                             "to_uppercase" => return Ok(Value::String(s.to_uppercase())),
                             "to_lowercase" => return Ok(Value::String(s.to_lowercase())),
                             "trim" => return Ok(Value::String(s.trim().to_string())),
-                            "push_str" => {
+                            "is_empty" => return Ok(Value::Bool(s.is_empty())),
+                            "contains" => {
+                                if !args.is_empty() {
+                                    let sub = self.eval_expr(&args[0].1, env.clone())?.to_string();
+                                    return Ok(Value::Bool(s.contains(&sub)));
+                                }
+                                return Ok(Value::Bool(false));
+                            }
+                            "starts_with" => {
+                                if !args.is_empty() {
+                                    let sub = self.eval_expr(&args[0].1, env.clone())?.to_string();
+                                    return Ok(Value::Bool(s.starts_with(&sub)));
+                                }
+                                return Ok(Value::Bool(false));
+                            }
+                            "ends_with" => {
+                                if !args.is_empty() {
+                                    let sub = self.eval_expr(&args[0].1, env.clone())?.to_string();
+                                    return Ok(Value::Bool(s.ends_with(&sub)));
+                                }
+                                return Ok(Value::Bool(false));
+                            }
+                            "replace" => {
+                                if args.len() >= 2 {
+                                    let from_s =
+                                        self.eval_expr(&args[0].1, env.clone())?.to_string();
+                                    let to_s = self.eval_expr(&args[1].1, env.clone())?.to_string();
+                                    return Ok(Value::String(s.replace(&from_s, &to_s)));
+                                }
+                                return Ok(Value::String(s.clone()));
+                            }
+                            "assert_eq" => {
+                                if args.len() < 1 {
+                                    return Err("assert_eq requires at least 2 arguments (actual, expected)".to_string());
+                                }
+                                let exp = self.eval_expr(&args[0].1, env.clone())?;
+                                if s == &exp.to_string() {
+                                    return Ok(Value::Nil);
+                                }
+                                let msg = if args.len() > 1 {
+                                    format!(
+                                        ": {}",
+                                        self.eval_expr(&args[1].1, env.clone())?.to_string()
+                                    )
+                                } else {
+                                    "".to_string()
+                                };
+                                return Err(format!(
+                                    "Assertion failed: expected {}, got {}{}",
+                                    exp.to_string(),
+                                    s,
+                                    msg
+                                ));
+                            }
+                            "assert_ne" => {
+                                if args.len() < 1 {
+                                    return Err("assert_ne requires at least 2 arguments (actual, unexpected)".to_string());
+                                }
+                                let exp = self.eval_expr(&args[0].1, env.clone())?;
+                                if s != &exp.to_string() {
+                                    return Ok(Value::Nil);
+                                }
+                                let msg = if args.len() > 1 {
+                                    format!(
+                                        ": {}",
+                                        self.eval_expr(&args[1].1, env.clone())?.to_string()
+                                    )
+                                } else {
+                                    "".to_string()
+                                };
+                                return Err(format!(
+                                    "Assertion failed: expected values to differ, but both were {}{}",
+                                    s, msg
+                                ));
+                            }
+                            "push_str" | "push" => {
                                 if !args.is_empty() {
                                     let val = self.eval_expr(&args[0].1, env.clone())?;
-                                    if let Value::String(add_s) = val {
-                                        if let Expr::Identifier(var_name, _) = &**inner_expr {
-                                            let mut new_s = s.clone();
-                                            new_s.push_str(&add_s);
-                                            env.lock()
-                                                .unwrap()
-                                                .assign(var_name.clone(), Value::String(new_s))?;
-                                        }
+                                    let add_s = match val {
+                                        Value::String(sub_s) => sub_s,
+                                        other => other.to_string(),
+                                    };
+                                    if let Expr::Identifier(var_name, _) = &**inner_expr {
+                                        let mut new_s = s.clone();
+                                        new_s.push_str(&add_s);
+                                        env.lock()
+                                            .unwrap()
+                                            .assign(var_name.clone(), Value::String(new_s))?;
                                     }
                                 }
                                 return Ok(Value::Nil);
@@ -1095,16 +1847,29 @@ impl Runner {
                             "filter" => {
                                 if !args.is_empty() {
                                     let cb_val = self.eval_expr(&args[0].1, env.clone())?;
-                                    if let Value::Function { params, body, env: closure_env } = cb_val {
+                                    if let Value::Function {
+                                        params,
+                                        body,
+                                        env: closure_env,
+                                        ..
+                                    } = cb_val
+                                    {
                                         let mut res = Vec::new();
                                         for item in vec {
-                                            let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                                            let child_env = Arc::new(Mutex::new(Env::new_child(
+                                                closure_env.clone(),
+                                            )));
                                             if !params.is_empty() {
-                                                self.bind_param(child_env.clone(), &params[0], item.clone());
+                                                self.bind_param(
+                                                    child_env.clone(),
+                                                    &params[0],
+                                                    item.clone(),
+                                                );
                                             }
                                             let mut matched = false;
                                             for stmt in &body {
-                                                let stmt_res = self.execute_statement(stmt, child_env.clone())?;
+                                                let stmt_res = self
+                                                    .execute_statement(stmt, child_env.clone())?;
                                                 if let Value::Return(ret_val) = stmt_res {
                                                     if let Value::Bool(b) = *ret_val {
                                                         matched = b;
@@ -1124,16 +1889,29 @@ impl Runner {
                             "map" => {
                                 if !args.is_empty() {
                                     let cb_val = self.eval_expr(&args[0].1, env.clone())?;
-                                    if let Value::Function { params, body, env: closure_env } = cb_val {
+                                    if let Value::Function {
+                                        params,
+                                        body,
+                                        env: closure_env,
+                                        ..
+                                    } = cb_val
+                                    {
                                         let mut res = Vec::new();
                                         for item in vec {
-                                            let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                                            let child_env = Arc::new(Mutex::new(Env::new_child(
+                                                closure_env.clone(),
+                                            )));
                                             if !params.is_empty() {
-                                                self.bind_param(child_env.clone(), &params[0], item.clone());
+                                                self.bind_param(
+                                                    child_env.clone(),
+                                                    &params[0],
+                                                    item.clone(),
+                                                );
                                             }
                                             let mut map_res = Value::Nil;
                                             for stmt in &body {
-                                                let stmt_res = self.execute_statement(stmt, child_env.clone())?;
+                                                let stmt_res = self
+                                                    .execute_statement(stmt, child_env.clone())?;
                                                 if let Value::Return(ret_val) = stmt_res {
                                                     map_res = *ret_val;
                                                     break;
@@ -1202,24 +1980,53 @@ impl Runner {
                                     args: builder_args,
                                 });
                             } else if member == "spawn" {
-                                return Ok(Value::ChildProcess(101));
+                                let mut command = std::process::Command::new(&program);
+                                command.args(&builder_args);
+                                let child = command
+                                    .spawn()
+                                    .map_err(|e| format!("failed to spawn '{}': {}", program, e))?;
+                                let mut counter = get_child_process_counter().lock().unwrap();
+                                *counter += 1;
+                                let child_id = *counter;
+                                get_child_processes()
+                                    .lock()
+                                    .unwrap()
+                                    .insert(child_id, child);
+                                return Ok(Value::ChildProcess(child_id));
                             }
                         }
-                        Value::ChildProcess(_pid) => {
+                        Value::ChildProcess(pid) => {
                             if member == "wait_with_output" {
-                                let mut output_map = HashMap::new();
-                                output_map.insert(
-                                    "stdout".to_string(),
-                                    Value::String("git version 2.40.1".to_string()),
-                                );
-                                output_map
-                                    .insert("stderr".to_string(), Value::String(String::new()));
+                                let child = get_child_processes().lock().unwrap().remove(&pid);
+                                if let Some(child) = child {
+                                    let output = child.wait_with_output().map_err(|e| {
+                                        format!("failed to wait for child process: {}", e)
+                                    })?;
+                                    let mut output_map = HashMap::new();
+                                    output_map.insert(
+                                        "stdout".to_string(),
+                                        Value::String(
+                                            String::from_utf8_lossy(&output.stdout).to_string(),
+                                        ),
+                                    );
+                                    output_map.insert(
+                                        "stderr".to_string(),
+                                        Value::String(
+                                            String::from_utf8_lossy(&output.stderr).to_string(),
+                                        ),
+                                    );
 
-                                let mut status_map = HashMap::new();
-                                status_map.insert("code".to_string(), Value::Int(0));
-                                output_map.insert("status".to_string(), Value::Formula(status_map));
+                                    let mut status_map = HashMap::new();
+                                    status_map.insert(
+                                        "code".to_string(),
+                                        Value::Int(output.status.code().unwrap_or(-1) as i64),
+                                    );
+                                    output_map
+                                        .insert("status".to_string(), Value::Formula(status_map));
 
-                                return Ok(Value::Formula(output_map));
+                                    return Ok(Value::Formula(output_map));
+                                }
+                                return Err(format!("child process {} is not active", pid));
                             }
                         }
                         Value::NativeObject {
@@ -1246,7 +2053,9 @@ impl Runner {
                                     let suffix = format!("_{}", member);
                                     self.native_methods
                                         .iter()
-                                        .find(|(k, _)| k.starts_with(&prefix) && k.ends_with(&suffix))
+                                        .find(|(k, _)| {
+                                            k.starts_with(&prefix) && k.ends_with(&suffix)
+                                        })
                                         .map(|(_, f)| f)
                                 });
 
@@ -1271,16 +2080,24 @@ impl Runner {
                         }
                         Value::RustServer { port } => {
                             if member == "bind" {
-                                if std::env::var("WREN_VERBOSE").is_ok()
-                                    || std::env::var("WREN_DEV").is_ok()
+                                if std::env::var("FLAME_VERBOSE").is_ok()
+                                    || std::env::var("FLAME_DEV").is_ok()
                                 {
                                     println!("Bound server to http://127.0.0.1:{}", port);
                                 }
                                 return Ok(Value::RustServer { port });
                             } else if member == "listen" || member == "start" {
-                                let addr = format!("127.0.0.1:{}", port);
-                                if let Ok(listener) = std::net::TcpListener::bind(&addr) {
-                                    for stream in listener.incoming() {
+                                let mut listen_port = port;
+                                if let Some((_, arg_expr)) = args.first() {
+                                    if let Value::Int(p) = self.eval_expr(arg_expr, env.clone())? {
+                                        listen_port = p as u16;
+                                    }
+                                }
+                                let addr = format!("127.0.0.1:{}", listen_port);
+                                match std::net::TcpListener::bind(&addr) {
+                                    Ok(listener) => {
+                                        println!("Server listening on http://{}", addr);
+                                        for stream in listener.incoming() {
                                         if let Ok(mut stream) = stream {
                                             use std::io::{Read, Write};
                                             let mut buf = [0u8; 1024];
@@ -1294,21 +2111,25 @@ impl Runner {
                                             let _ = stream.write_all(response.as_bytes());
                                             let _ = stream.flush();
                                         }
+                                        }
+                                    },
+                                    Err(e) => {
+                                        return Err(format!("Failed to bind server to {}: {}", addr, e));
                                     }
                                 }
                                 return Ok(Value::Nil);
                             } else if member == "get" {
                                 return Ok(Value::RustServer { port });
                             } else if member == "accept" {
-                                if std::env::var("WREN_VERBOSE").is_ok()
-                                    || std::env::var("WREN_DEV").is_ok()
+                                if std::env::var("FLAME_VERBOSE").is_ok()
+                                    || std::env::var("FLAME_DEV").is_ok()
                                 {
                                     println!("Accepted connection on http://127.0.0.1:{}", port);
                                 }
                                 return Ok(Value::String("accepted".to_string()));
                             } else if member == "stop" || member == "close" {
-                                if std::env::var("WREN_VERBOSE").is_ok()
-                                    || std::env::var("WREN_DEV").is_ok()
+                                if std::env::var("FLAME_VERBOSE").is_ok()
+                                    || std::env::var("FLAME_DEV").is_ok()
                                 {
                                     println!("Server stopped on port {}.", port);
                                 }
@@ -1380,41 +2201,51 @@ impl Runner {
                             } else {
                                 ""
                             };
-                            if (namespace == "thread" || namespace == "std.thread" || map.contains_key("sleep")) && member == "spawn" {
+                            if (namespace == "thread"
+                                || namespace == "std.thread"
+                                || map.contains_key("sleep"))
+                                && member == "spawn"
+                            {
                                 if args.is_empty() {
-                                    return Err("thread.spawn expects 1 argument (function or callback)".to_string());
+                                    return Err(
+                                        "thread.spawn expects 1 argument (function or callback)"
+                                            .to_string(),
+                                    );
                                 }
                                 let fn_val = self.eval_expr(&args[0].1, env.clone())?;
-                                let snapshot_env = Arc::new(Mutex::new(env.lock().unwrap().snapshot()));
+                                let snapshot_env =
+                                    Arc::new(Mutex::new(env.lock().unwrap().snapshot()));
                                 let mut runner = self.clone_for_thread(snapshot_env.clone());
 
                                 let mut counter = get_thread_counter().lock().unwrap();
                                 *counter += 1;
                                 let id = *counter;
 
-                                let handle = thread::spawn(move || {
-                                    match fn_val {
-                                        Value::Function { body, params: _, env: _ } => {
-                                            let mut last_val = Value::Nil;
-                                            for stmt in &body {
-                                                match runner.execute_statement(stmt, snapshot_env.clone()) {
-                                                    Ok(v) => last_val = v,
-                                                    Err(e) => {
-                                                        eprintln!("Thread error: {}", e);
-                                                        return Value::Nil;
-                                                    }
+                                let handle = thread::spawn(move || match fn_val {
+                                    Value::Function { body, .. } => {
+                                        let mut last_val = Value::Nil;
+                                        for stmt in &body {
+                                            match runner
+                                                .execute_statement(stmt, snapshot_env.clone())
+                                            {
+                                                Ok(v) => last_val = v,
+                                                Err(e) => {
+                                                    eprintln!("Thread error: {}", e);
+                                                    return Value::Nil;
                                                 }
                                             }
-                                            last_val
                                         }
-                                        Value::NativeCallback(cb) => cb(vec![]).unwrap_or(Value::Nil),
-                                        _ => Value::Nil,
+                                        last_val
                                     }
+                                    Value::NativeCallback(cb) => cb(vec![]).unwrap_or(Value::Nil),
+                                    _ => Value::Nil,
                                 });
 
                                 get_threads().lock().unwrap().insert(id, handle);
                                 return Ok(Value::ThreadHandler(id));
-                            } else if (namespace == "thread_bridge" && member == "create_channel") || (namespace == "thread" && member == "channel") {
+                            } else if (namespace == "thread_bridge" && member == "create_channel")
+                                || (namespace == "thread" && member == "channel")
+                            {
                                 let mut counter = get_channel_counter().lock().unwrap();
                                 *counter += 1;
                                 let chan_id = *counter;
@@ -1593,7 +2424,7 @@ impl Runner {
                                 }
                             }
                             if let Some(val) = map.get(member) {
-                                if let Value::Function { params, body, env: _func_env } = val {
+                                if let Value::Function { params, body, .. } = val {
                                     if body.is_empty() {
                                         let mut evaled_args = Vec::new();
                                         for (_, arg_expr) in args {
@@ -1617,7 +2448,10 @@ impl Runner {
                                         Arc::new(Mutex::new(Env::new_child(env.clone())));
                                     let mut self_val = inner_val.clone();
                                     if let Expr::Identifier(var_name, _) = &**inner_expr {
-                                        self_val = Value::RefPath(crate::vm::RefPath::Var(var_name.clone(), env.clone()), true);
+                                        self_val = Value::RefPath(
+                                            crate::vm::RefPath::Var(var_name.clone(), env.clone()),
+                                            true,
+                                        );
                                     }
                                     child_env.lock().unwrap().define(
                                         "self".to_string(),
@@ -1636,7 +2470,8 @@ impl Runner {
                                     }
                                     let mut last_val = Value::Nil;
                                     for stmt in body {
-                                        let res = self.execute_statement(stmt, child_env.clone())?;
+                                        let res =
+                                            self.execute_statement(stmt, child_env.clone())?;
                                         if let Value::Return(ret_val) = res {
                                             return Ok(*ret_val);
                                         }
@@ -1656,6 +2491,122 @@ impl Runner {
                             }
                         }
                         _ => {}
+                    }
+
+                    // Support calling common builtins as methods on values, e.g. `val.assert_eq(expected)`
+                    if member == "assert_eq" {
+                        if args.len() < 1 {
+                            return Err(
+                                "assert_eq requires at least 2 arguments (actual, expected)"
+                                    .to_string(),
+                            );
+                        }
+                        let act = receiver_val.clone();
+                        let exp = self.eval_expr(&args[0].1, env.clone())?;
+                        if act.to_string() == exp.to_string() {
+                            return Ok(Value::Nil);
+                        }
+                        let msg = if args.len() > 1 {
+                            format!(": {}", self.eval_expr(&args[1].1, env.clone())?.to_string())
+                        } else {
+                            "".to_string()
+                        };
+                        return Err(format!(
+                            "Assertion failed: expected {}, got {}{}",
+                            exp.to_string(),
+                            act.to_string(),
+                            msg
+                        ));
+                    } else if member == "assert_ne" {
+                        if args.len() < 1 {
+                            return Err(
+                                "assert_ne requires at least 2 arguments (actual, unexpected)"
+                                    .to_string(),
+                            );
+                        }
+                        let act = receiver_val.clone();
+                        let exp = self.eval_expr(&args[0].1, env.clone())?;
+                        if act.to_string() != exp.to_string() {
+                            return Ok(Value::Nil);
+                        }
+                        let msg = if args.len() > 1 {
+                            format!(": {}", self.eval_expr(&args[1].1, env.clone())?.to_string())
+                        } else {
+                            "".to_string()
+                        };
+                        return Err(format!(
+                            "Assertion failed: expected values to differ, but both were {}{}",
+                            act.to_string(),
+                            msg
+                        ));
+                    } else if member == "assert" || member == "assert_true" {
+                        if args.len() < 1 {
+                            return Err(
+                                "assert requires at least 1 argument (condition)".to_string()
+                            );
+                        }
+                        let cond = self.eval_expr(&args[0].1, env.clone())?;
+                        let msg = if args.len() > 1 {
+                            self.eval_expr(&args[1].1, env.clone())?.to_string()
+                        } else {
+                            "assertion failed: expression evaluated to false".to_string()
+                        };
+                        if let Value::Bool(true) = cond {
+                            return Ok(Value::Nil);
+                        }
+                        return Err(msg);
+                    }
+
+                    if let Some(func_val) = env.lock().unwrap().get(member) {
+                        match func_val {
+                            Value::Function {
+                                params,
+                                body,
+                                env: closure_env,
+                                ..
+                            } => {
+                                let mut evaled_args = Vec::new();
+                                evaled_args.push(receiver_val.clone());
+                                for (_, arg_expr) in args {
+                                    let arg_v = self.eval_expr(arg_expr, env.clone())?;
+                                    if let Expr::Identifier(src_name, _) = arg_expr {
+                                        env.lock().unwrap().move_var(src_name);
+                                    }
+                                    evaled_args.push(arg_v);
+                                }
+
+                                let child_env =
+                                    Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                                for (i, p) in params.iter().enumerate() {
+                                    if i < evaled_args.len() {
+                                        self.bind_param(
+                                            child_env.clone(),
+                                            p,
+                                            evaled_args[i].clone(),
+                                        );
+                                    }
+                                }
+                                let mut last_val = Value::Nil;
+                                for stmt in &body {
+                                    let res = self.execute_statement(stmt, child_env.clone())?;
+                                    if let Value::Return(ret_val) = res {
+                                        return Ok(*ret_val);
+                                    }
+                                    last_val = res;
+                                }
+                                return Ok(last_val);
+                            }
+                            Value::NativeCallback(cb) => {
+                                let mut evaled_args = Vec::new();
+                                evaled_args.push(receiver_val.clone());
+                                for (_, arg_expr) in args {
+                                    let arg_v = self.eval_expr(arg_expr, env.clone())?;
+                                    evaled_args.push(arg_v);
+                                }
+                                return cb(evaled_args);
+                            }
+                            _ => {}
+                        }
                     }
                 }
 
@@ -1696,15 +2647,135 @@ impl Runner {
                         }
                         Err(format!("variant '{:?}' is not a tuple variant", var))
                     }
-                    Value::Function { params, body, env: closure_env } => {
+                    Value::Function {
+                        params,
+                        body,
+                        env: closure_env,
+                        annotations,
+                    } => {
                         let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
-                        for (i, p) in params.iter().enumerate() {
-                            if i < args.len() {
-                                let arg_val = self.eval_expr(&args[i].1, env.clone())?;
-                                if let Expr::Identifier(src_name, _) = &args[i].1 {
-                                    env.lock().unwrap().move_var(src_name);
+                        for anno in &annotations {
+                            if !matches!(
+                                anno.name.as_str(),
+                                "Test"
+                                    | "Setup"
+                                    | "Cleanup"
+                                    | "BeforeAll"
+                                    | "AfterAll"
+                                    | "Ignore"
+                                    | "Only"
+                                    | "Parameterized"
+                                    | "Benchmark"
+                                    | "Cli"
+                                    | "Command"
+                                    | "ExpectPanic"
+                            ) {
+                                let mut anno_func_opt = closure_env.lock().unwrap().get(&anno.name);
+                                if anno_func_opt.is_none() {
+                                    anno_func_opt = self.env.lock().unwrap().get(&anno.name);
                                 }
-                                self.bind_param(child_env.clone(), p, arg_val);
+                                if anno_func_opt.is_none() {
+                                    for (_, mod_env) in &self.modules {
+                                        if let Some(f) = mod_env.lock().unwrap().get(&anno.name) {
+                                            anno_func_opt = Some(f);
+                                            break;
+                                        }
+                                    }
+                                }
+                                if anno_func_opt.is_none() && anno.name.contains('.') {
+                                    let parts: Vec<&str> = anno.name.split('.').collect();
+                                    if let Some(mut current) = closure_env.lock().unwrap().get(parts[0]) {
+                                        for part in &parts[1..] {
+                                            if let Value::Object(map) = &current {
+                                                if let Some(next) = map.get(*part) {
+                                                    current = next.clone();
+                                                } else { break; }
+                                            } else if let Value::Formula(map) = &current {
+                                                if let Some(next) = map.get(*part) {
+                                                    current = next.clone();
+                                                } else { break; }
+                                            } else {
+                                                break;
+                                            }
+                                        }
+                                        anno_func_opt = Some(current);
+                                    }
+                                }
+                                
+                                if anno_func_opt.is_none() {
+                                    let env_lock = closure_env.lock().unwrap();
+                                    for (_, val) in env_lock.variables.iter() {
+                                        if let Value::Object(map) = &val.value {
+                                            if let Some(exported_anno) = map.get(&anno.name) {
+                                                anno_func_opt = Some(exported_anno.clone());
+                                                break;
+                                            }
+                                        } else if let Value::Formula(map) = &val.value {
+                                            if let Some(exported_anno) = map.get(&anno.name) {
+                                                anno_func_opt = Some(exported_anno.clone());
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if let Some(anno_func) = anno_func_opt {
+                                    let mut anno_args = Vec::new();
+                                    for arg_str in &anno.args {
+                                        let mut lexer = crate::lexer::Lexer::new(arg_str);
+                                        let mut tokens = Vec::new();
+                                        loop {
+                                            let tok = lexer.next_token();
+                                            let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                            tokens.push(tok);
+                                            if is_eof {
+                                                break;
+                                            }
+                                        }
+                                        if tokens.len() >= 2
+                                            && tokens[0].kind == crate::lexer::TokenKind::Identifier
+                                            && (tokens[1].kind == crate::lexer::TokenKind::Colon || tokens[1].kind == crate::lexer::TokenKind::Equal)
+                                        {
+                                            tokens.remove(0);
+                                            tokens.remove(0);
+                                        }
+                                        let mut parser = crate::parser::Parser::new(
+                                            tokens,
+                                            "anno_arg".to_string(),
+                                        );
+                                        if let Ok(expr) = parser.parse_expr() {
+                                            if let Ok(val) = self.eval_expr(&expr, env.clone()) {
+                                                anno_args.push(val);
+                                            }
+                                        }
+                                    }
+                                    if let Ok(anno_res) = self.invoke_callback_value(&anno_func, anno_args) {
+                                        child_env.lock().unwrap().define(anno.name.to_lowercase(), anno_res.clone(), false);
+                                        child_env.lock().unwrap().define(format!("__{}_data__", anno.name), anno_res, false);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        let is_cli = annotations.iter().any(|a| a.name == "Cli");
+                        if is_cli {
+                            let cli_obj = self.execute_cli_dispatch(closure_env.clone())?;
+                            if let Some(first_param) = params.first() {
+                                self.bind_param(child_env.clone(), first_param, cli_obj);
+                            }
+                        } else {
+                            for (i, p) in params.iter().enumerate() {
+                                if i < args.len() {
+                                    let arg_val = self.eval_expr(&args[i].1, env.clone())?;
+                                    if let Expr::Identifier(src_name, _) = &args[i].1 {
+                                        env.lock().unwrap().move_var(src_name);
+                                    }
+                                    self.bind_param(child_env.clone(), p, arg_val);
+                                } else if let Some(def_expr) = &p.default_val {
+                                    if let Ok(val) = self.eval_expr(def_expr, child_env.clone()) {
+                                        self.bind_param(child_env.clone(), p, val);
+                                    }
+                                }
                             }
                         }
                         let mut last_val = Value::Nil;
@@ -1949,11 +3020,13 @@ impl Runner {
                     let e = env.lock().unwrap();
                     e.get(&owner)
                 };
-                
+
                 // Follow reference paths to get the actual value to modify
                 let mut final_owner = owner.clone();
                 let mut final_env = env.clone();
-                while let Some(Value::RefPath(RefPath::Var(ref next_owner, ref next_env), _)) = owner_val {
+                while let Some(Value::RefPath(RefPath::Var(ref next_owner, ref next_env), _)) =
+                    owner_val
+                {
                     final_owner = next_owner.clone();
                     final_env = next_env.clone();
                     owner_val = {
@@ -1961,7 +3034,7 @@ impl Runner {
                         e.get(&final_owner)
                     };
                 }
-                
+
                 let Some(mut owner_val) = owner_val else {
                     return Err(format!(
                         "variable '{}' not found for field assignment",
@@ -2020,8 +3093,6 @@ impl Runner {
             .define(param.name.clone(), arg_val, param.is_mut);
     }
 
-
-
     fn load_rust_file_methods(&self, rs_code: &str, env: Arc<Mutex<Env>>) {
         let mut e = env.lock().unwrap();
         for line in rs_code.lines() {
@@ -2037,6 +3108,7 @@ impl Runner {
                                     params: vec![],
                                     body: vec![],
                                     env: env.clone(),
+                                    annotations: vec![],
                                 },
                                 false,
                             );
@@ -2090,6 +3162,7 @@ impl Runner {
                             .collect(),
                         body: vec![],
                         env: mod_env.clone(),
+                        annotations: vec![],
                     },
                     false,
                 );
@@ -2166,6 +3239,188 @@ impl Runner {
             modules: self.modules.clone(),
             current_span: None,
             native_methods: self.native_methods.clone(),
+            test_mode: self.test_mode,
+        }
+    }
+
+   fn extract_cmd_annotation_name(args: &[String], fallback_func_name: &str) -> String {
+    for (idx, arg) in args.iter().enumerate() {
+        let trimmed = arg.trim();
+        if trimmed.starts_with("name:")
+            || trimmed.starts_with("name :")
+            || trimmed.starts_with("name=")
+            || trimmed.starts_with("name =")
+        {
+            let val = if let Some((_, v)) = trimmed.split_once(':') {
+                v
+            } else if let Some((_, v)) = trimmed.split_once('=') {
+                v
+            } else {
+                trimmed
+            };
+            return val.trim().trim_matches('"').trim_matches('\'').to_string();
+        } else if !trimmed.starts_with("about") && !trimmed.starts_with("description") && idx == 0 {
+            return trimmed.trim_matches('"').trim_matches('\'').to_string();
+        }
+    }
+    fallback_func_name.to_string()
+}
+
+    fn execute_cli_dispatch(&mut self, env: Arc<Mutex<Env>>) -> Result<Value, String> {
+        let raw_args = std::env::args().collect::<Vec<String>>();
+        let mut script_args: Vec<String> = Vec::new();
+        
+        let mut script_file_index = None;
+        for (i, arg) in raw_args.iter().enumerate() {
+            if i > 0 && (arg.ends_with(".fm") || arg.ends_with(".flame")) {
+                script_file_index = Some(i);
+                break;
+            }
+        }
+
+        if let Some(idx) = script_file_index {
+            for arg in &raw_args[idx + 1..] {
+                if arg == "--local" {
+                    continue;
+                }
+                script_args.push(arg.clone());
+            }
+        } else {
+            for arg in raw_args.into_iter().skip(1) {
+                if arg == "--local" {
+                    continue;
+                }
+                script_args.push(arg);
+            }
+        }
+
+        if script_args.is_empty() || script_args[0] == "help" || script_args[0] == "--help" {
+            println!("Usage: <command> [args]");
+            println!("\nAvailable Commands:");
+            let mut search_envs = vec![env.clone(), self.env.clone()];
+            for (_, mod_env) in &self.modules {
+                search_envs.push(mod_env.clone());
+            }
+            let mut printed_cmds = std::collections::HashSet::new();
+            for e in search_envs {
+                let env_lock = e.lock().unwrap();
+                for (name, entry) in env_lock.variables.iter() {
+                    if let Value::Function { annotations, params, .. } = &entry.value {
+                        if let Some(cmd_anno) = annotations.iter().find(|a| a.name == "Command") {
+                            let cmd_name = Self::extract_cmd_annotation_name(&cmd_anno.args, name);
+                            if printed_cmds.insert(cmd_name.clone()) {
+                                let mut param_strs = Vec::new();
+                                for p in params {
+                                    param_strs.push(format!("--{} <{}>", p.name, p.type_name));
+                                }
+                                println!("  {} {}", cmd_name, param_strs.join(" "));
+                            }
+                        }
+                    }
+                }
+            }
+            let mut map = std::collections::HashMap::new();
+            map.insert("$variant".to_string(), Value::String("help".to_string()));
+            return Ok(Value::Object(map));
+        }
+
+        let subcommand = &script_args[0];
+        let mut target_func = None;
+        let mut target_params = Vec::new();
+        
+        {
+            let mut search_envs = vec![env.clone(), self.env.clone()];
+            for (_, mod_env) in &self.modules {
+                search_envs.push(mod_env.clone());
+            }
+            'find_func: for e in search_envs {
+                let env_lock = e.lock().unwrap();
+                for (name, entry) in env_lock.variables.iter() {
+                    if let Value::Function { annotations, params, .. } = &entry.value {
+                        if let Some(cmd_anno) = annotations.iter().find(|a| a.name == "Command") {
+                            let cmd_name = Self::extract_cmd_annotation_name(&cmd_anno.args, name);
+                            if &cmd_name == subcommand {
+                                target_func = Some(entry.value.clone());
+                                target_params = params.clone();
+                                break 'find_func;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        if let Some(_func) = target_func {
+            let mut map = std::collections::HashMap::new();
+            for param in &target_params {
+                let mut found_val = None;
+                let flag_name = format!("--{}", param.name);
+                for (i, arg) in script_args.iter().enumerate() {
+                    let mut str_val = None;
+                    if arg == &flag_name {
+                        if param.type_name == "Bool" || param.type_name == "bool" {
+                            found_val = Some(Value::Bool(true));
+                        } else if i + 1 < script_args.len() {
+                            str_val = Some(script_args[i + 1].clone());
+                        }
+                    } else if arg.starts_with(&format!("{}=", flag_name)) {
+                        let parts: Vec<&str> = arg.splitn(2, '=').collect();
+                        if parts.len() == 2 {
+                            if param.type_name == "Bool" || param.type_name == "bool" {
+                                found_val = Some(Value::Bool(parts[1] == "true"));
+                            } else {
+                                str_val = Some(parts[1].to_string());
+                            }
+                        }
+                    }
+
+                    if let Some(s) = str_val {
+                        if param.type_name == "Int" || param.type_name == "int" {
+                            if let Ok(num) = s.parse::<i64>() {
+                                found_val = Some(Value::Int(num));
+                            } else {
+                                println!("\x1b[1;31merror:\x1b[0m invalid integer for '{}'", param.name);
+                            }
+                        } else if param.type_name == "Float" || param.type_name == "float" {
+                            if let Ok(num) = s.parse::<f64>() {
+                                found_val = Some(Value::Float(num));
+                            } else {
+                                println!("\x1b[1;31merror:\x1b[0m invalid float for '{}'", param.name);
+                            }
+                        } else {
+                            found_val = Some(Value::String(s));
+                        }
+                    }
+                    if found_val.is_some() {
+                        break;
+                    }
+                }
+                
+                if found_val.is_none() {
+                    if let Some(def_expr) = &param.default_val {
+                        if let Ok(val) = self.eval_expr(def_expr, self.env.clone()) {
+                            found_val = Some(val);
+                        }
+                    }
+                }
+                
+                if found_val.is_none() {
+                    if param.type_name == "Bool" || param.type_name == "bool" {
+                        found_val = Some(Value::Bool(false));
+                    } else if param.type_name.starts_with("List") || param.type_name.starts_with("Vector") {
+                        found_val = Some(Value::Tuple(Vec::new()));
+                    } else {
+                        found_val = Some(Value::String("".to_string()));
+                    }
+                }
+                map.insert(param.name.clone(), found_val.unwrap());
+            }
+            map.insert("$variant".to_string(), Value::String(subcommand.clone()));
+            return Ok(Value::Object(map));
+        } else {
+            let mut map = std::collections::HashMap::new();
+            map.insert("$variant".to_string(), Value::String(subcommand.clone()));
+            return Ok(Value::Object(map));
         }
     }
 }
@@ -2233,6 +3488,108 @@ fn main() {
 main()"#;
 
         let result = run_flame(code).unwrap();
-        assert_eq!(result.to_string(), "\"test_message\"");
+        assert_eq!(result.to_string(), "test_message");
+    }
+
+    #[test]
+    fn annotation_decl_and_stripping_test() {
+        let code = r#"
+annotation Benchmark(name: String) -> Formula {
+    return formula { name: name }
+}
+
+@Test
+fn test_my_func() {
+    return 42
+}
+
+fn main() -> i64 {
+    return 100
+}
+main()
+"#;
+        let result = run_flame(code).unwrap();
+        assert_eq!(result.to_string(), "100");
+    }
+
+    #[test]
+    fn let_decl_annotation_executes() {
+        let code = r#"
+annotation Entity(table: String) -> String {
+    print("Registering entity")
+    return table
+}
+
+@Entity(table: "users")
+let User = formula {
+    id: 9
+    name: "9"
+}
+"#;
+        let mut lexer = Lexer::new(code);
+        let mut tokens = Vec::new();
+        loop {
+            let tok = lexer.next_token();
+            if tok.kind == crate::lexer::TokenKind::EOF {
+                tokens.push(tok);
+                break;
+            }
+            tokens.push(tok);
+        }
+
+        let mut parser = Parser::new(tokens, "test.flame".to_string());
+        let stmts = parser.parse().map_err(|diag| diag.message).unwrap();
+        let mut runner = Runner::new(PathBuf::from("test.flame"));
+        let result = runner.run(&stmts).unwrap();
+        assert_eq!(result.to_string(), "nil");
+    }
+
+    #[test]
+    fn explicit_type_conversion_methods_test() {
+        let code = r#"
+fn main() {
+    let num_str = "42"
+    let val = num_str.toInt()
+    let hex = "1A".toInt(16)
+    let flt = "3.14159".toFloat()
+    let prec = 3.14159.toString(2)
+    let bool_val = "true".toBool()
+    return val + hex
+}
+main()
+"#;
+        let result = run_flame(code).unwrap();
+        assert_eq!(result.to_string(), "68"); // 42 + 26 = 68
+    }
+
+    #[test]
+    fn custom_annotation_logger_test() {
+        let code = r#"
+export annotation Logger(prefix: String) -> String {
+    print($"[LOGGER INIT] Prefix configured: {prefix}")
+    prefix
+}
+
+@Logger(prefix: "flame-cli")
+fn main() {
+    print("Inside main")
+}
+"#;
+        let mut lexer = Lexer::new(code);
+        let mut tokens = Vec::new();
+        loop {
+            let tok = lexer.next_token();
+            if tok.kind == crate::lexer::TokenKind::EOF {
+                tokens.push(tok);
+                break;
+            }
+            tokens.push(tok);
+        }
+        let mut parser = Parser::new(tokens, "test.flame".to_string());
+        let stmts = parser.parse().map_err(|diag| diag.message).unwrap();
+        let mut runner = Runner::new(PathBuf::from("test.flame"));
+        let result = runner.run(&stmts);
+        assert!(result.is_ok());
     }
 }
+

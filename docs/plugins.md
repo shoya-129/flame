@@ -30,6 +30,7 @@ edition = "2021"
 [dependencies]
 axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
+flame-macro = { path = "../../flame-macro" }
 ```
 
 ### 2. Exporting Struct Types and Methods (`lib.rs`)
@@ -88,6 +89,7 @@ impl FlameServer {
     }
 
     /// Bind to a TCP network socket and start the asynchronous Tokio daemon loop.
+    #[flame(daemon)]
     pub async fn listen(self, port: u16) -> std::io::Result<()> {
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let listener = tokio::net::TcpListener::bind(addr).await?;

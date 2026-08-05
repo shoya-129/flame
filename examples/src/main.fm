@@ -1,63 +1,42 @@
-import std.thread
-import hello
+import exports
+import native.server
 
-
-
-let user: Formula = formula {
-    name: "soham",
-    id: 89,
-    isAdmin: true,
-    numbers: [9, 9],
-    status: (a: String) {
-        print(a)
-
+@Logger(prefix: "flame-cli")
+@Cli(name: "flame_cli", version: "1.0.0", description: "Flame toolchain & server")
+fn main(cli: Cli) {
+    match cli {
+        build { release, target } => build(release, target)
+        serve { port } => serve(port)
+        help => print("help")
+        _ => print("Unknown command")
     }
-
 }
 
-const t: ThreadHandler = thread {
-    user.status("online")
-    hello.sayhello(&user)
+
+
+@Command(name: "build", about: "Compile the current project")
+fn build(release: Bool = false, target: String = "debug") {
+    print($"Building target '{target}', release mode: {release}")
 }
 
-t.join()
-print(user.name)
+@Command(name: "serve", about: "Run the server")
+fn serve(port: Int = 3000) {
+    print($"Starting web server on port {port}...")
+    let app = await server.init()
 
-let mut arr: Vec<Int> = [99, 99]
-arr.push(100)
-print(arr)
+    app.get("/", () {
+        "Welcome to Flame Multithreaded Web Server & CLI Tool!"
+    })
 
-let filtered: Vec<Int> = arr.filter(
-    (x: Int) {
-        return x>99
+    app.get("/about", () {
+        "Built on top of Rust, Axum, and Tokio!"
+    })
+
+    fn create_user(body: String) -> String {
+        print($"Received incoming POST data: {body}")
+        $"Successfully created record for payload: {body}"
     }
-)
-print($"Filtered: {filtered}")
+    app.post("/users", create_user)
 
-let mapped: Vec<Int> = arr.map(
-    (x: Int) {
-        return x * 2
-    }
-)
-print($"Mapped: {mapped}")
-
-let name: String = input("Enter your name: ")
-print($"Hello {name}")
-
-// server example
-// import native.server
-// fn home() -> String {
-//     "hello from flame"
-// }
-// fn about() -> String {
-//     "about page"
-// }
-// let app = await server.init()
-// app.get("/", home)
-// app.get("/about", about)
-// fn create_user(body: String) -> String {
-//     print($"Received POST data: {body}")
-//     $"Created user with data: {body}"
-// }
-// app.post("/users", create_user)
-// await app.listen(3000)
+    await app.listen(port)
+}

@@ -1,4 +1,3 @@
-
 // This file is auto-generated to provide standard library documentation.
 
 pub fn get_std_module_doc(module: &str) -> Option<&'static str> {
@@ -22,20 +21,30 @@ thread.sleep(1000) // Sleep for 1 second
 The `process` module provides utilities to spawn new processes, execute commands, and manage system processes.
 
 ## Functions
-- **`run()`**: Executes a system command and waits for it to finish.
+- **`exec()`**: Executes a system command and waits for it to finish.
 
 **Example**:
 ```flame
 import std.process
-process.run(\"echo Hello\")
+let out = process.exec(\"echo\", [\"Hello\"])
+out.status.code.assert_eq(0)
 ```
 - **`spawn()`**: Spawns a background process asynchronously.
 
 **Example**:
 ```flame
-let p = process.spawn(\"sleep\", [\"10\"])
+let p = process.spawn(\"git\", [\"--version\"])
+let result = p.wait_with_output()
 ```
-- **`kill()`**: Kills a running process by its PID.
+- **`cmd()`**: Starts a command-builder chain for richer process launching.
+
+**Example**:
+```flame
+let child = process.cmd(\"git\")
+    .args([\"--version\"])
+    .spawn()
+let result = child.wait_with_output()
+```
 "),
         "fs" | "std.fs" => Some("# Module `fs`
 
@@ -205,40 +214,72 @@ let port = serial.open(\"COM3\", 9600)
 
 pub fn get_std_function_doc(module: &str, function: &str) -> Option<&'static str> {
     match (module, function) {
-        ("thread" | "std.thread", "sleep") => Some("Suspends the current thread for the specified number of milliseconds.
+        ("thread" | "std.thread", "sleep") => Some(
+            "Suspends the current thread for the specified number of milliseconds.
 
 **Example**:
 ```flame
 import std.thread
 
 thread.sleep(1000) // Sleep for 1 second
-```"),
-        ("process" | "std.process", "run") => Some("Executes a system command and waits for it to finish.
+```",
+        ),
+        ("thread" | "std.thread", "channel") => Some(
+            "Creates a message channel and returns `(Sender, Receiver)`.
+
+**Example**:
+```flame
+let (tx, rx) = thread.channel()
+tx.send(\"hello\")
+rx.recv().assert_eq(\"hello\")
+```",
+        ),
+        ("process" | "std.process", "exec") => Some(
+            "Executes a system command and waits for it to finish.
 
 **Example**:
 ```flame
 import std.process
-process.run(\"echo Hello\")
-```"),
-        ("process" | "std.process", "spawn") => Some("Spawns a background process asynchronously.
+let out = process.exec(\"echo\", [\"Hello\"])
+out.status.code.assert_eq(0)
+```",
+        ),
+        ("process" | "std.process", "spawn") => Some(
+            "Spawns a background process asynchronously.
 
 **Example**:
 ```flame
-let p = process.spawn(\"sleep\", [\"10\"])
-```"),
-        ("process" | "std.process", "kill") => Some("Kills a running process by its PID."),
-        ("fs" | "std.fs", "read") => Some("Reads the entire contents of a file as a string.
+let p = process.spawn(\"git\", [\"--version\"])
+let result = p.wait_with_output()
+```",
+        ),
+        ("process" | "std.process", "cmd") => Some(
+            "Creates a `CommandBuilder` for chained process configuration.
+
+**Example**:
+```flame
+let child = process.cmd(\"git\")
+    .args([\"--version\"])
+    .spawn()
+let result = child.wait_with_output()
+```",
+        ),
+        ("fs" | "std.fs", "read") => Some(
+            "Reads the entire contents of a file as a string.
 
 **Example**:
 ```flame
 let content = fs.read(\"data.txt\")
-```"),
-        ("fs" | "std.fs", "write") => Some("Writes string data to a file.
+```",
+        ),
+        ("fs" | "std.fs", "write") => Some(
+            "Writes string data to a file.
 
 **Example**:
 ```flame
 fs.write(\"data.txt\", \"Hello World\")
-```"),
+```",
+        ),
         ("fs" | "std.fs", "append") => Some("Appends string data to the end of a file."),
         ("fs" | "std.fs", "remove") => Some("Deletes a file or empty directory."),
         ("fs" | "std.fs", "exists") => Some("Returns true if the file or directory exists."),
@@ -254,65 +295,93 @@ fs.write(\"data.txt\", \"Hello World\")
         ("math" | "std.math", "floor") => Some("Rounds a number down to the nearest integer."),
         ("math" | "std.math", "ceil") => Some("Rounds a number up to the nearest integer."),
         ("math" | "std.math", "round") => Some("Rounds a number to the nearest integer."),
-        ("math" | "std.math", "random") => Some("Returns a random floating point number between 0 and 1."),
-        ("time" | "std.time", "now") => Some("Returns the current Unix timestamp in milliseconds.
+        ("math" | "std.math", "random") => {
+            Some("Returns a random floating point number between 0 and 1.")
+        }
+        ("time" | "std.time", "now") => Some(
+            "Returns the current Unix timestamp in milliseconds.
 
 **Example**:
 ```flame
 let t = time.now()
-```"),
-        ("time" | "std.time", "format") => Some("Formats a timestamp into a human readable string."),
-        ("os" | "std.os", "name") => Some("Returns the name of the operating system (e.g., 'windows', 'linux', 'macos')."),
+```",
+        ),
+        ("time" | "std.time", "format") => {
+            Some("Formats a timestamp into a human readable string.")
+        }
+        ("os" | "std.os", "name") => {
+            Some("Returns the name of the operating system (e.g., 'windows', 'linux', 'macos').")
+        }
         ("os" | "std.os", "arch") => Some("Returns the architecture of the operating system."),
         ("os" | "std.os", "hostname") => Some("Returns the computer's hostname."),
-        ("hardware" | "std.hardware", "cpu_usage") => Some("Returns the current CPU usage percentage."),
+        ("hardware" | "std.hardware", "cpu_usage") => {
+            Some("Returns the current CPU usage percentage.")
+        }
         ("hardware" | "std.hardware", "memory_usage") => Some("Returns the current memory usage."),
         ("hardware" | "std.hardware", "disk_space") => Some("Returns free and total disk space."),
-        ("desktop.mouse" | "std.desktop.mouse", "move") => Some("Moves the mouse cursor to absolute screen coordinates (x, y).
+        ("desktop.mouse" | "std.desktop.mouse", "move") => Some(
+            "Moves the mouse cursor to absolute screen coordinates (x, y).
 
 **Example**:
 ```flame
 desktop.mouse.move(500, 500)
-```"),
-        ("desktop.mouse" | "std.desktop.mouse", "click") => Some("Simulates a mouse click. Can pass 'left', 'right', or 'middle'.
+```",
+        ),
+        ("desktop.mouse" | "std.desktop.mouse", "click") => Some(
+            "Simulates a mouse click. Can pass 'left', 'right', or 'middle'.
 
 **Example**:
 ```flame
 desktop.mouse.click(\"left\")
-```"),
-        ("desktop.keyboard" | "std.desktop.keyboard", "write") => Some("Types out the specified text string.
+```",
+        ),
+        ("desktop.keyboard" | "std.desktop.keyboard", "write") => Some(
+            "Types out the specified text string.
 
 **Example**:
 ```flame
 desktop.keyboard.write(\"Hello World\")
-```"),
-        ("desktop.keyboard" | "std.desktop.keyboard", "key") => Some("Presses a specific key (e.g., 'enter', 'esc')."),
-        ("desktop.keyboard" | "std.desktop.keyboard", "hotkey") => Some("Presses a combination of keys simultaneously.
+```",
+        ),
+        ("desktop.keyboard" | "std.desktop.keyboard", "key") => {
+            Some("Presses a specific key (e.g., 'enter', 'esc').")
+        }
+        ("desktop.keyboard" | "std.desktop.keyboard", "hotkey") => Some(
+            "Presses a combination of keys simultaneously.
 
 **Example**:
 ```flame
 desktop.keyboard.hotkey(\"ctrl\", \"c\")
-```"),
-        ("env" | "std.env", "get") => Some("Gets the value of an environment variable.
+```",
+        ),
+        ("env" | "std.env", "get") => Some(
+            "Gets the value of an environment variable.
 
 **Example**:
 ```flame
 let path = env.get(\"PATH\")
-```"),
+```",
+        ),
         ("env" | "std.env", "set") => Some("Sets the value of an environment variable."),
         ("hid" | "std.hid", "devices") => Some("Lists available HID devices."),
-        ("hid" | "std.hid", "open") => Some("Opens a connection to a specific HID device by VID and PID."),
-        ("camera" | "std.camera", "capture") => Some("Captures a single frame from the camera as an image."),
+        ("hid" | "std.hid", "open") => {
+            Some("Opens a connection to a specific HID device by VID and PID.")
+        }
+        ("camera" | "std.camera", "capture") => {
+            Some("Captures a single frame from the camera as an image.")
+        }
         ("camera" | "std.camera", "list") => Some("Lists available camera devices."),
         ("bluetooth" | "std.bluetooth", "scan") => Some("Scans for nearby Bluetooth devices."),
         ("bluetooth" | "std.bluetooth", "connect") => Some("Connects to a Bluetooth device."),
         ("serial" | "std.serial", "ports") => Some("Lists available serial ports."),
-        ("serial" | "std.serial", "open") => Some("Opens a serial port connection at a specific baud rate.
+        ("serial" | "std.serial", "open") => Some(
+            "Opens a serial port connection at a specific baud rate.
 
 **Example**:
 ```flame
 let port = serial.open(\"COM3\", 9600)
-```"),
+```",
+        ),
         _ => None,
     }
 }

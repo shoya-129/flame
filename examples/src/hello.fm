@@ -1,4 +1,0 @@
-export fn sayhello(user: Formula) -> String {
-     print($"hello {user.name}-{user.id}")
-}
-

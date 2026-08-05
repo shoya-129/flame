@@ -14,6 +14,7 @@ pub mod vm;
 use diagnostics::Diagnostic;
 use lexer::Lexer;
 use parser::{Parser, Stmt};
+use regex::Regex;
 use serde::Serialize;
 use std::env;
 use std::fs;
@@ -25,7 +26,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         if Path::new("src/main.fm").exists() {
-            run_file("src/main.fm", false);
+            run_file("src/main.fm", false, &[]);
             return;
         }
         print_help();
@@ -110,10 +111,19 @@ fn main() {
             } else {
                 &args[2]
             };
-            run_file(filepath, force_local);
+            
+            let script_args_start = if args[2] == "--local" { 4 } else { 3 };
+            let mut filtered_script_args = Vec::new();
+            for arg in args.iter().skip(script_args_start) {
+                if arg != "--local" {
+                    filtered_script_args.push(arg.clone());
+                }
+            }
+            
+            run_file(filepath, force_local, &filtered_script_args);
         }
         "test" => {
-            run_tests();
+            run_tests(&args);
         }
         "native" => {
             if args.len() < 3 || args[2] != "init" {
@@ -144,7 +154,18 @@ fn main() {
                 } else {
                     command
                 };
-                run_file(actual_cmd, force_local);
+                
+                let script_args_start = if command == "--local" { 3 } else { 2 };
+                // Wait, if it's `flame target.fm --local`, `--local` might be args[2] and `target.fm` is args[1] (command).
+                // Let's just filter out `--local` entirely from script_args!
+                let mut filtered_script_args = Vec::new();
+                for arg in args.iter().skip(script_args_start) {
+                    if arg != "--local" {
+                        filtered_script_args.push(arg.clone());
+                    }
+                }
+                
+                run_file(actual_cmd, force_local, &filtered_script_args);
             } else {
                 println!("\x1b[1;31merror:\x1b[0m unknown command '{}'", command);
                 print_help();
@@ -327,9 +348,11 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     };
     let profile = if is_release { "release" } else { "dev" };
     if is_release {
-        println!("\x1b[1;36m    Building\x1b[0m optimized production release binary (target/release)...");
+        println!(
+            "\x1b[1;36m    Building\x1b[0m optimized production release binary (target/release)..."
+        );
     }
-    
+
     package_manager::ensure_dependencies_installed(is_release);
 
     println!("\x1b[1;36m    Building\x1b[0m dependency graph...");
@@ -445,7 +468,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     }
 }
 
-fn run_file(path_str: &str, force_local: bool) {
+fn run_file(path_str: &str, force_local: bool, script_args: &[String]) {
     let start_time = std::time::Instant::now();
     let path = Path::new(path_str);
     if !path.exists() {
@@ -463,6 +486,7 @@ fn run_file(path_str: &str, force_local: bool) {
     };
     if let Some(exe_path) = build_project(&build_args) {
         let mut child = Command::new(exe_path)
+            .args(script_args)
             .spawn()
             .expect("Failed to execute generated binary");
 
@@ -490,15 +514,417 @@ fn run_file(path_str: &str, force_local: bool) {
     }
 }
 
-fn run_tests() {
-    println!("Running unit tests...");
-    // Check if main.fm exists and run it
-    let main_path = Path::new("src/main.fm");
-    if main_path.exists() {
-        run_file("src/main.fm", false);
+fn collect_fm_files(dir: &Path, list: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect_fm_files(&p, list);
+            } else if p.extension().and_then(|s| s.to_str()) == Some("fm") {
+                list.push(p);
+            }
+        }
     }
+}
+
+fn has_test_annotations(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|stmt| {
+        if let Stmt::FuncDecl { annotations, .. } = stmt {
+            annotations.iter().any(|anno| {
+                matches!(
+                    anno.name.as_str(),
+                    "Test"
+                        | "Benchmark"
+                        | "Parameterized"
+                        | "ExpectPanic"
+                        | "Ignore"
+                        | "Only"
+                        | "BeforeAll"
+                        | "AfterAll"
+                        | "Setup"
+                        | "Cleanup"
+                )
+            })
+        } else {
+            false
+        }
+    })
+}
+
+fn run_tests(args: &[String]) {
+    println!("\x1b[1;36mFlame Test & Benchmark Engine\x1b[0m");
+
+    let mut files_to_test = Vec::new();
+    if args.len() >= 3 && !args[2].starts_with('-') {
+        let p = PathBuf::from(&args[2]);
+        if p.exists() {
+            if p.is_dir() {
+                collect_fm_files(&p, &mut files_to_test);
+            } else {
+                files_to_test.push(p);
+            }
+        } else {
+            println!(
+                "\x1b[1;31merror:\x1b[0m test target '{}' does not exist.",
+                args[2]
+            );
+            return;
+        }
+    } else {
+        if Path::new("tests").exists() {
+            collect_fm_files(Path::new("tests"), &mut files_to_test);
+        }
+        if Path::new("src").exists() {
+            collect_fm_files(Path::new("src"), &mut files_to_test);
+        }
+        if files_to_test.is_empty() && Path::new("main.fm").exists() {
+            files_to_test.push(PathBuf::from("main.fm"));
+        }
+    }
+
+    if files_to_test.is_empty() {
+        println!("No `.fm` test files found.");
+        return;
+    }
+
+    let mut filtered_files = Vec::new();
+    for path in files_to_test {
+        let content = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let stmts = match parse_file_stmts(&path, &content) {
+            Ok(stmts) => stmts,
+            Err(_) => continue,
+        };
+        if has_test_annotations(&stmts) {
+            filtered_files.push(path);
+        }
+    }
+    files_to_test = filtered_files;
+
+    if files_to_test.is_empty() {
+        println!("No annotated test files found.");
+        return;
+    }
+
+    let mut total_passed = 0;
+    let mut total_failed = 0;
+    let mut total_ignored = 0;
+    let mut total_measured = 0;
+    let mut total_filtered = 0;
+    let total_start = std::time::Instant::now();
+
+    for path in &files_to_test {
+        println!("\nrunning tests in \x1b[1m{}\x1b[0m:", path.display());
+        let content = match fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                println!("  \x1b[1;31mfatal:\x1b[0m failed to read file: {}", e);
+                continue;
+            }
+        };
+
+        let mut lexer = Lexer::new(&content);
+        let mut tokens = Vec::new();
+        loop {
+            let tok = lexer.next_token();
+            let is_eof = tok.kind == lexer::TokenKind::EOF;
+            tokens.push(tok);
+            if is_eof {
+                break;
+            }
+        }
+        let mut parser = Parser::new(tokens, path.to_string_lossy().to_string());
+        let stmts = match parser.parse() {
+            Ok(s) => s,
+            Err(e) => {
+                println!("  \x1b[1;31mparse error:\x1b[0m {}", e.message);
+                total_failed += 1;
+                continue;
+            }
+        };
+
+        if !has_test_annotations(&stmts) {
+            continue;
+        }
+
+        let mut runner = crate::runner::Runner::new(path.clone());
+        runner.test_mode = true;
+        let _ = runner.run(&stmts);
+
+        let mut before_all = Vec::new();
+        let mut after_all = Vec::new();
+        let mut setup = Vec::new();
+        let mut cleanup = Vec::new();
+        let mut test_cases = Vec::new();
+        let mut has_only_test = false;
+
+        for stmt in &stmts {
+            if let Stmt::FuncDecl {
+                name, annotations, ..
+            } = stmt
+            {
+                for anno in annotations {
+                    match anno.name.as_str() {
+                        "BeforeAll" => before_all.push(name.clone()),
+                        "AfterAll" => after_all.push(name.clone()),
+                        "Setup" => setup.push(name.clone()),
+                        "Cleanup" => cleanup.push(name.clone()),
+                        "Test" | "Benchmark" | "Parameterized" | "ExpectPanic" | "Ignore"
+                        | "Only" => {
+                            if !test_cases.contains(&name.clone()) {
+                                test_cases.push(name.clone());
+                            }
+                            if anno.name == "Only"
+                                || anno
+                                    .args
+                                    .iter()
+                                    .any(|arg| arg.contains("only: true") || arg == "only: true")
+                            {
+                                has_only_test = true;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        for func_name in &before_all {
+            let func_opt = runner.env.lock().unwrap().get(func_name);
+            if let Some(func_val) = func_opt {
+                if let Err(e) = runner.invoke_callback_value(&func_val, vec![]) {
+                    println!(
+                        "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@BeforeAll\x1b[0m {}: {}",
+                        func_name, e
+                    );
+                    total_failed += 1;
+                    break;
+                }
+            }
+        }
+
+        for func_name in &test_cases {
+            let mut is_ignore = false;
+            let mut is_only = false;
+            let mut is_benchmark = false;
+            let mut is_expect_panic = false;
+            let mut parameterized_args = None;
+
+            for stmt in &stmts {
+                if let Stmt::FuncDecl {
+                    name, annotations, ..
+                } = stmt
+                {
+                    if name == func_name {
+                        for anno in annotations {
+                            match anno.name.as_str() {
+                                "Ignore" => is_ignore = true,
+                                "Only" => is_only = true,
+                                "Benchmark" => is_benchmark = true,
+                                "ExpectPanic" => is_expect_panic = true,
+                                "Parameterized" => {
+                                    if !anno.args.is_empty() {
+                                        parameterized_args = Some(anno.args[0].clone());
+                                    }
+                                }
+                                "Test" => {
+                                    if anno.args.iter().any(|arg| arg.contains("skip: true")) {
+                                        is_ignore = true;
+                                    }
+                                    if anno.args.iter().any(|arg| arg.contains("only: true")) {
+                                        is_only = true;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            if has_only_test && !is_only {
+                total_filtered += 1;
+                continue;
+            }
+
+            if is_ignore {
+                println!(
+                    "  \x1b[33m[SKIP]\x1b[0m \x1b[1;36m@Ignore\x1b[0m {}",
+                    func_name
+                );
+                total_ignored += 1;
+                continue;
+            }
+
+            for setup_name in &setup {
+                let setup_opt = runner.env.lock().unwrap().get(setup_name);
+                if let Some(s_val) = setup_opt {
+                    let _ = runner.invoke_callback_value(&s_val, vec![]);
+                }
+            }
+
+            let test_func_opt = runner.env.lock().unwrap().get(func_name);
+            if let Some(f_val) = test_func_opt {
+                if is_benchmark {
+                    let mut durations = Vec::new();
+                    let mut benchmark_failed = false;
+                    for _ in 0..25 {
+                        let start = std::time::Instant::now();
+                        if let Err(e) = runner.invoke_callback_value(&f_val, vec![]) {
+                            println!(
+                                "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Benchmark\x1b[0m {}: {}",
+                                func_name, e
+                            );
+                            total_failed += 1;
+                            benchmark_failed = true;
+                            break;
+                        }
+                        durations.push(start.elapsed().as_secs_f64() * 1000.0);
+                    }
+                    if !benchmark_failed && !durations.is_empty() {
+                        let avg = durations.iter().sum::<f64>() / durations.len() as f64;
+                        let min = durations.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+                        let max = durations.iter().fold(0.0_f64, |a, &b| a.max(b));
+                        println!(
+                            "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@Benchmark\x1b[0m {}",
+                            func_name
+                        );
+                        println!("    Benchmark: {}", func_name);
+                        println!("    -----------");
+                        println!("    average: {:.2} ms", avg);
+                        println!("    min: {:.2} ms", min);
+                        println!("    max: {:.2} ms", max);
+                        total_measured += 1;
+                    }
+                } else if let Some(arg_str) = parameterized_args {
+                    let mut l = Lexer::new(&arg_str);
+                    let mut tok_vec = Vec::new();
+                    loop {
+                        let tok = l.next_token();
+                        let e = tok.kind == lexer::TokenKind::EOF;
+                        tok_vec.push(tok);
+                        if e {
+                            break;
+                        }
+                    }
+                    let mut p = Parser::new(tok_vec, "param_arg".to_string());
+                    if let Ok(expr) = p.parse_expr() {
+                        let env_clone = runner.env.clone();
+                        if let Ok(evaled) = runner.eval_expr(&expr, env_clone) {
+                            let list = match evaled {
+                                crate::vm::Value::Tuple(vec_val) => vec_val.clone(),
+                                other => vec![other],
+                            };
+                            let mut all_ok = true;
+                            let start = std::time::Instant::now();
+                            for case in &list {
+                                let call_args = match case {
+                                    crate::vm::Value::Tuple(tup) => tup.clone(),
+                                    single => vec![single.clone()],
+                                };
+                                if let Err(e) = runner.invoke_callback_value(&f_val, call_args) {
+                                    println!(
+                                        "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {} on argument {:?}: {}",
+                                        func_name, case, e
+                                    );
+                                    all_ok = false;
+                                    break;
+                                }
+                            }
+                            if all_ok {
+                                println!(
+                                    "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {} ({} parameter cases in {:.2}ms)",
+                                    func_name,
+                                    list.len(),
+                                    start.elapsed().as_secs_f64() * 1000.0
+                                );
+                                total_passed += 1;
+                            } else {
+                                total_failed += 1;
+                            }
+                        } else {
+                            println!(
+                                "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {}: failed to evaluate parameter argument expression",
+                                func_name
+                            );
+                            total_failed += 1;
+                        }
+                    }
+                } else {
+                    let start = std::time::Instant::now();
+                    let res = runner.invoke_callback_value(&f_val, vec![]);
+                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
+                    if is_expect_panic {
+                        match res {
+                            Err(e) => {
+                                println!(
+                                    "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@ExpectPanic\x1b[0m {} (expected panic occurred in {:.2}ms: {})",
+                                    func_name, elapsed, e
+                                );
+                                total_passed += 1;
+                            }
+                            Ok(_) => {
+                                println!(
+                                    "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@ExpectPanic\x1b[0m {}: function completed without expected error/panic!",
+                                    func_name
+                                );
+                                total_failed += 1;
+                            }
+                        }
+                    } else {
+                        match res {
+                            Ok(_) => {
+                                println!(
+                                    "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@Test\x1b[0m {} ({:.2}ms)",
+                                    func_name, elapsed
+                                );
+                                total_passed += 1;
+                            }
+                            Err(e) => {
+                                println!(
+                                    "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Test\x1b[0m {}: {}",
+                                    func_name, e
+                                );
+                                total_failed += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            for cleanup_name in &cleanup {
+                let cleanup_opt = runner.env.lock().unwrap().get(cleanup_name);
+                if let Some(c_val) = cleanup_opt {
+                    let _ = runner.invoke_callback_value(&c_val, vec![]);
+                }
+            }
+        }
+
+        for func_name in &after_all {
+            let after_opt = runner.env.lock().unwrap().get(func_name);
+            if let Some(func_val) = after_opt {
+                let _ = runner.invoke_callback_value(&func_val, vec![]);
+            }
+        }
+    }
+
+    let total_elapsed = total_start.elapsed().as_secs_f64() * 1000.0;
+    let result_str = if total_failed == 0 {
+        "\x1b[1;32mok.\x1b[0m"
+    } else {
+        "\x1b[1;31mFAILED.\x1b[0m"
+    };
     println!(
-        "\x1b[1;32mtest result: ok.\x1b[0m 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out"
+        "\n\x1b[1;32mtest result:\x1b[0m {} {} passed; {} failed; {} ignored; {} measured; {} filtered out; finished in {:.2}ms",
+        result_str,
+        total_passed,
+        total_failed,
+        total_ignored,
+        total_measured,
+        total_filtered,
+        total_elapsed
     );
 }
 
@@ -512,7 +938,10 @@ fn init_native_bridge(plugin_name: &str) {
         return;
     }
 
-    println!("\x1b[1;36mInitializing\x1b[0m native Rust plugin '{}' environment...", plugin_name);
+    println!(
+        "\x1b[1;36mInitializing\x1b[0m native Rust plugin '{}' environment...",
+        plugin_name
+    );
 
     // Create native directory and native/src directory
     let native_dir = Path::new("native");
@@ -539,7 +968,8 @@ fn init_native_bridge(plugin_name: &str) {
     }
 
     // Write native/Cargo.toml
-    let cargo_toml = format!(r#"[package]
+    let cargo_toml = format!(
+        r#"[package]
 name = "{}"
 version = "0.1.0"
 edition = "2021"
@@ -557,7 +987,9 @@ opt-level = 3
 lto = "thin"
 strip = true
 codegen-units = 1
-"#, plugin_name);
+"#,
+        plugin_name
+    );
     let cargo_path = native_dir.join("Cargo.toml");
     if !cargo_path.exists() {
         fs::write(&cargo_path, cargo_toml).unwrap();
@@ -566,7 +998,9 @@ codegen-units = 1
 
     // Update flame.toml to append [plugins] if not present
     let mut toml_content = fs::read_to_string(toml_path).unwrap();
-    if !toml_content.contains(&format!("{} =", plugin_name)) && !toml_content.contains(&format!("{}=", plugin_name)) {
+    if !toml_content.contains(&format!("{} =", plugin_name))
+        && !toml_content.contains(&format!("{}=", plugin_name))
+    {
         if !toml_content.contains("[plugins]") {
             toml_content.push_str(&format!("\n[plugins]\n{} = \"./native\"\n", plugin_name));
         } else if let Some(idx) = toml_content.find("[plugins]") {
@@ -574,7 +1008,10 @@ codegen-units = 1
             toml_content.insert_str(insert_pos, &format!("\n{} = \"./native\"", plugin_name));
         }
         fs::write(toml_path, toml_content).unwrap();
-        println!("\x1b[1;32mUpdated\x1b[0m flame.toml to reference native plugin '{}'.", plugin_name);
+        println!(
+            "\x1b[1;32mUpdated\x1b[0m flame.toml to reference native plugin '{}'.",
+            plugin_name
+        );
     }
 
     println!("\x1b[1;32mFinished\x1b[0m native initialization. Run `flame build` to compile.");
@@ -803,10 +1240,57 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     }
 
-    let word_under_cursor = extract_word_at_cursor(current_line, cursor_col);
+    let word_under_cursor_raw = extract_word_at_cursor(current_line, cursor_col);
+    let word_under_cursor = word_under_cursor_raw.trim_start_matches('@').to_string();
 
     // Scan for variables and structs
     let (mut scanned_vars, scanned_structs) = ide::scan_document(&content);
+
+    let imported_module_decls = load_imported_module_declarations(&manifest_dir, file);
+    for stmt in &imported_module_decls {
+        if let Some((name, params, return_type, is_annotation)) = match stmt {
+            crate::parser::Stmt::FuncDecl {
+                name,
+                params,
+                return_type,
+                ..
+            } => Some((name, params, return_type.as_deref(), false)),
+            crate::parser::Stmt::AnnotationDecl {
+                name,
+                params,
+                return_type,
+                ..
+            } => Some((name, params, return_type.as_deref(), true)),
+            _ => None,
+        } {
+            let params_str = params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.type_name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret_str = return_type.unwrap_or("Nil");
+            let sig = if is_annotation {
+                format!("annotation {}({}) -> {}", name, params_str, ret_str)
+            } else {
+                format!("fn {}({}) -> {}", name, params_str, ret_str)
+            };
+
+            scanned_vars.push(ide::ScannedVar {
+                name: name.clone(),
+                typ: Some(sig.clone()),
+            });
+            completions.push(JsonCompletion {
+                label: name.clone(),
+                kind: if is_annotation {
+                    "annotation".to_string()
+                } else {
+                    "function".to_string()
+                },
+                detail: "imported module declaration".to_string(),
+                documentation: Some(sig),
+            });
+        }
+    }
 
     // Enrich scanned_vars with return types from native module function calls
     for mod_name in &native_modules {
@@ -819,7 +1303,9 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         if let Some(eq_idx) = line.find('=') {
                             let left = &line[..eq_idx].trim();
                             if let Some(var_name) = left.split_whitespace().last() {
-                                if let Some(var) = scanned_vars.iter_mut().find(|v| v.name == var_name) {
+                                if let Some(var) =
+                                    scanned_vars.iter_mut().find(|v| v.name == var_name)
+                                {
                                     var.typ = Some(func.return_type.clone());
                                 } else {
                                     scanned_vars.push(ide::ScannedVar {
@@ -837,7 +1323,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
     let (namespace, member_prefix) = extract_member_context(current_line, cursor_col);
 
-    let mut ast_hover = None;
+    let mut exact_ast_hover = None;
     if let Some(tc) = &tc_opt {
         if let Some(l) = line {
             let mut best_span: Option<&crate::lexer::Span> = None;
@@ -859,34 +1345,75 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             }
 
             if let Some(ty_str) = best_ty_str {
-                if !word_under_cursor.is_empty() {
-                    let sig = format!("{}: {}", word_under_cursor, ty_str);
-                    ast_hover = Some(JsonHover {
-                        label: word_under_cursor.clone(),
-                        documentation: Some(format!(
-                            "```flame\n{}\n```\nInferred type from AST",
-                            sig
-                        )),
-                    });
+                if ty_str != "Unknown" {
+                    if ty_str.starts_with("```") || ty_str.starts_with('@') || ty_str.contains('\n') {
+                        exact_ast_hover = Some(JsonHover {
+                            label: word_under_cursor.clone(),
+                            documentation: Some(ty_str.clone()),
+                        });
+                    } else if ty_str.starts_with("fn(") {
+                        if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
+                            if let Some(t) = &var.typ {
+                                if t.starts_with("fn ") {
+                                    exact_ast_hover = Some(JsonHover {
+                                        label: word_under_cursor.clone(),
+                                        documentation: Some(format!("```flame\n{}\n```\nDefined in project", t)),
+                                    });
+                                }
+                            }
+                        }
+                        if exact_ast_hover.is_none() && !word_under_cursor.is_empty() {
+                            let sig = format!("fn {}{}", word_under_cursor, &ty_str[2..]);
+                            exact_ast_hover = Some(JsonHover {
+                                label: word_under_cursor.clone(),
+                                documentation: Some(format!(
+                                    "```flame\n{}\n```\nDefined in project",
+                                    sig
+                                )),
+                            });
+                        }
+                    } else if !word_under_cursor.is_empty() {
+                        let sig = format!("{}: {}", word_under_cursor, ty_str);
+                        exact_ast_hover = Some(JsonHover {
+                            label: word_under_cursor.clone(),
+                            documentation: Some(format!(
+                                "```flame\n{}\n```\nInferred type from AST",
+                                sig
+                            )),
+                        });
+                    }
                 }
             }
         }
     }
 
+    let mut scanned_var_hover = None;
     if !word_under_cursor.is_empty() {
         if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
             if let Some(t) = &var.typ {
                 if t != "Unknown" {
-                    let source_msg = if let Some(mod_name) = native_modules.iter().find(|m| load_meta_from_project(&manifest_dir, m).map_or(false, |meta| meta.structs.iter().any(|s| s.name == *t))) {
-                        format!("Struct type from native module '{}'", mod_name)
-                    } else {
-                        "Inferred type from AST".to_string()
-                    };
-                    ast_hover = Some(JsonHover {
+                    let (code_block, source_msg) =
+                        if t.starts_with("fn ") || t.starts_with("annotation ") {
+                            (t.clone(), "Defined in project".to_string())
+                        } else if let Some(mod_name) = native_modules.iter().find(|m| {
+                            load_meta_from_project(&manifest_dir, m)
+                                .map_or(false, |meta| meta.structs.iter().any(|s| s.name == *t))
+                        }) {
+                            (
+                                format!("{}: {}", word_under_cursor, t),
+                                format!("Struct type from native module '{}'", mod_name),
+                            )
+                        } else {
+                            (
+                                format!("{}: {}", word_under_cursor, t),
+                                "Inferred type from AST".to_string(),
+                            )
+                        };
+                    scanned_var_hover = Some(JsonHover {
                         label: word_under_cursor.clone(),
                         documentation: Some(format!(
-                            "```flame\n{}: {}\n```\n{}",
-                            word_under_cursor, t, source_msg
+                            "```flame\n{}\n```\n{}",
+                            code_block, source_msg
                         )),
                     });
                 }
@@ -946,8 +1473,16 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     .iter()
                     .find(|function| function.flame_name == word_under_cursor)
                     .map(|function| {
-                        let params_str = function.params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
-                        let sig = format!("fn {}({}) -> {}", function.flame_name, params_str, function.return_type);
+                        let params_str = function
+                            .params
+                            .iter()
+                            .map(|p| format!("{}: {}", p.name, p.type_name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let sig = format!(
+                            "fn {}({}) -> {}",
+                            function.flame_name, params_str, function.return_type
+                        );
                         let doc = function.docs.clone().unwrap_or_else(|| {
                             load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
                                 .unwrap_or_default()
@@ -969,8 +1504,16 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                 .iter()
                                 .find(|f| f.flame_name == word_under_cursor)
                             {
-                                let params_str = function.params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
-                                let sig = format!("fn {}({}) -> {}", function.flame_name, params_str, function.return_type);
+                                let params_str = function
+                                    .params
+                                    .iter()
+                                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let sig = format!(
+                                    "fn {}({}) -> {}",
+                                    function.flame_name, params_str, function.return_type
+                                );
                                 let doc = function.docs.clone().unwrap_or_else(|| {
                                     load_local_rust_doc(
                                         &manifest_dir,
@@ -981,7 +1524,10 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                 });
                                 hover_found = Some(JsonHover {
                                     label: format!("{}.{}", namespace, function.flame_name),
-                                    documentation: Some(format!("```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`", sig, doc, function.return_type)),
+                                    documentation: Some(format!(
+                                        "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
+                                        sig, doc, function.return_type
+                                    )),
                                 });
                                 break;
                             }
@@ -1037,9 +1583,21 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         params,
                         return_type,
                         ..
+                    }
+                    | crate::parser::Stmt::AnnotationDecl {
+                        name,
+                        params,
+                        return_type,
+                        ..
                     } => Some((name, params, return_type)),
                     crate::parser::Stmt::ExportDecl(inner, _) => {
                         if let crate::parser::Stmt::FuncDecl {
+                            name,
+                            params,
+                            return_type,
+                            ..
+                        }
+                        | crate::parser::Stmt::AnnotationDecl {
                             name,
                             params,
                             return_type,
@@ -1155,7 +1713,9 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     for mod_name in modules_to_check {
                         if let Some(meta) = load_meta_from_project(&manifest_dir, &mod_name) {
                             for struct_meta in &meta.structs {
-                                if struct_meta.name == *t || struct_meta.name.to_lowercase() == t.to_lowercase() {
+                                if struct_meta.name == *t
+                                    || struct_meta.name.to_lowercase() == t.to_lowercase()
+                                {
                                     for function in &struct_meta.methods {
                                         if member_prefix
                                             .as_deref()
@@ -1165,26 +1725,50 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                             completions.push(JsonCompletion {
                                                 label: function.flame_name.clone(),
                                                 kind: "method".to_string(),
-                                                detail: format!("{}::{} (from {})", struct_meta.name, function.flame_name, mod_name),
-                                                documentation: function.docs.clone().or_else(|| {
-                                                    load_local_rust_doc(&manifest_dir, &mod_name, &function.flame_name)
-                                                }),
+                                                detail: format!(
+                                                    "{}::{} (from {})",
+                                                    struct_meta.name, function.flame_name, mod_name
+                                                ),
+                                                documentation: function.docs.clone().or_else(
+                                                    || {
+                                                        load_local_rust_doc(
+                                                            &manifest_dir,
+                                                            &mod_name,
+                                                            &function.flame_name,
+                                                        )
+                                                    },
+                                                ),
                                             });
                                             provided_completions = true;
                                         }
-                                        if !word_under_cursor.is_empty() && function.flame_name == word_under_cursor {
+                                        if !word_under_cursor.is_empty()
+                                            && function.flame_name == word_under_cursor
+                                        {
                                             let params_str = function
                                                 .params
                                                 .iter()
                                                 .map(|p| format!("{}: {}", p.name, p.type_name))
                                                 .collect::<Vec<_>>()
                                                 .join(", ");
-                                            let sig = format!("fn {}({}) -> {}", function.flame_name, params_str, function.return_type);
+                                            let sig = format!(
+                                                "fn {}({}) -> {}",
+                                                function.flame_name,
+                                                params_str,
+                                                function.return_type
+                                            );
                                             let doc = function.docs.clone().unwrap_or_else(|| {
-                                                load_local_rust_doc(&manifest_dir, &mod_name, &function.flame_name).unwrap_or_default()
+                                                load_local_rust_doc(
+                                                    &manifest_dir,
+                                                    &mod_name,
+                                                    &function.flame_name,
+                                                )
+                                                .unwrap_or_default()
                                             });
                                             hover_found = Some(JsonHover {
-                                                label: format!("{}::{}()", struct_meta.name, function.flame_name),
+                                                label: format!(
+                                                    "{}::{}()",
+                                                    struct_meta.name, function.flame_name
+                                                ),
                                                 documentation: Some(format!(
                                                     "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
                                                     sig, doc, function.return_type
@@ -1301,7 +1885,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             } else if let Some(v) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
                 if let Some(typ) = &v.typ {
                     if let Some(meta) = load_meta_from_project(&manifest_dir, typ) {
-                        let struct_names = meta.structs.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join(", ");
+                        let struct_names = meta
+                            .structs
+                            .iter()
+                            .map(|s| s.name.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         let desc = format!(
                             "```flame\nlet {}: native.{}\n```\n**Native Plugin Instance** (`{}`)\n\n**Structures in plugin**: `{}`",
                             v.name, typ, typ, struct_names
@@ -1363,11 +1952,11 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     };
 
-    // Override with AST hover if available, only if we don't already have better info
-    if let Some(ast) = ast_hover {
-        if hover.is_none() {
-            hover = Some(ast);
-        }
+    // Prioritize exact AST hover, then keyword/stdlib hover, then scanned var hover
+    if let Some(ast) = exact_ast_hover {
+        hover = Some(ast);
+    } else if hover.is_none() {
+        hover = scanned_var_hover;
     }
 
     JsonCheckOutput {
@@ -1466,7 +2055,7 @@ fn extract_word_at_cursor(line: &str, col: usize) -> String {
     // Scan backwards
     while start > 0 {
         if let Some(&ch) = chars.get(start - 1) {
-            if ch.is_ascii_alphanumeric() || ch == '_' {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' {
                 start -= 1;
             } else {
                 break;
@@ -1480,7 +2069,7 @@ fn extract_word_at_cursor(line: &str, col: usize) -> String {
     let mut end = col.saturating_sub(1);
     while end < chars.len() {
         if let Some(&ch) = chars.get(end) {
-            if ch.is_ascii_alphanumeric() || ch == '_' {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' {
                 end += 1;
             } else {
                 break;
@@ -1502,22 +2091,15 @@ fn load_local_module_declarations(
     current_file: &str,
     namespace: &str,
 ) -> Option<Vec<crate::parser::Stmt>> {
-    let current_dir = Path::new(current_file).parent().unwrap_or(Path::new("."));
-    let mut candidate = current_dir.join(format!("{}.flame", namespace));
-    if !candidate.exists() {
-        candidate = current_dir.join(format!("{}.fm", namespace));
-    }
-    if !candidate.exists() {
-        candidate = manifest_dir
-            .join("src")
-            .join(format!("{}.flame", namespace));
-    }
-    if !candidate.exists() {
-        candidate = manifest_dir.join("src").join(format!("{}.fm", namespace));
-    }
-    if !candidate.exists() {
-        return None;
-    }
+    let path_parts = namespace
+        .split('.')
+        .map(|part| part.to_string())
+        .collect::<Vec<_>>();
+    let candidate = crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
+        .or_else(|| {
+            let direct = manifest_dir.join(format!("{}.fm", namespace));
+            if direct.exists() { Some(direct) } else { None }
+        })?;
     let content = fs::read_to_string(&candidate).ok()?;
     let mut lexer = Lexer::new(&content);
     let mut tokens = Vec::new();
@@ -1531,6 +2113,54 @@ fn load_local_module_declarations(
     }
     let mut parser = Parser::new(tokens, candidate.to_string_lossy().to_string());
     parser.parse().ok()
+}
+
+fn load_imported_module_declarations(
+    _manifest_dir: &Path,
+    current_file: &str,
+) -> Vec<crate::parser::Stmt> {
+    let mut results = Vec::new();
+    let content = fs::read_to_string(current_file).unwrap_or_default();
+    let import_re = Regex::new(r"(?m)^import\s+([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)*)").unwrap();
+
+    for cap in import_re.captures_iter(&content) {
+        let module_path = cap[1].to_string();
+        if module_path == "std"
+            || module_path == "native"
+            || module_path.starts_with("std.")
+            || module_path.starts_with("native.")
+        {
+            continue;
+        }
+
+        let path_parts: Vec<String> = module_path.split('.').map(|s| s.to_string()).collect();
+        if let Some(file_path) =
+            crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
+        {
+            if let Ok(module_content) = fs::read_to_string(&file_path) {
+                let mut lexer = Lexer::new(&module_content);
+                let mut tokens = Vec::new();
+                loop {
+                    let tok = lexer.next_token();
+                    let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                    tokens.push(tok);
+                    if is_eof {
+                        break;
+                    }
+                }
+                let mut parser = Parser::new(tokens, file_path.to_string_lossy().to_string());
+                if let Ok(parsed_stmts) = parser.parse() {
+                    for stmt in parsed_stmts {
+                        if let crate::parser::Stmt::ExportDecl(inner, _) = stmt {
+                            results.push(*inner);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    results
 }
 
 fn load_meta_from_project(

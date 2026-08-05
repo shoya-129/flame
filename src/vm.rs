@@ -1,6 +1,7 @@
-use crate::parser::{Param, Stmt};
+use crate::parser::{Annotation, Param, Stmt};
 use std::collections::HashMap;
 use std::fmt;
+use std::process::Child;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
 
@@ -33,6 +34,7 @@ pub enum Value {
         params: Vec<Param>,
         body: Vec<Stmt>,
         env: Arc<Mutex<Env>>,
+        annotations: Vec<Annotation>,
     },
     Break,
     Return(Box<Value>),
@@ -56,7 +58,11 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub enum RefPath {
     Var(String, Arc<Mutex<Env>>),
-    Field { owner: String, member: String, env: Arc<Mutex<Env>> },
+    Field {
+        owner: String,
+        member: String,
+        env: Arc<Mutex<Env>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -92,7 +98,10 @@ pub struct CallbackRequest {
     pub responder: std::sync::mpsc::Sender<CValue>,
 }
 
-static RUNTIME_QUEUE: OnceLock<(Mutex<std::sync::mpsc::Sender<CallbackRequest>>, Mutex<std::sync::mpsc::Receiver<CallbackRequest>>)> = OnceLock::new();
+static RUNTIME_QUEUE: OnceLock<(
+    Mutex<std::sync::mpsc::Sender<CallbackRequest>>,
+    Mutex<std::sync::mpsc::Receiver<CallbackRequest>>,
+)> = OnceLock::new();
 static CALLBACK_REGISTRY: OnceLock<Mutex<HashMap<u64, Value>>> = OnceLock::new();
 static EVENT_LOOP_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -107,17 +116,26 @@ pub fn is_event_loop_active() -> bool {
 pub fn register_callback_value(val: Value) -> u64 {
     static NEXT_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let mut reg = CALLBACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+    let mut reg = CALLBACK_REGISTRY
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
     reg.insert(id, val);
     id
 }
 
 pub fn get_callback_value(id: u64) -> Option<Value> {
-    let reg = CALLBACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap();
+    let reg = CALLBACK_REGISTRY
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap();
     reg.get(&id).cloned()
 }
 
-pub fn get_runtime_queue() -> &'static (Mutex<std::sync::mpsc::Sender<CallbackRequest>>, Mutex<std::sync::mpsc::Receiver<CallbackRequest>>) {
+pub fn get_runtime_queue() -> &'static (
+    Mutex<std::sync::mpsc::Sender<CallbackRequest>>,
+    Mutex<std::sync::mpsc::Receiver<CallbackRequest>>,
+) {
     RUNTIME_QUEUE.get_or_init(|| {
         let (tx, rx) = std::sync::mpsc::channel();
         (Mutex::new(tx), Mutex::new(rx))
@@ -125,15 +143,17 @@ pub fn get_runtime_queue() -> &'static (Mutex<std::sync::mpsc::Sender<CallbackRe
 }
 
 pub fn enqueue_callback(callback: FlameCallback, args: Vec<CValue>) -> Result<CValue, String> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    let req = CallbackRequest {
-        callback,
-        args,
-        responder: tx,
-    };
-    let queue_sender = get_runtime_queue().0.lock().unwrap().clone();
-    queue_sender.send(req).map_err(|e| format!("Failed to enqueue callback: {}", e))?;
-    rx.recv().map_err(|e| format!("Callback evaluation failed or runtime terminated: {}", e))
+    let cb_val = get_callback_value(callback.function_id)
+        .ok_or_else(|| format!("Callback ID {} not found", callback.function_id))?;
+
+    let mut flame_args = Vec::new();
+    for cval in args {
+        flame_args.push(Value::unpack(cval, "", ""));
+    }
+
+    let mut runner = crate::runner::Runner::new(std::path::PathBuf::from("native_callback"));
+    let res = runner.invoke_callback_value(&cb_val, flame_args)?;
+    Ok(res.pack())
 }
 
 #[repr(C)]
@@ -422,6 +442,8 @@ pub static CHANNELS: OnceLock<Mutex<HashMap<u64, std::sync::mpsc::Sender<Value>>
 pub static RECEIVERS: OnceLock<Mutex<HashMap<u64, Arc<Mutex<std::sync::mpsc::Receiver<Value>>>>>> =
     OnceLock::new();
 pub static CHANNEL_COUNTER: OnceLock<Mutex<u64>> = OnceLock::new();
+pub static CHILD_PROCESSES: OnceLock<Mutex<HashMap<u64, Child>>> = OnceLock::new();
+pub static CHILD_PROCESS_COUNTER: OnceLock<Mutex<u64>> = OnceLock::new();
 
 pub fn get_threads() -> &'static Mutex<HashMap<u64, JoinHandle<Value>>> {
     THREADS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -438,6 +460,12 @@ pub fn get_receivers() -> &'static Mutex<HashMap<u64, Arc<Mutex<std::sync::mpsc:
 }
 pub fn get_channel_counter() -> &'static Mutex<u64> {
     CHANNEL_COUNTER.get_or_init(|| Mutex::new(0))
+}
+pub fn get_child_processes() -> &'static Mutex<HashMap<u64, Child>> {
+    CHILD_PROCESSES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+pub fn get_child_process_counter() -> &'static Mutex<u64> {
+    CHILD_PROCESS_COUNTER.get_or_init(|| Mutex::new(0))
 }
 
 pub fn wait_for_all_threads() {

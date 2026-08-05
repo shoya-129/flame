@@ -32,6 +32,7 @@ pub enum TokenKind {
     Type,
     Where,
     Formula,
+    Annotation,
     True,
     False,
     Nil,
@@ -52,36 +53,38 @@ pub enum TokenKind {
     StringEnd,                 // "
 
     // Symbols & Operators
-    Arrow,          // ->
-    Equal,          // =
-    EqualEqual,     // ==
-    Plus,           // +
-    PlusEqual,      // +=
-    Minus,          // -
-    MinusEqual,     // -=
-    Star,           // *
-    Slash,          // /
-    Percent,        // %
-    Ampersand,      // &
-    Pipe,           // |
-    Caret,          // ^
-    Ampersand2,     // &&
-    Pipe2,          // ||
-    Dot,            // .
-    Comma,          // ,
-    Colon,          // :
-    At,             // @
-    Dollar,         // $
-    Question,       // ?
-    Exclamation,    // !
-    OpenParen,      // (
-    CloseParen,     // )
-    OpenBracket,    // [
-    CloseBracket,   // ]
-    OpenBrace,      // {
-    CloseBrace,     // }
-    DoubleDot,      // ..
-    DoubleDotEqual, // ..=
+    Arrow,            // ->
+    FatArrow,         // =>
+    Equal,            // =
+    EqualEqual,       // ==
+    Plus,             // +
+    PlusEqual,        // +=
+    Minus,            // -
+    MinusEqual,       // -=
+    Star,             // *
+    Slash,            // /
+    Percent,          // %
+    Ampersand,        // &
+    Pipe,             // |
+    Caret,            // ^
+    Ampersand2,       // &&
+    Pipe2,            // ||
+    Dot,              // .
+    Comma,            // ,
+    Colon,            // :
+    At,               // @
+    Dollar,           // $
+    Question,         // ?
+    Exclamation,      // !
+    ExclamationEqual, // !=
+    OpenParen,        // (
+    CloseParen,       // )
+    OpenBracket,      // [
+    CloseBracket,     // ]
+    OpenBrace,        // {
+    CloseBrace,       // }
+    DoubleDot,        // ..
+    DoubleDotEqual,   // ..=
     Lt,
     Le,
     Gt,
@@ -109,6 +112,7 @@ pub struct Token {
 pub struct Lexer<'a> {
     source: &'a str,
     chars: Vec<char>,
+    char_indices: Vec<usize>,
     index: usize,
     line: usize,
     col: usize,
@@ -120,14 +124,24 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
+        let char_indices = source.char_indices().map(|(i, _)| i).collect();
         Self {
             source,
             chars: source.chars().collect(),
+            char_indices,
             index: 0,
             line: 1,
             col: 1,
             interpolation_stack: Vec::new(),
             keep_comments: false,
+        }
+    }
+
+    fn byte_pos(&self, char_idx: usize) -> usize {
+        if char_idx < self.char_indices.len() {
+            self.char_indices[char_idx]
+        } else {
+            self.source.len()
         }
     }
 
@@ -171,10 +185,12 @@ impl<'a> Lexer<'a> {
         if let Some(kind) = self.skip_whitespace_and_comments() {
             return Token {
                 kind,
-                lexeme: self.source[start_pos_before_skip..self.index].to_string(),
+                lexeme: self.source
+                    [self.byte_pos(start_pos_before_skip)..self.byte_pos(self.index)]
+                    .to_string(),
                 span: Span {
-                    start: start_pos_before_skip,
-                    end: self.index,
+                    start: self.byte_pos(start_pos_before_skip),
+                    end: self.byte_pos(self.index),
                     line: start_line_before_skip,
                     col: start_col_before_skip,
                 },
@@ -275,7 +291,14 @@ impl<'a> Lexer<'a> {
             ':' => TokenKind::Colon,
             '@' => TokenKind::At,
             '?' => TokenKind::Question,
-            '!' => TokenKind::Exclamation,
+            '!' => {
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::ExclamationEqual
+                } else {
+                    TokenKind::Exclamation
+                }
+            }
             '+' => {
                 if self.peek() == Some('=') {
                     self.advance();
@@ -283,7 +306,7 @@ impl<'a> Lexer<'a> {
                 } else {
                     TokenKind::Plus
                 }
-            },
+            }
             '-' => {
                 if self.peek() == Some('>') {
                     self.advance();
@@ -340,6 +363,9 @@ impl<'a> Lexer<'a> {
                 if self.peek() == Some('=') {
                     self.advance();
                     TokenKind::EqualEqual
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    TokenKind::FatArrow
                 } else {
                     TokenKind::Equal
                 }
@@ -443,7 +469,7 @@ impl<'a> Lexer<'a> {
             }
         };
 
-        let lexeme = self.source[start_pos..self.index].to_string();
+        let lexeme = self.source[self.byte_pos(start_pos)..self.byte_pos(self.index)].to_string();
         let mut resolved_kind = kind;
         if resolved_kind == TokenKind::Identifier {
             resolved_kind = Self::check_keyword(&lexeme);
@@ -530,6 +556,7 @@ impl<'a> Lexer<'a> {
             "type" => TokenKind::Type,
             "where" => TokenKind::Where,
             "formula" => TokenKind::Formula,
+            "annotation" => TokenKind::Annotation,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
@@ -540,7 +567,7 @@ impl<'a> Lexer<'a> {
     fn skip_whitespace_and_comments(&mut self) -> Option<TokenKind> {
         loop {
             match self.peek() {
-                Some(' ') | Some('\t') | Some('\r') => {
+                Some('\u{feff}') | Some(' ') | Some('\t') | Some('\r') => {
                     self.advance();
                 }
                 Some('\n') | Some(';') => {

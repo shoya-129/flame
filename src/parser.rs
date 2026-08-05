@@ -50,6 +50,8 @@ pub struct Annotation {
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub pattern: String,
+    pub pattern_span: Span,
+    pub destructure: Vec<String>,
     pub body: Expr,
 }
 
@@ -119,6 +121,7 @@ pub enum Stmt {
         is_mut: bool,
         type_ann: Option<String>,
         value: Expr,
+        annotations: Vec<Annotation>,
         span: Span,
     },
     ConstDecl {
@@ -126,6 +129,7 @@ pub enum Stmt {
         is_mut: bool,
         type_ann: Option<String>,
         value: Expr,
+        annotations: Vec<Annotation>,
         span: Span,
     },
     FuncDecl {
@@ -134,6 +138,13 @@ pub enum Stmt {
         return_type: Option<String>,
         body: Vec<Stmt>,
         annotations: Vec<Annotation>,
+        span: Span,
+    },
+    AnnotationDecl {
+        name: String,
+        params: Vec<Param>,
+        return_type: Option<String>,
+        body: Vec<Stmt>,
         span: Span,
     },
     StructDecl {
@@ -319,9 +330,10 @@ impl Parser {
             }
             TokenKind::Import => self.parse_import_statement(),
             TokenKind::Export => self.parse_export_statement(),
-            TokenKind::Let => self.parse_var_decl(TokenKind::Let),
-            TokenKind::Const => self.parse_var_decl(TokenKind::Const),
+            TokenKind::Let => self.parse_var_decl(TokenKind::Let, annotations),
+            TokenKind::Const => self.parse_var_decl(TokenKind::Const, annotations),
             TokenKind::Fn => self.parse_func_decl(annotations),
+            TokenKind::Annotation => self.parse_annotation_decl(),
             TokenKind::Struct => self.parse_struct_decl(annotations),
             TokenKind::Enum => self.parse_enum_decl(annotations),
             TokenKind::Impl => self.parse_impl_decl(),
@@ -351,14 +363,60 @@ impl Parser {
     fn parse_annotation(&mut self) -> Result<Annotation, Diagnostic> {
         self.consume(TokenKind::At, "expected '@' decorator prefix")?;
         let id = self.consume(TokenKind::Identifier, "expected annotation name")?;
-        let name = id.lexeme.clone();
+        let mut name = id.lexeme.clone();
+        while self.match_token(TokenKind::Dot) {
+            let next_id = self.consume(TokenKind::Identifier, "expected property name after '.'")?;
+            name.push('.');
+            name.push_str(&next_id.lexeme);
+        }
         let mut args = Vec::new();
 
         if self.match_token(TokenKind::OpenParen) {
             while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
-                let arg = self.peek();
-                args.push(arg.lexeme.clone());
-                self.advance();
+                let mut arg_str = String::new();
+                let mut depth = 0;
+                while !self.check(TokenKind::EOF) {
+                    if depth == 0
+                        && (self.check(TokenKind::Comma) || self.check(TokenKind::CloseParen))
+                    {
+                        break;
+                    }
+                    let tok = self.peek();
+                    match tok.kind {
+                        TokenKind::OpenParen | TokenKind::OpenBracket | TokenKind::OpenBrace => {
+                            depth += 1
+                        }
+                        TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace => {
+                            if depth > 0 {
+                                depth -= 1;
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    if !arg_str.is_empty()
+                        && tok.kind != TokenKind::Comma
+                        && !arg_str.ends_with(' ')
+                        && !arg_str.ends_with('(')
+                        && !arg_str.ends_with('[')
+                        && !arg_str.ends_with(':')
+                    {
+                        arg_str.push(' ');
+                    }
+                    if tok.kind == TokenKind::StringLiteral {
+                        arg_str.push('"');
+                        arg_str.push_str(&tok.lexeme);
+                        arg_str.push('"');
+                    } else {
+                        arg_str.push_str(&tok.lexeme);
+                    }
+                    self.advance();
+                }
+                let trimmed = arg_str.trim().to_string();
+                if !trimmed.is_empty() {
+                    args.push(trimmed);
+                }
                 self.match_token(TokenKind::Comma);
             }
             self.consume(
@@ -452,7 +510,7 @@ impl Parser {
             t.push_str(&sub_types.join(", "));
             t.push('>');
         }
-        
+
         if self.match_token(TokenKind::Arrow) {
             t.push_str(" -> ");
             t.push_str(&self.parse_type()?);
@@ -460,7 +518,11 @@ impl Parser {
         Ok(t)
     }
 
-    fn parse_var_decl(&mut self, kind: TokenKind) -> Result<Stmt, Diagnostic> {
+    fn parse_var_decl(
+        &mut self,
+        kind: TokenKind,
+        annotations: Vec<Annotation>,
+    ) -> Result<Stmt, Diagnostic> {
         let start_tok = self.consume(kind.clone(), "expected variable keyword")?;
 
         let mut is_mut = false;
@@ -517,6 +579,7 @@ impl Parser {
                 is_mut,
                 type_ann,
                 value,
+                annotations,
                 span: decl_span,
             }),
             TokenKind::Const => Ok(Stmt::ConstDecl {
@@ -524,6 +587,7 @@ impl Parser {
                 is_mut: false,
                 type_ann,
                 value,
+                annotations,
                 span: decl_span,
             }),
             _ => unreachable!(),
@@ -614,6 +678,90 @@ impl Parser {
             return_type,
             body,
             annotations,
+            span: Span {
+                start: start_tok.span.start,
+                end: end_span.start,
+                line: start_tok.span.line,
+                col: start_tok.span.col,
+            },
+        })
+    }
+
+    fn parse_annotation_decl(&mut self) -> Result<Stmt, Diagnostic> {
+        let start_tok = self.consume(TokenKind::Annotation, "expected 'annotation' keyword")?;
+        let name_tok = self.consume(TokenKind::Identifier, "expected annotation function name")?;
+        let name = name_tok.lexeme.clone();
+
+        if self.match_token(TokenKind::Lt) {
+            while !self.check(TokenKind::Gt) && !self.check(TokenKind::EOF) {
+                self.advance();
+            }
+            self.consume(TokenKind::Gt, "expected '>' after generic type parameters")?;
+        }
+
+        self.consume(TokenKind::OpenParen, "expected '(' for parameters list")?;
+        let mut params = Vec::new();
+        while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
+            let mut is_ref = false;
+            let mut is_mut = false;
+
+            if self.match_token(TokenKind::Ampersand) {
+                is_ref = true;
+                if self.match_token(TokenKind::Mut) {
+                    is_mut = true;
+                }
+            }
+
+            let p_name_tok = self.consume(TokenKind::Identifier, "expected parameter name")?;
+            let p_type;
+            if self.match_token(TokenKind::Colon) {
+                p_type = self.parse_type()?;
+            } else {
+                return Err(Diagnostic::new_error(
+                    "expected ':' after parameter name".to_string(),
+                    self.filepath.clone(),
+                    p_name_tok.span.clone(),
+                    Some("Add a type annotation for this parameter".to_string()),
+                    Some("Use ': Type' after the parameter name".to_string()),
+                ));
+            }
+
+            let mut default_val = None;
+            if self.match_token(TokenKind::Equal) {
+                default_val = Some(self.parse_expr()?);
+            }
+
+            params.push(Param {
+                name: p_name_tok.lexeme.clone(),
+                type_name: p_type,
+                default_val,
+                is_ref,
+                is_mut,
+            });
+
+            if !self.match_token(TokenKind::Comma) {
+                break;
+            }
+        }
+        self.consume(
+            TokenKind::CloseParen,
+            "expected ')' to close parameters list",
+        )?;
+
+        let mut return_type = None;
+        if self.match_token(TokenKind::Arrow) {
+            let ret = self.parse_type()?;
+            return_type = Some(ret);
+        }
+
+        let body = self.parse_block()?;
+        let end_span = self.peek().span.clone();
+
+        Ok(Stmt::AnnotationDecl {
+            name,
+            params,
+            return_type,
+            body,
             span: Span {
                 start: start_tok.span.start,
                 end: end_span.start,
@@ -832,11 +980,29 @@ impl Parser {
         self.consume(TokenKind::OpenBrace, "expected '{'")?;
         let mut arms = Vec::new();
         while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
-            let pat = self.peek().lexeme.clone();
+            let pat_tok = self.peek();
+            let pat = pat_tok.lexeme.clone();
+            let pattern_span = pat_tok.span.clone();
             self.advance();
-            self.consume(TokenKind::Arrow, "expected '=>' pattern arm arrow")?;
+            let mut destructure = Vec::new();
+            if self.match_token(TokenKind::OpenBrace) {
+                while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
+                    let field = self.consume(TokenKind::Identifier, "expected identifier in pattern destructuring")?;
+                    destructure.push(field.lexeme.clone());
+                    self.match_token(TokenKind::Comma);
+                }
+                self.consume(TokenKind::CloseBrace, "expected '}' closing pattern destructuring")?;
+            }
+            if !self.match_token(TokenKind::FatArrow) && !self.match_token(TokenKind::Arrow) {
+                return Err(self.consume(TokenKind::FatArrow, "expected '=>' pattern arm arrow").unwrap_err());
+            }
             let body = self.parse_expr()?;
-            arms.push(MatchArm { pattern: pat, body });
+            arms.push(MatchArm {
+                pattern: pat,
+                pattern_span,
+                destructure,
+                body,
+            });
             self.match_token(TokenKind::Comma);
         }
         self.consume(TokenKind::CloseBrace, "expected '}'")?;
@@ -898,7 +1064,7 @@ impl Parser {
         Ok(statements)
     }
 
-    fn parse_expr(&mut self) -> Result<Expr, Diagnostic> {
+    pub fn parse_expr(&mut self) -> Result<Expr, Diagnostic> {
         self.parse_assignment()
     }
 
@@ -960,7 +1126,14 @@ impl Parser {
     fn parse_equality(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_comparison()?;
         loop {
-            if self.match_token(TokenKind::EqualEqual) {
+            let op = if self.match_token(TokenKind::EqualEqual) {
+                Some(BinaryOp::Eq)
+            } else if self.match_token(TokenKind::ExclamationEqual) {
+                Some(BinaryOp::Ne)
+            } else {
+                None
+            };
+            if let Some(binary_op) = op {
                 let right = self.parse_comparison()?;
                 let span = Span {
                     start: expr.span().start,
@@ -968,7 +1141,7 @@ impl Parser {
                     line: expr.span().line,
                     col: expr.span().col,
                 };
-                expr = Expr::Binary(Box::new(expr), BinaryOp::Eq, Box::new(right), span);
+                expr = Expr::Binary(Box::new(expr), binary_op, Box::new(right), span);
             } else {
                 break;
             }
@@ -1349,7 +1522,8 @@ impl Parser {
                         let next_idx = idx + 1;
                         if next_idx < self.tokens.len() {
                             let next_kind = &self.tokens[next_idx].kind;
-                            return *next_kind == TokenKind::OpenBrace || *next_kind == TokenKind::Arrow;
+                            return *next_kind == TokenKind::OpenBrace
+                                || *next_kind == TokenKind::Arrow;
                         }
                         return false;
                     }
@@ -1363,7 +1537,8 @@ impl Parser {
     }
 
     fn parse_closure(&mut self) -> Result<Expr, Diagnostic> {
-        let start_tok = self.consume(TokenKind::OpenParen, "expected '(' for closure parameters")?;
+        let start_tok =
+            self.consume(TokenKind::OpenParen, "expected '(' for closure parameters")?;
         let mut params = Vec::new();
         while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
             let mut is_ref = false;
@@ -1401,7 +1576,10 @@ impl Parser {
                 break;
             }
         }
-        self.consume(TokenKind::CloseParen, "expected ')' to close parameters list")?;
+        self.consume(
+            TokenKind::CloseParen,
+            "expected ')' to close parameters list",
+        )?;
 
         let mut return_type = None;
         if self.match_token(TokenKind::Arrow) {
@@ -1527,6 +1705,32 @@ impl Stmt {
             Stmt::Break(s) => s.clone(),
             Stmt::Continue(s) => s.clone(),
             Stmt::PluginDecl { span, .. } => span.clone(),
+            Stmt::AnnotationDecl { span, .. } => span.clone(),
         }
+    }
+}
+
+pub fn is_test_annotation(name: &str) -> bool {
+    matches!(
+        name,
+        "Test"
+            | "Setup"
+            | "Cleanup"
+            | "BeforeAll"
+            | "AfterAll"
+            | "Benchmark"
+            | "Ignore"
+            | "Only"
+            | "Parameterized"
+            | "ExpectPanic"
+    )
+}
+
+pub fn is_test_statement(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::FuncDecl { annotations, .. } => {
+            annotations.iter().any(|a| is_test_annotation(&a.name))
+        }
+        _ => false,
     }
 }

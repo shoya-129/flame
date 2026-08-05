@@ -8,6 +8,5 @@ bin/
 
 *.vsix
 src/
-docs/
-automation/
+examples
 wren-vscode-extension

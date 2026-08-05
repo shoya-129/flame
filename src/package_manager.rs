@@ -29,6 +29,8 @@ pub struct FlameFunctionMeta {
     #[serde(default)]
     pub is_constructor: bool,
     #[serde(default)]
+    pub persistent_runtime: bool,
+    #[serde(default)]
     pub receiver: Option<String>,
     #[serde(default)]
     pub docs: Option<String>,
@@ -609,8 +611,8 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                             }
                             let mut param_types = vec![];
                             let mut return_type = "NativeObject".to_string();
-
                             let mut is_generic = false;
+                            let mut is_async = false;
                             let mut has_bounds = false;
                             if let Some(func_obj) =
                                 inner.get("function").and_then(|f| f.as_object())
@@ -649,6 +651,14 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                 }
                                 if has_bounds {
                                     continue;
+                                }
+                                if let Some(header) =
+                                    func_obj.get("header").and_then(|h| h.as_object())
+                                {
+                                    is_async = header
+                                        .get("is_async")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
                                 }
                                 if let Some(sig) = func_obj.get("sig").and_then(|s| s.as_object()) {
                                     if let Some(inputs) =
@@ -691,8 +701,9 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                 name: name.to_string(),
                                 flame_name: name.to_string(),
                                 is_generic,
-                                is_async: false,
+                                is_async,
                                 is_constructor,
+                                persistent_runtime: false,
                                 receiver: None,
                                 params: param_types
                                     .iter()
@@ -792,6 +803,7 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                         let mut consumes_self =
                                                                             false;
                                                                         let mut is_generic = false;
+                                                                        let mut is_async = false;
                                                                         if let Some(func_obj) =
                                                                             m_inner
                                                                                 .get("function")
@@ -821,6 +833,23 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                                         is_generic = true;
                                                                                     }
                                                                                 }
+                                                                            }
+                                                                            if let Some(header) =
+                                                                                func_obj
+                                                                                    .get("header")
+                                                                                    .and_then(|h| {
+                                                                                        h.as_object(
+                                                                                        )
+                                                                                    })
+                                                                            {
+                                                                                is_async = header
+                                                                                    .get("is_async")
+                                                                                    .and_then(|v| {
+                                                                                        v.as_bool()
+                                                                                    })
+                                                                                    .unwrap_or(
+                                                                                        false,
+                                                                                    );
                                                                             }
                                                                             if let Some(sig) =
                                                                                 func_obj
@@ -938,8 +967,9 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                             name: m_name.to_string(),
                                                                             flame_name: m_name.to_string(),
                                                                             is_generic,
-                                                                            is_async: false,
+                                                                            is_async,
                                                                             is_constructor,
+                                                                            persistent_runtime: false,
                                                                             receiver,
                                                                             params: m_param_types.iter().enumerate().map(|(idx, pt)| FlameParamMeta {
                                                                                 name: format!("arg{}", idx),
@@ -1072,7 +1102,8 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                 for item in syntax_tree.items {
                     match item {
                         syn::Item::Fn(fn_item) => {
-                            let (rename, skip, constructor) = parse_flame_attrs(&fn_item.attrs);
+                            let (rename, skip, constructor, persistent_runtime) =
+                                parse_flame_attrs(&fn_item.attrs);
                             if skip || !matches!(fn_item.vis, syn::Visibility::Public(_)) {
                                 continue;
                             }
@@ -1090,6 +1121,7 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                 existing.flame_name = flame_name;
                                 existing.is_async = is_async;
                                 existing.is_constructor = is_constructor;
+                                existing.persistent_runtime = persistent_runtime;
                                 existing.params = params;
                                 existing.return_type = return_type;
                             } else {
@@ -1102,13 +1134,14 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                     is_generic: !fn_item.sig.generics.params.is_empty(),
                                     is_async,
                                     is_constructor,
+                                    persistent_runtime,
                                     receiver: None,
                                     docs: None,
                                 });
                             }
                         }
                         syn::Item::Struct(struct_item) => {
-                            let (_, skip, _) = parse_flame_attrs(&struct_item.attrs);
+                            let (_, skip, _, _) = parse_flame_attrs(&struct_item.attrs);
                             if skip || !matches!(struct_item.vis, syn::Visibility::Public(_)) {
                                 continue;
                             }
@@ -1125,12 +1158,22 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                             let struct_name = quote::quote!(#impl_item.self_ty)
                                 .to_string()
                                 .replace(" ", "");
-                            if let Some(struct_meta) =
-                                meta.structs.iter_mut().find(|s| s.name == struct_name)
-                            {
+                            let struct_name_simple = struct_name
+                                .rsplit("::")
+                                .next()
+                                .unwrap_or(&struct_name)
+                                .split('<')
+                                .next()
+                                .unwrap_or(&struct_name)
+                                .to_string();
+                            if let Some(struct_meta) = meta.structs.iter_mut().find(|s| {
+                                s.name == struct_name
+                                    || s.name == struct_name_simple
+                                    || struct_name.ends_with(&s.name)
+                            }) {
                                 for item_in_impl in impl_item.items {
                                     if let syn::ImplItem::Fn(method_item) = item_in_impl {
-                                        let (rename, skip, constructor) =
+                                        let (rename, skip, constructor, persistent_runtime) =
                                             parse_flame_attrs(&method_item.attrs);
                                         if skip {
                                             continue;
@@ -1180,6 +1223,7 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                             existing.is_async = is_async;
                                             existing.is_constructor = is_constructor;
                                             existing.receiver = receiver;
+                                            existing.persistent_runtime = persistent_runtime;
                                             existing.params = params;
                                             existing.return_type = return_type;
                                             existing.is_static = is_static;
@@ -1197,6 +1241,7 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                                     .is_empty(),
                                                 is_async,
                                                 is_constructor,
+                                                persistent_runtime,
                                                 receiver,
                                                 docs: None,
                                             });
@@ -1213,10 +1258,11 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
     }
 }
 
-fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool) {
+fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool, bool) {
     let mut rename = None;
     let mut skip = false;
     let mut constructor = false;
+    let mut persistent_runtime = false;
     for attr in attrs {
         if attr.path().is_ident("flame") {
             let _ = attr.parse_nested_meta(|meta| {
@@ -1224,6 +1270,8 @@ fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool) {
                     skip = true;
                 } else if meta.path.is_ident("constructor") {
                     constructor = true;
+                } else if meta.path.is_ident("runtime") || meta.path.is_ident("daemon") {
+                    persistent_runtime = true;
                 } else if meta.path.is_ident("rename") {
                     if let Ok(value) = meta.value() {
                         if let Ok(s) = value.parse::<syn::LitStr>() {
@@ -1235,7 +1283,7 @@ fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool) {
             });
         }
     }
-    (rename, skip, constructor)
+    (rename, skip, constructor, persistent_runtime)
 }
 
 fn parse_syn_return(output: &syn::ReturnType) -> String {

@@ -2,7 +2,7 @@
   "name": "flame-language-support",
   "displayName": "Flame",
   "description": "Rich IDE syntax highlighting and configuration for the Flame programming language.",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "icon": "flame.png",
   "publisher": "ezet-galaxy",
   "license": "ISC",
@@ -68,6 +68,13 @@
         "id": "flame-icons",
         "label": "Flame Icons",
         "path": "./icons/fileicons.json"
+      }
+    ],
+    "semanticTokenTypes": [
+      {
+        "id": "annotation",
+        "superType": "function",
+        "description": "Style for Flame annotations (@Test, @Setup, etc.)"
       }
     ]
   }

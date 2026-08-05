@@ -123,7 +123,7 @@ pub fn format_code(source: &str) -> String {
 
         // Spacing before
         match tok.kind {
-            TokenKind::OpenBrace | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow => {
+            TokenKind::OpenBrace | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow | TokenKind::FatArrow => {
                 if !out.ends_with(' ') && !out.ends_with('\n') {
                     out.push(' ');
                 }
@@ -131,16 +131,16 @@ pub fn format_code(source: &str) -> String {
             _ => {
                 let is_last_ident_like = matches!(
                     last_kind,
-                    TokenKind::Identifier | TokenKind::StringLiteral | TokenKind::IntLiteral | TokenKind::FloatLiteral | TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace | TokenKind::True | TokenKind::False
+                    TokenKind::Identifier | TokenKind::Annotation | TokenKind::StringLiteral | TokenKind::IntLiteral | TokenKind::FloatLiteral | TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace | TokenKind::True | TokenKind::False
                 );
                 let is_current_ident_like = matches!(
                     tok.kind,
-                    TokenKind::Identifier | TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Type | TokenKind::Where | TokenKind::True | TokenKind::False
+                    TokenKind::Identifier | TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Annotation | TokenKind::Type | TokenKind::Where | TokenKind::True | TokenKind::False
                 );
 
                 let is_last_keyword = matches!(
                     last_kind,
-                    TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Type | TokenKind::Where | TokenKind::Comma | TokenKind::Colon | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow
+                    TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Annotation | TokenKind::Type | TokenKind::Where | TokenKind::Comma | TokenKind::Colon | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow | TokenKind::FatArrow
                 );
 
                 if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot {

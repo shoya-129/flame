@@ -9,7 +9,7 @@ Flame's memory management and safety guarantees are powered by its Rust-like own
 3. When the owner goes out of scope, the value will be dropped.
 
 ```flame
-let s = String.from("hello") // s is the owner
+let s = "hello" // s is the owner
 take_ownership(s)
     
 // print(s) // Error: `s` moved, no longer valid here!
@@ -46,7 +46,7 @@ To modify a borrowed value, you must use a mutable reference using `&mut`.
 fn change(&mut some_string: String) {
     some_string.push_str(", world")
 }
-let mut s = ("hello")
+let mut s = "hello"
 change(&mut s)
 print(s) // Prints: hello, world
 

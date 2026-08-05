@@ -81,6 +81,24 @@ To do this:
     let result = native_plugin.heavy_computation(10)
     print(result) // Outputs: 4200
     ```
+
+### Long-running async native functions
+
+If a native Rust async function should keep the Flame runtime alive after the
+main script finishes, mark it explicitly:
+
+```rust
+#[flame(runtime)]
+pub async fn listen(...) { ... }
+
+#[flame(daemon)]
+pub async fn serve(...) { ... }
+```
+
+Use these only for true long-lived listeners such as HTTP servers, sockets, or
+background network daemons. Ordinary async helper functions should **not** use
+these attributes, so normal Flame programs can exit automatically when work is
+finished.
     
 The compiler will automatically detect the local Rust code, build it alongside your flame script, and instantly provide autocomplete suggestions for your custom functions!
 
