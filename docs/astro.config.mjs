@@ -91,8 +91,9 @@ export default defineConfig({
 				{
 					label: 'Annotations & Testing',
 					items: [
+						{ label: 'Built-in Annotations & CLI', slug: 'annotations-and-testing/builtin-annotations' },
+						{ label: 'Custom Annotations & Scope Injection', slug: 'annotations-and-testing/custom-annotations' },
 						{ label: 'Testing Framework', slug: 'annotations-and-testing/testing-framework' },
-						{ label: 'Custom Annotations & CLI', slug: 'annotations-and-testing/custom-annotations' },
 					],
 				},
 				{

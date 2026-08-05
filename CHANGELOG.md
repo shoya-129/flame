@@ -25,6 +25,7 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 - **Dedicated Nil Safety Page**: Launched a standalone **Nil Safety & Optionals** guide on the Flame web documentation portal ([docs](docs)), detailing the mission-critical importance of null safety in hardware automation and robotics engineering.
 - **Updated Operators Guide**: Revamped the **Operators & Expressions** guide with full increment, decrement, compound assignment, bitwise register manipulations, and a complete operator precedence table.
 - **Testing Invariants with `panic`**: Added dedicated test failure and invariant assertions guidance to the Native Testing Framework documentation ([testing-framework.mdx](docs/src/content/docs/annotations-and-testing/testing-framework.mdx)), demonstrating how `panic(message)` terminates individual test cases cleanly without halting overarching test suite execution.
+- **Declarative CLI Application Building**: Added extensive systems documentation and practical real-world guides for constructing declarative command-line utilities using built-in `@Cli` root annotations, `@Command` subcommand handlers, automatic typed parameter flag parsing, and structural subcommand matching ([builtin-annotations.mdx](docs/src/content/docs/annotations-and-testing/builtin-annotations.mdx)).
 
 ---
 

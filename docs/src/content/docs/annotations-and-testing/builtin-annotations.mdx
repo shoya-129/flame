@@ -1,0 +1,145 @@
+---
+title: Built-in Annotations & CLI Builder
+description: Complete reference for Flame's native built-in annotations including @Cli, @Command, @Test, @Setup, @Cleanup, @BeforeAll, @AfterAll, and declarative command-line utility creation.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Flame features a comprehensive suite of **built-in PascalCase annotations** that control runtime evaluation, test case execution, lifecycle setups, and declarative command-line interface (CLI) generation without boilerplate code.
+
+---
+
+## 1. Built-in Annotations Reference Table
+
+| Annotation | Category | Syntax / Parameters | Description |
+| :--- | :--- | :--- | :--- |
+| **`@Cli`** | **CLI Builder** | `@Cli(name: String, version: String, description: String)` | Marks an entry function as a CLI application root and passes parsed arguments as `cli: Cli`. |
+| **`@Command`** | **CLI Builder** | `@Command(name: String, about: String)` | Marks a function as an executable CLI subcommand handler with auto-mapped flag parameters. |
+| **`@Test`** | **Testing** | `@Test(timeout: Int = 5000, skip: Bool = false, only: Bool = false, tags: Vector = [])` | Marks a function as an automated test case executed via `flame test`. Stripped in release builds. |
+| **`@Setup`** | **Testing** | `@Setup` | Runs before every test case in the current file. Stripped in release builds. |
+| **`@Cleanup`** | **Testing** | `@Cleanup` | Runs after every test case in the current file. Stripped in release builds. |
+| **`@BeforeAll`**| **Testing** | `@BeforeAll` | Runs once before the entire module test suite initiates. |
+| **`@AfterAll`** | **Testing** | `@AfterAll` | Runs once after all module tests complete execution. |
+| **`@Ignore`** | **Testing** | `@Ignore` | Skips test execution when running `flame test`. |
+| **`@Parameterized`** | **Testing** | `@Parameterized([ [arg1, arg2, ...] ])` | Executes a test case repeatedly across an array matrix of arguments. |
+
+---
+
+## 2. Declarative CLI Applications (`@Cli` & `@Command`)
+
+Building robust command-line utilities in traditional systems languages often requires third-party dependency trees, tedious string argument parsing loops, and manual validation code.
+
+Flame introduces **native declarative CLI synthesis** right into the core language grammar using `@Cli`, `@Command`, and structural pattern matching.
+
+### The `@Cli` Root Annotation
+Attach `@Cli` to your main entry function to declare an application root:
+
+```flame
+@Cli(name: "flame_cli", version: "1.0.0", description: "Flame toolchain & server utility")
+fn main(cli: Cli) {
+    // Flame runtime automatically parses argv terminal flags and wraps them in 'cli'
+}
+```
+
+### Subcommand Handlers (`@Command`)
+Decorate handler functions with `@Command` to expose them as valid command terminal options. The parameter signatures of your functions **automatically dictate argument flag parsing rules**:
+
+| Parameter Type & Default | Terminal CLI Equivalent | Parsing Behavior |
+| :--- | :--- | :--- |
+| `release: Bool = false` | `--release` (Flag) | Converts boolean parameters into terminal presence flags. |
+| `target: String = "debug"`| `--target <value>` | Parses string values following the option flag, defaulting to `"debug"`. |
+| `port: Int = 3000` | `--port <value>` | Automatically validates and converts input option strings into native integers! |
+
+### Structural Pattern Matching for Subcommands
+Inside your `@Cli` root function, use Flame's expressive `match` expressions on the `cli: Cli` object to destructure flags and dispatch execution cleanly to `@Command` routines:
+
+```flame
+match cli {
+    build { release, target } => build(release, target)
+    serve { port } => serve(port)
+    help => print("Usage: app <command> [options]")
+    _ => print("Unknown command. Run with --help for usage details.")
+}
+```
+
+---
+
+## 3. Complete Real-World Example: Toolchain & Web Server CLI
+
+Below is a production-grade system pattern directly from Flame's official examples (`examples/src/main.fm`), demonstrating declarative CLI dispatching (`@Cli` & `@Command`) and multithreaded native networking:
+
+```flame
+import exports
+import native.server
+
+@Logger(prefix: "flame-cli")
+@Cli(name: "flame_cli", version: "1.0.0", description: "Flame toolchain & high-performance server")
+fn main(cli: Cli) {
+    // Dispatch subcommand execution with declarative pattern matching
+    match cli {
+        build { release, target } => build(release, target)
+        serve { port } => serve(port)
+        help => print("Help: Use 'build [--release] [--target name]' or 'serve [--port N]'")
+        _ => print("Error: Unknown command provided.")
+    }
+}
+
+@Command(name: "build", about: "Compile the target workspace project")
+fn build(release: Bool = false, target: String = "debug") {
+    print($"Building target '{target}', release mode engaged: {release}")
+}
+
+@Command(name: "serve", about: "Launch multithreaded HTTP server")
+fn serve(port: Int = 3000) {
+    print($"Starting web server on port {port}...")
+    let app = await server.init()
+
+    app.get("/", () {
+        "Welcome to Flame Multithreaded Web Server & CLI Tool!"
+    })
+
+    app.get("/about", () {
+        "Built natively on top of Rust, Axum, and Tokio!"
+    })
+
+    fn create_user(body: String) -> String {
+        print($"Received incoming POST data: {body}")
+        return $"Successfully created record for payload: {body}"
+    }
+    app.post("/users", create_user)
+
+    await app.listen(port)
+}
+```
+
+### Running the Application from the Shell
+When compiled or executed with `flame run`, your Flame program instantly becomes an interactive CLI tool:
+
+```bash
+# Execute build subcommand with flag overrides
+flame run src/main.fm -- build --release --target production
+# Output: Building target 'production', release mode engaged: true
+
+# Launch web server on custom HTTP port
+flame run src/main.fm -- serve --port 8080
+# Output: Starting web server on port 8080...
+```
+
+<Aside type="tip">
+To learn how to write your own custom annotations that inject variables like `@Logger` into function scopes, check out [Custom Annotations & Scope Injection](/annotations-and-testing/custom-annotations).
+</Aside>
+
+---
+
+## 4. Flame Toolchain Command Reference
+
+While building your own CLI utilities is effortless, the built-in `flame` binary manages your complete language lifecycle:
+
+| Command / Flag | Usage | Description |
+| :--- | :--- | :--- |
+| **`flame run <file>`** | `flame run src/main.fm [args]` | Fast development execution engine. |
+| **`flame build`** | `flame build [--release]` | Compiles workspace into standalone native binary. |
+| **`flame test`** | `flame test` | Scans workspace and runs all `@Test` test cases. |
+| **`flame check`** | `flame check src/main.fm --json` | IDE static analyzer and diagnostics engine. |
+| **`flame format`** | `flame format src/main.fm --stdout`| Auto-formats Flame code syntax cleanly. |
+| **`flame --version`**| `flame --v` / `flame -version` | Displays installed Flame toolchain version (`Flame 0.1.6`). |

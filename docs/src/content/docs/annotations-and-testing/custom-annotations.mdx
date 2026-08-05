@@ -1,25 +1,25 @@
 ---
-title: Custom Annotations & Flame CLI
-description: Creating custom annotation functions, returning values, automatic function scope injection, and CLI commands in Flame.
+title: Custom Annotations & Scope Injection
+description: Complete guide to creating custom annotation functions, returning values, and automatic function scope injection in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Flame allows developers to declare **custom annotations** using the `annotation` keyword. Annotations in Flame are first-class runtime and compile-time constructs: they accept typed parameters, execute custom initialization logic, and return data that is **automatically injected directly into the decorated function's scope**.
+Flame empowers systems engineers to declare **custom annotations** using the `annotation` keyword. Annotations in Flame are first-class runtime and compile-time constructs: they accept typed parameters, execute initialization logic, and return data that is **automatically injected directly into the decorated function's local scope**.
 
 ---
 
-## Defining a Custom Annotation
+## 1. Defining Custom Annotations
 
-You define a custom annotation using the `annotation` keyword, specifying parameters and a return type:
+You define custom annotations using the `annotation` keyword, specifying parameters and an explicit return type:
 
 ```flame
-// Declare an annotation that returns a formatted logger prefix
+// Declare an annotation that returns a formatted logger prefix string
 export annotation Logger(prefix: String) -> String {
     return $"[{prefix}] "
 }
 
-// Declare an annotation that initializes a configuration formula
+// Declare an annotation that initializes a route configuration formula
 export annotation Route(method: String, path: String) -> Formula {
     return formula {
         method: method,
@@ -31,17 +31,17 @@ export annotation Route(method: String, path: String) -> Formula {
 
 ---
 
-## Automatic Value Injection into Functions
+## 2. Automatic Value Injection into Functions
 
-When you decorate a function with a custom annotation, Flame evaluates the annotation at runtime and **automatically injects the returned value into the function's local scope** as a mutable variable named after the annotation (accessible both in original casing and lowercase):
+When you decorate a function with a custom annotation, Flame evaluates the annotation at runtime and **automatically injects the returned value directly into the function's local scope** as a mutable variable named after the annotation (accessible via lowercase or PascalCase):
 
 ```flame
 @Logger("AUTH_SERVICE")
 fn authenticate_user(username: String) {
-    // 'logger' or 'Logger' is automatically available from @Logger!
+    // 'logger' (or 'Logger') is automatically available in local scope from @Logger!
     print(logger + "Authenticating user: " + username)
 
-    // The injected variable is mutable and can be modified or updated
+    // The injected variable is mutable and can be dynamically modified in scope
     logger = logger + "[SECURE] "
     print(logger + "Access granted.")
 }
@@ -57,9 +57,9 @@ authenticate_user("admin")
 
 ---
 
-## Mutable State & Complex Formulas
+## 3. Mutable State & Complex Formula Injection
 
-Custom annotations can return complex formulas, structs, or state containers for middleware and context injection:
+Custom annotations can return complex formulas, structs, or state containers, making them invaluable for middleware pipelines and contextual dependency injection:
 
 ```flame
 export annotation Context(service_name: String) -> Formula {
@@ -71,7 +71,7 @@ export annotation Context(service_name: String) -> Formula {
 
 @Context("PAYMENT_GATEWAY")
 fn process_transaction(amount: Float) {
-    // Access formula fields directly
+    // Access formula properties directly from the injected 'context' variable
     context.request_count += 1
     print($"Service: {context.service}, Requests: {context.request_count}, Amount: ${amount}")
 }
@@ -79,22 +79,14 @@ fn process_transaction(amount: Float) {
 process_transaction(99.95)
 ```
 
-<Aside type="tip">
-When using `@MyAnnotation(...)`, the returned data is accessible inside the function via `myannotation`, `MyAnnotation`, or `__MyAnnotation_data__`.
+<Aside type="tip" title="Scope Variable Naming">
+When decorating a function with `@MyAnnotation(...)`, the evaluated return data is immediately accessible inside the function body via `myannotation`, `MyAnnotation`, or `__MyAnnotation_data__`.
 </Aside>
 
 ---
 
-## Flame CLI Command Reference
+## 4. Built-in Annotations & CLI Synthesis
 
-The unified `flame` binary handles your entire development lifecycle:
+Flame also comes packed with native annotations for testing (`@Test`, `@Setup`, `@Cleanup`) and declarative CLI building (`@Cli`, `@Command`).
 
-### Core Commands
-
-| Command | Usage | Description |
-| :--- | :--- | :--- |
-| **`flame run <file>`** | `flame run src/main.fm` | Fast AOT development execution. |
-| **`flame build`** | `flame build [--release]` | Compiles a standalone native executable. |
-| **`flame test`** | `flame test` | Runs all `@Test` functions in the project. |
-| **`flame check`** | `flame check src/main.fm --json` | IDE type-checker & diagnostics engine. |
-| **`flame format`** | `flame format src/main.fm --stdout` | Formats Flame source code files. |
+To learn how to use `@Cli` and `@Command` to assemble powerful interactive system utilities and subcommands with zero boilerplate, visit the comprehensive reference on [Built-in Annotations & CLI Builder](/annotations-and-testing/builtin-annotations).
