@@ -1,5 +1,5 @@
 <h1 style="display:flex; align-items: center; gap: 8px;">
-  <img src="./docs/assets/flame.png" alt="Flame Logo" width="46" height="46" style="vertical-align: middle;" />
+  <img src="./docs/public/flame.png" alt="Flame Logo" width="46" height="46" style="vertical-align: middle;" />
   Flame
 </h1>
 
