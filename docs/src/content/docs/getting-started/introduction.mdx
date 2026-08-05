@@ -3,7 +3,9 @@ title: Introduction to Flame
 description: Overview, core principles, and feature tour of the Flame programming language.
 ---
 
-import { Card, CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+import { Aside, CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+import LucideCard from '../../../components/LucideCard.astro';
+import { Trash2, Zap, Rocket, Code2 } from 'lucide-astro';
 
 # What is Flame?
 
@@ -22,19 +24,31 @@ Instead of creating an isolated language ecosystem from scratch, Flame treats Ru
 ## Key Highlights
 
 <CardGrid>
-  <Card title="Ahead-of-Time (AOT) Compilation" icon="setting">
+  <LucideCard title="Ahead-of-Time (AOT) Compilation">
+    <Zap slot="icon" />
     Compiles directly to native machine code. No heavy VM interpreter runtime required in production.
-  </Card>
-  <Card title="No Garbage Collector" icon="shield">
+  </LucideCard>
+  <LucideCard title="No Garbage Collector">
+    <Trash2 slot="icon" />
     Compile-time ownership and borrow checking guarantees memory safety with zero runtime stutters or GC pause spikes.
-  </Card>
-  <Card title="Native Tokio & Multi-Core Threads" icon="rocket">
+  </LucideCard>
+  <LucideCard title="Native Tokio & Multi-Core Threads">
+    <Rocket slot="icon" />
     Combines asynchronous non-blocking I/O (`async`/`await`) with dedicated multi-core OS worker threads (`thread { ... }`).
-  </Card>
-  <Card title="First-Class IDE Intellisense" icon="laptop">
+  </LucideCard>
+  <LucideCard title="First-Class IDE Intellisense">
+    <Code2 slot="icon" />
     Automatic `.fmi` metadata generation powers VS Code autocomplete and hover documentation directly from `docs.rs`.
-  </Card>
+  </LucideCard>
 </CardGrid>
+
+## Execution Model: Top-Level Execution
+
+<Aside type="tip" title="No Automatic main() Invocation">
+Like **JavaScript and Python**, Flame executes code sequentially from top to bottom. There is **no automatic `main()` function magic**!
+- If you write statements directly at the top level, they execute immediately when the script runs.
+- If you define a `fn main() { ... }`, the compiler **will not** automatically invoke it. You must explicitly call `main()` or run statements at the top level.
+</Aside>
 
 ---
 
@@ -67,23 +81,21 @@ impl ServerConfig {
     }
 }
 
-// 2. Main Entrypoint
-fn main() {
-    let config = ServerConfig.new("127.0.0.1", 8080)
-    print(config.describe())
+// 2. Direct Top-Level Execution
+let config = ServerConfig.new("127.0.0.1", 8080)
+print(config.describe())
 
-    // Direct Rust crate usage
-    let session_id = uuid.new_v4()
-    print($"Session ID: {session_id}")
+// Direct Rust crate usage
+let session_id = uuid.new_v4()
+print($"Session ID: {session_id}")
 
-    // Map-like formula literals
-    let response = formula {
-        status: 200,
-        ok: true,
-        data: ["items", "users"]
-    }
-    print(response.toString())
+// Map-like formula literals
+let response = formula {
+    status: 200,
+    ok: true,
+    data: ["items", "users"]
 }
+print(response.toString())
 ```
 
 ---
@@ -93,3 +105,4 @@ fn main() {
 - Follow the [Installation & Toolchain Guide](/getting-started/installation/) to setup Flame on your machine.
 - Read [Architecture & Analysis](/getting-started/architecture/) to learn how Flame achieves native speed and safety.
 - Explore [Language Basics](/language-basics/variables/) to start coding.
+

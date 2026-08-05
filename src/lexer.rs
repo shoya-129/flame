@@ -58,15 +58,23 @@ pub enum TokenKind {
     Equal,            // =
     EqualEqual,       // ==
     Plus,             // +
+    PlusPlus,         // ++
     PlusEqual,        // +=
     Minus,            // -
+    MinusMinus,       // --
     MinusEqual,       // -=
     Star,             // *
+    StarEqual,        // *=
     Slash,            // /
+    SlashEqual,       // /=
     Percent,          // %
+    PercentEqual,     // %=
     Ampersand,        // &
+    AmpersandEqual,   // &=
     Pipe,             // |
+    PipeEqual,        // |=
     Caret,            // ^
+    CaretEqual,       // ^=
     Ampersand2,       // &&
     Pipe2,            // ||
     Dot,              // .
@@ -75,6 +83,8 @@ pub enum TokenKind {
     At,               // @
     Dollar,           // $
     Question,         // ?
+    QuestionDot,      // ?.
+    QuestionColon,    // ?:
     Exclamation,      // !
     ExclamationEqual, // !=
     OpenParen,        // (
@@ -85,10 +95,14 @@ pub enum TokenKind {
     CloseBrace,       // }
     DoubleDot,        // ..
     DoubleDotEqual,   // ..=
-    Lt,
-    Le,
-    Gt,
-    Ge,
+    Lt,               // <
+    Le,               // <=
+    LtLt,             // <<
+    ShlEqual,         // <<=
+    Gt,               // >
+    Ge,               // >=
+    GtGt,             // >>
+    ShrEqual,         // >>=
 
     // End of File
     EOF,
@@ -290,7 +304,17 @@ impl<'a> Lexer<'a> {
             ',' => TokenKind::Comma,
             ':' => TokenKind::Colon,
             '@' => TokenKind::At,
-            '?' => TokenKind::Question,
+            '?' => {
+                if self.peek() == Some('.') {
+                    self.advance();
+                    TokenKind::QuestionDot
+                } else if self.peek() == Some(':') {
+                    self.advance();
+                    TokenKind::QuestionColon
+                } else {
+                    TokenKind::Question
+                }
+            }
             '!' => {
                 if self.peek() == Some('=') {
                     self.advance();
@@ -300,7 +324,10 @@ impl<'a> Lexer<'a> {
                 }
             }
             '+' => {
-                if self.peek() == Some('=') {
+                if self.peek() == Some('+') {
+                    self.advance();
+                    TokenKind::PlusPlus
+                } else if self.peek() == Some('=') {
                     self.advance();
                     TokenKind::PlusEqual
                 } else {
@@ -311,6 +338,9 @@ impl<'a> Lexer<'a> {
                 if self.peek() == Some('>') {
                     self.advance();
                     TokenKind::Arrow
+                } else if self.peek() == Some('-') {
+                    self.advance();
+                    TokenKind::MinusMinus
                 } else if self.peek() == Some('=') {
                     self.advance();
                     TokenKind::MinusEqual
@@ -318,7 +348,14 @@ impl<'a> Lexer<'a> {
                     TokenKind::Minus
                 }
             }
-            '*' => TokenKind::Star,
+            '*' => {
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::StarEqual
+                } else {
+                    TokenKind::Star
+                }
+            }
             '/' => {
                 if self.keep_comments && self.peek() == Some('/') {
                     self.advance();
@@ -340,12 +377,29 @@ impl<'a> Lexer<'a> {
                         self.advance();
                     }
                     TokenKind::Comment
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::SlashEqual
                 } else {
                     TokenKind::Slash
                 }
             }
-            '%' => TokenKind::Percent,
-            '^' => TokenKind::Caret,
+            '%' => {
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::PercentEqual
+                } else {
+                    TokenKind::Percent
+                }
+            }
+            '^' => {
+                if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::CaretEqual
+                } else {
+                    TokenKind::Caret
+                }
+            }
             '.' => {
                 if self.peek() == Some('.') {
                     self.advance();
@@ -374,6 +428,9 @@ impl<'a> Lexer<'a> {
                 if self.peek() == Some('&') {
                     self.advance();
                     TokenKind::Ampersand2
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::AmpersandEqual
                 } else {
                     TokenKind::Ampersand
                 }
@@ -382,6 +439,9 @@ impl<'a> Lexer<'a> {
                 if self.peek() == Some('|') {
                     self.advance();
                     TokenKind::Pipe2
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    TokenKind::PipeEqual
                 } else {
                     TokenKind::Pipe
                 }
@@ -396,7 +456,15 @@ impl<'a> Lexer<'a> {
                 }
             }
             '<' => {
-                if self.peek() == Some('=') {
+                if self.peek() == Some('<') {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::ShlEqual
+                    } else {
+                        TokenKind::LtLt
+                    }
+                } else if self.peek() == Some('=') {
                     self.advance();
                     TokenKind::Le
                 } else {
@@ -404,7 +472,15 @@ impl<'a> Lexer<'a> {
                 }
             }
             '>' => {
-                if self.peek() == Some('=') {
+                if self.peek() == Some('>') {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        TokenKind::ShrEqual
+                    } else {
+                        TokenKind::GtGt
+                    }
+                } else if self.peek() == Some('=') {
                     self.advance();
                     TokenKind::Ge
                 } else {
@@ -487,13 +563,24 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn scan_number(&mut self, _first_char: char) -> TokenKind {
+    fn scan_number(&mut self, first_char: char) -> TokenKind {
+        if first_char == '0' && (self.peek() == Some('x') || self.peek() == Some('X')) {
+            self.advance(); // consume 'x' or 'X'
+            while let Some(next) = self.peek() {
+                if next.is_ascii_hexdigit() || next == '_' {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            return TokenKind::IntLiteral;
+        }
         let mut has_dot = false;
         while let Some(next) = self.peek() {
-            if next.is_ascii_digit() {
+            if next.is_ascii_digit() || next == '_' {
                 self.advance();
             } else if next == '.' && !has_dot {
-                // Make sure it is not double dots `..` or `..=`
+                // Make sure it is not double dots `..` or `..=` or safe navigation `?.`
                 if let Some(after) = self.peek_next() {
                     if after == '.' {
                         break;
@@ -560,6 +647,9 @@ impl<'a> Lexer<'a> {
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
+            "and" => TokenKind::Ampersand2,
+            "or" => TokenKind::Pipe2,
+            "not" => TokenKind::Exclamation,
             _ => TokenKind::Identifier,
         }
     }

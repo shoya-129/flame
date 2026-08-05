@@ -286,6 +286,17 @@ impl fmt::Display for Value {
 }
 
 impl Value {
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Value::Bool(b) => *b,
+            Value::Nil => false,
+            Value::Int(i) => *i != 0,
+            Value::Float(f) => *f != 0.0,
+            Value::String(s) => !s.is_empty(),
+            _ => true,
+        }
+    }
+
     pub fn pack(&self) -> CValue {
         match self {
             Value::Int(i) => CValue {

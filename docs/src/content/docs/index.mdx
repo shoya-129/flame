@@ -19,23 +19,29 @@ hero:
       variant: minimal
 ---
 
-import { Card, CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+import { CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+import LucideCard from '../../components/LucideCard.astro';
+import { Trash2, Puzzle, Cpu, CheckCircle2 } from 'lucide-astro';
 
 ## Why Flame?
 
 <CardGrid>
-	<Card title="Zero-Overhead Rust Interoperability" icon="puzzle">
+	<LucideCard title="Zero-Overhead Rust Interoperability ">
+		<Puzzle slot="icon" />
 		Import any Rust crate directly in `flame.toml` with `import native.uuid` or `import native.axum`. Statically linked with zero FFI overhead.
-	</Card>
-	<Card title="No Garbage Collector, Pure Safety" icon="seti:rust">
+	</LucideCard>
+	<LucideCard title="No Garbage Collector, Pure Safety">
+		<Trash2 slot="icon" />
 		Rust-style Ownership and Borrowing system guarantees memory safety and data-race prevention at compile time with zero GC pauses.
-	</Card>
-	<Card title="True Multithreaded Concurrency" icon="rocket">
+	</LucideCard>
+	<LucideCard title="True Multithreaded Concurrency">
+		<Cpu slot="icon" />
 		Combines **Tokio worker pools** for non-blocking I/O with dedicated **`thread { ... }`** compute workers across multi-core CPUs.
-	</Card>
-	<Card title="Integrated Native Test Runner" icon="approve-check-circle">
+	</LucideCard>
+	<LucideCard title="Integrated Native Test Runner">
+		<CheckCircle2 slot="icon" />
 		PascalCase annotations like `@Test`, `@Setup`, `@Cleanup`, and `@Parameterized` with zero-cost production stripping during release builds.
-	</Card>
+	</LucideCard>
 </CardGrid>
 
 ---

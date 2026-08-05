@@ -38,6 +38,42 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Alternative conditional execution. Example: `else { ... }`",
     ),
     (
+        "and",
+        "Logical AND operator. Evaluates to true only if both operands are true. Example: `if is_online and is_ready { ... }`",
+    ),
+    (
+        "or",
+        "Logical OR operator. Evaluates to true if either operand is true. Example: `if is_offline or is_faulted { ... }`",
+    ),
+    (
+        "not",
+        "Logical NOT keyword. Inverts a boolean expression. Example: `if not is_faulted { ... }`",
+    ),
+    (
+        "?:",
+        "Nil-coalescing operator (Elvish operator). Returns the left-hand side if non-nil, otherwise evaluates and returns the fallback right-hand expression. Example: `let speed = motor?.speed ?: 0`",
+    ),
+    (
+        "?.",
+        "Safe-navigation member access operator. Evaluates member access if receiver is non-nil, otherwise short-circuits to nil without panicking. Example: `let speed = motor?.speed`",
+    ),
+    (
+        "++",
+        "Increment operator (supports prefix `++var` and postfix `var++`). Example: `count++`",
+    ),
+    (
+        "--",
+        "Decrement operator (supports prefix `--var` and postfix `var--`). Example: `timeout--`",
+    ),
+    (
+        "+=",
+        "Compound addition assignment operator. Example: `speed += 10`",
+    ),
+    (
+        "-=",
+        "Compound subtraction assignment operator. Example: `speed -= 10`",
+    ),
+    (
         "while",
         "Looping construct based on condition. Example: `while condition { ... }`",
     ),
@@ -131,7 +167,7 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "panic",
-        "```flame\nfn panic(message: String)\n```\nTerminates program execution immediately with the specified error message.\n\n**Example:**\n```flame\npanic(\"Unrecoverable state reached\")\n```",
+        "```flame\nfn panic(message: String)\n```\nTerminates program execution immediately with an unrecoverable error message and diagnostic line trace. When called inside an `@Test` function, it halts the individual test case and marks it as failed with the specified message while allowing remaining test suites to proceed.\n\n**Example:**\n```flame\nif is_online and is_faulted {\n    panic(\"Invalid state: cannot be both online and faulted\")\n}\n```",
     ),
     (
         "typeof",
@@ -410,20 +446,64 @@ pub struct ScannedStruct {
     pub methods: Vec<String>,
 }
 
+fn extract_balanced_block(source: &str, open_brace_pos: usize) -> Option<&str> {
+    let bytes = source.as_bytes();
+    if bytes.get(open_brace_pos) != Some(&b'{') {
+        return None;
+    }
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut string_char = b'"';
+    let mut escaped = false;
+    let start_idx = open_brace_pos + 1;
+
+    for i in open_brace_pos..bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == string_char {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if b == b'"' || b == b'\'' {
+            in_string = true;
+            string_char = b;
+            continue;
+        }
+
+        if b == b'{' {
+            depth += 1;
+        } else if b == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&source[start_idx..i]);
+            }
+        }
+    }
+    None
+}
+
 pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
     let mut vars = Vec::new();
     let mut structs = Vec::new();
 
     // Scan for structs: `struct Name { field: type, ... }`
-    let struct_re = Regex::new(r"(?s)struct\s+([a-zA-Z_]\w*)\s*\{([^}]*)\}").unwrap();
-    for cap in struct_re.captures_iter(content) {
+    let struct_header_re = Regex::new(r"struct\s+([a-zA-Z_]\w*)\s*\{").unwrap();
+    let field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:").unwrap();
+    for cap in struct_header_re.captures_iter(content) {
         let name = cap[1].to_string();
-        let body = &cap[2];
+        let match_obj = cap.get(0).unwrap();
+        let open_brace_pos = match_obj.end() - 1;
         let mut fields = Vec::new();
-        // naive split by comma or newline, finding `ident:`
-        let field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:").unwrap();
-        for field_cap in field_re.captures_iter(body) {
-            fields.push(field_cap[1].to_string());
+        if let Some(body) = extract_balanced_block(content, open_brace_pos) {
+            for field_cap in field_re.captures_iter(body) {
+                fields.push(field_cap[1].to_string());
+            }
         }
         structs.push(ScannedStruct {
             name,
@@ -432,36 +512,47 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         });
     }
 
-    // Scan for impls: `impl Name { fn method(...) }`
-    let impl_re = Regex::new(r"(?s)impl\s+([a-zA-Z_]\w*)\s*\{([^}]*)\}").unwrap();
+    // Scan for impls: `impl Name { fn method(...) { ... } }`
+    let impl_header_re = Regex::new(r"impl\s+([a-zA-Z_]\w*)\s*\{").unwrap();
     let fn_re = Regex::new(r"fn\s+([a-zA-Z_]\w*)\s*\(").unwrap();
-    for cap in impl_re.captures_iter(content) {
-        let name = &cap[1];
-        let body = &cap[2];
-        if let Some(s) = structs.iter_mut().find(|s| s.name == name) {
+    for cap in impl_header_re.captures_iter(content) {
+        let name = cap[1].to_string();
+        let match_obj = cap.get(0).unwrap();
+        let open_brace_pos = match_obj.end() - 1;
+        if let Some(body) = extract_balanced_block(content, open_brace_pos) {
+            let mut methods = Vec::new();
             for fn_cap in fn_re.captures_iter(body) {
-                s.methods.push(fn_cap[1].to_string());
+                methods.push(fn_cap[1].to_string());
+            }
+            if let Some(s) = structs.iter_mut().find(|s| s.name == name) {
+                s.methods.extend(methods);
+            } else {
+                structs.push(ScannedStruct {
+                    name,
+                    fields: vec![],
+                    methods,
+                });
             }
         }
     }
 
-    // Scan for variables: `let x = ...`, `const x = StructName(...)`, `let mut x`
+    // Scan for variables: `let x = StructName.new(...)`, `let x: StructName = ...`, `let x = StructName { ... }`
     let var_re =
-        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)\s*(?:=\s*([a-zA-Z_]\w*))?").unwrap();
+        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)(?:\s*:\s*([a-zA-Z_]\w*))?(?:\s*=\s*([a-zA-Z_]\w*)(?:\.new|\s*\{|\s*\()?)?").unwrap();
     for cap in var_re.captures_iter(content) {
         let name = cap[1].to_string();
-        let typ = cap.get(2).map(|m| m.as_str().to_string());
+        let typ = cap.get(2).or_else(|| cap.get(3)).map(|m| m.as_str().to_string());
         vars.push(ScannedVar { name, typ });
     }
 
     // Scan for variables with formula bodies to extract fields
-    let formula_re =
-        Regex::new(r"(?s)(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)\s*=\s*formula\s*\{([^}]*)\}");
-    if let Ok(formula_re) = formula_re {
-        let field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:").unwrap();
-        for cap in formula_re.captures_iter(content) {
-            let name = cap[1].to_string();
-            let body = &cap[2];
+    let formula_header_re =
+        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)\s*=\s*formula\s*\{").unwrap();
+    for cap in formula_header_re.captures_iter(content) {
+        let name = cap[1].to_string();
+        let match_obj = cap.get(0).unwrap();
+        let open_brace_pos = match_obj.end() - 1;
+        if let Some(body) = extract_balanced_block(content, open_brace_pos) {
             let mut fields = Vec::new();
             for field_cap in field_re.captures_iter(body) {
                 fields.push(field_cap[1].to_string());
@@ -470,7 +561,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
             structs.push(ScannedStruct {
                 name: synthetic_type.clone(),
                 fields,
-                methods: vec![],
+                methods: vec!["toString".to_string(), "to_string".to_string()],
             });
             // Overwrite or add to vars at the beginning so it is found first
             vars.insert(

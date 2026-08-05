@@ -49,6 +49,8 @@ export default defineConfig({
 					items: [
 						{ label: 'Variables & Constants', slug: 'language-basics/variables' },
 						{ label: 'Data Types & Formulas', slug: 'language-basics/data-types' },
+						{ label: 'Operators & Expressions', slug: 'language-basics/operators' },
+						{ label: 'Nil Safety & Optionals', slug: 'language-basics/nil-safety' },
 						{ label: 'Type Conversions', slug: 'language-basics/type-conversions' },
 						{ label: 'Control Flow', slug: 'language-basics/control-flow' },
 						{ label: 'Functions & Closures', slug: 'language-basics/functions' },

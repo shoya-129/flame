@@ -141,6 +141,9 @@ fn main() {
             }
             init_native_bridge(plugin_name);
         }
+        "version" | "--version" | "-version" | "--v" | "-v" | "-V" => {
+            println!("Flame {} (Codename: Flame Spark)", env!("CARGO_PKG_VERSION"));
+        }
         "help" | "--help" | "-h" => {
             print_help();
         }
@@ -180,8 +183,8 @@ fn print_help() {
     let reset = "\x1b[0m";
 
     println!(
-        "{}Flame Compiler & Package Manager (Version 0.1.0){} ",
-        bold, reset
+        "{}Flame Compiler & Package Manager (Version {}){} ",
+        bold, env!("CARGO_PKG_VERSION"), reset
     );
     println!("Designed for systems programming with supreme DX.");
     println!();
@@ -228,7 +231,11 @@ fn print_help() {
         "  {}native init{}         Scaffold native Rust FFI bridges & Cargo configuration",
         cyan, reset
     );
-    println!("  {}help{}                Print help details", cyan, reset);
+    println!(
+        "  {}version, --v, --version{} Print installed Flame compiler version",
+        cyan, reset
+    );
+    println!("  {}help, -h, --help{}        Print help details", cyan, reset);
     println!();
 }
 
@@ -574,6 +581,12 @@ fn run_tests(args: &[String]) {
         if Path::new("tests").exists() {
             collect_fm_files(Path::new("tests"), &mut files_to_test);
         }
+        if Path::new("examples/tests").exists() {
+            collect_fm_files(Path::new("examples/tests"), &mut files_to_test);
+        }
+        if Path::new("examples").exists() && !Path::new("examples/tests").exists() {
+            collect_fm_files(Path::new("examples"), &mut files_to_test);
+        }
         if Path::new("src").exists() {
             collect_fm_files(Path::new("src"), &mut files_to_test);
         }
@@ -581,6 +594,10 @@ fn run_tests(args: &[String]) {
             files_to_test.push(PathBuf::from("main.fm"));
         }
     }
+
+    // Deduplicate
+    let mut seen = std::collections::HashSet::new();
+    files_to_test.retain(|p| seen.insert(p.clone()));
 
     if files_to_test.is_empty() {
         println!("No `.fm` test files found.");
@@ -595,7 +612,16 @@ fn run_tests(args: &[String]) {
         };
         let stmts = match parse_file_stmts(&path, &content) {
             Ok(stmts) => stmts,
-            Err(_) => continue,
+            Err(diag) => {
+                println!(
+                    "  \x1b[1;31mparse error in {}:{}:{}\x1b[0m: {}",
+                    path.display(),
+                    diag.span.line,
+                    diag.span.col,
+                    diag.message
+                );
+                continue;
+            }
         };
         if has_test_annotations(&stmts) {
             filtered_files.push(path);
@@ -2018,7 +2044,8 @@ fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<Str
             .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
             .collect::<String>();
         return (
-            left.split_whitespace()
+            left.split(|c: char| !c.is_alphanumeric() && c != '_')
+                .filter(|s| !s.is_empty())
                 .last()
                 .map(|value| value.to_string()),
             Some(right),

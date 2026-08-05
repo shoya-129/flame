@@ -78,6 +78,40 @@ fn test_mocking() {
 
 ---
 
+## Explicit Test Failures & Invariants (`panic`)
+
+When writing complex integration tests for robotics control loops or validating edge-case state transitions, standard equality assertions (`assert_eq`) may not express custom branching failure logic clearly. 
+
+You can invoke the built-in **`panic(message: String)`** function directly within any `@Test` case to explicitly fail the test with an exact diagnostic message and line trace:
+
+```flame
+@Test
+fn test_logical_operators_and_safety_interlocks() {
+    let is_online = true
+    let is_faulted = false
+
+    // Explicit invariant validation using panic
+    if is_online and is_faulted {
+        panic("Expected safety interlock: system cannot be online while in a faulted state")
+    }
+
+    if not (is_online or is_faulted) {
+        panic("Expected system to be responsive (online or faulted)")
+    }
+
+    let motor_speed: Int? = 1200
+    if motor_speed == nil {
+        panic("Motor telemetry dropped unexpectedly during active test cycle")
+    }
+}
+```
+
+<Aside type="note" title="Resilient Test Engine Behavior">
+When a `panic(message)` occurs inside a `@Test`-annotated routine, Flame's test execution engine intercepts the unrecoverable state, marks that specific test case as **[FAILED]**, prints the precise line number and diagnostic message, and **safely resumes executing all remaining unit tests** without crashing the overarching test process!
+</Aside>
+
+---
+
 ## Zero-Cost Production Stripping
 
 <Aside type="tip" title="Zero Overhead">

@@ -4,6 +4,30 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.1.6] - 2026-08-05 (Codename: *Flame Spark*)
+
+### 🤖 Explicit Systems Syntax & Nil-Safety Foundations
+- **Keyword Logical Operators**: Added robust support for readable keyword logical operators (`and`, `or`, and `not`) alongside classic symbolic forms (`&&`, `||`, `!`). Designed explicitly for robotics, automation, and embedded systems to eliminate visual ambiguity in complex control assertions.
+- **Dedicated Nil-Safety Architecture**: Enforced non-nullable types by default with seamless optional declarations (`Type?`), removing undefined pointer traps from mission-critical control loops:
+  - **Safe Member Navigation (`?.`)**: Short-circuits property accesses and method calls on optional receivers without risking runtime panics.
+  - **Nil Coalescing Operator (`?:`)**: Ergonomic Elvish operator syntax to assign fail-safe default fallback values in a single evaluation expression.
+  - **Non-Null Assertion (`!`)**: Explicit runtime assertion unwraps verified system state with safe line-precise runtime diagnostics on nil encounters.
+- **Increment, Decrement & Compound Assignments**: Fully functional native runtime support for prefix and postfix increment and decrement operators (`++var`, `var++`, `--var`, `var--`) and compound arithmetic assignments (`+=`, `-=`, `*=`, `/=`, `%=`) for high-frequency counter loops and sensor data accumulation.
+- **Universal Precision Conversions**: Enhanced `.toString(precision: Int)` method dispatch across the evaluation engine to cleanly format floating-point telemetry strings (e.g., `3.14159.toString(2)` -> `"3.14"`).
+- **CLI Compiler Version Querying**: Added native CLI flags `flame --v`, `flame -v`, and `flame --version` to instantly query and output the installed compiler version and codename (`Flame 0.1.6 (Codename: Flame Spark)`).
+
+### ⚡ IDE & Semantic Token Enhancements (`flame-ide`)
+- **Complete Comment & String Insulation**: Upgraded the VS Code language semantic token provider to emit authoritative `comment` and `string` semantic token ranges over all line comments (`// ...`) and block comments (`/* ... */`). This permanently prevents bracket pair colorizer bleeding and false annotation syntax highlighting on commented-out code (such as `// @Test()` or `//(old_expr)`).
+- **Logical Keyword Highlighting & Hover**: Updated static TextMate grammar (`flame.tmLanguage.json`) and active semantic tokens to highlight `and`, `or`, and `not` as dedicated logical keywords. Hovering over operators and keywords now displays structured markdown documentation with robotics usage examples.
+- **Intelligent Timestamp-Based Compiler Discovery**: Refinanced the extension compiler binary resolution logic to inspect filesystem modification times (`mtime`), ensuring VS Code always selects the most recently rebuilt `flamelang.exe` binary across debug and release build targets.
+
+### 📚 Comprehensive Documentation Suite Upgrade
+- **Dedicated Nil Safety Page**: Launched a standalone **Nil Safety & Optionals** guide on the Flame web documentation portal ([docs](docs)), detailing the mission-critical importance of null safety in hardware automation and robotics engineering.
+- **Updated Operators Guide**: Revamped the **Operators & Expressions** guide with full increment, decrement, compound assignment, bitwise register manipulations, and a complete operator precedence table.
+- **Testing Invariants with `panic`**: Added dedicated test failure and invariant assertions guidance to the Native Testing Framework documentation ([testing-framework.mdx](docs/src/content/docs/annotations-and-testing/testing-framework.mdx)), demonstrating how `panic(message)` terminates individual test cases cleanly without halting overarching test suite execution.
+
+---
+
 ## [0.1.5] - 2026-08-05 (Codename: *Flame Spark*) 
 
 ### 🧩 Language Grammar, Syntax & LSP Features

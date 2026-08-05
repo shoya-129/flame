@@ -14,7 +14,7 @@ Flame cleanly separates **I/O Concurrency** (`async`/`await`) from **Computation
 
 Rather than cloning interpreter instances per thread (which causes memory bloat and state divergence), Flame uses **Lexical Snapshot Isolation**:
 
-![Flame Multithreading Architecture](../../assets/flame_multithreading_diagram.png)
+![Flame Multithreading Architecture](../../../assets/flame_multithreading_diagram.png)
 
 1. **Multi-Core Workers**: Incoming network sockets and background workers execute in parallel across CPU cores.
 2. **Atomic Memory Channels**: Results and event payloads are passed safely over lock-free message channels.

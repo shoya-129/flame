@@ -33,7 +33,13 @@
       "patterns": [
         {
           "name": "comment.line.double-slash.flame",
-          "match": "//.*$"
+          "begin": "//",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.flame"
+            }
+          },
+          "end": "$"
         },
         {
           "name": "comment.block.flame",
@@ -135,6 +141,10 @@
     },
     "keywords": {
       "patterns": [
+        {
+          "name": "keyword.operator.logical.flame",
+          "match": "\\b(or|and|not)\\b"
+        },
         {
           "name": "keyword.control.flame",
           "match": "\\b(if|else|match|for|in|while|loop|break|continue|defer|return|yield|await|async|thread)\\b"

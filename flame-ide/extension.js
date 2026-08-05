@@ -1,5 +1,5 @@
 const vscode = require('vscode');
-const { existsSync, writeFileSync, unlinkSync } = require('fs');
+const { existsSync, writeFileSync, unlinkSync, statSync } = require('fs');
 const { dirname, join, delimiter } = require('path');
 const { homedir } = require('os');
 const { execFile } = require('child_process');
@@ -12,6 +12,9 @@ function findWorkspaceRoot(documentPath) {
 }
 
 function findCompilerBinary(startPath) {
+    const existing = [];
+    const addIfExist = (cand) => { if (cand && existsSync(cand)) existing.push(cand); };
+
     // 1. Check user configuration
     try {
         const configPath = vscode.workspace.getConfiguration('flame').get('compilerPath');
@@ -38,10 +41,7 @@ function findCompilerBinary(startPath) {
                 join(curr, 'target', 'debug', 'flamelang'),
                 join(curr, 'target', 'debug', 'flame'),
             ];
-
-            for (const cand of candidates) {
-                if (existsSync(cand)) return cand;
-            }
+            for (const cand of candidates) addIfExist(cand);
 
             const parent = dirname(curr);
             if (parent === curr) break;
@@ -65,9 +65,7 @@ function findCompilerBinary(startPath) {
             join(parentDir, 'flame', 'target', 'release', 'flamelang'),
             join(parentDir, 'flame', 'target', 'release', 'flame'),
         ];
-        for (const cand of siblingCandidates) {
-            if (existsSync(cand)) return cand;
-        }
+        for (const cand of siblingCandidates) addIfExist(cand);
     }
 
     // 4. Check Cargo global binary directory
@@ -78,9 +76,7 @@ function findCompilerBinary(startPath) {
         join(userHome, '.cargo', 'bin', 'flamelang'),
         join(userHome, '.cargo', 'bin', 'flame'),
     ];
-    for (const cand of cargoCandidates) {
-        if (existsSync(cand)) return cand;
-    }
+    for (const cand of cargoCandidates) addIfExist(cand);
 
     // 5. Check NPM global directories (flame installed via npm)
     if (process.platform === 'win32') {
@@ -97,9 +93,7 @@ function findCompilerBinary(startPath) {
             join(localAppData, 'npm', 'flame.exe'),
             join(localAppData, 'npm', 'flame'),
         ];
-        for (const cand of npmCandidates) {
-            if (existsSync(cand)) return cand;
-        }
+        for (const cand of npmCandidates) addIfExist(cand);
     } else {
         const unixNpmCandidates = [
             join(userHome, '.npm-global', 'bin', 'flame'),
@@ -109,9 +103,7 @@ function findCompilerBinary(startPath) {
             '/usr/bin/flame',
             '/usr/bin/flamelang',
         ];
-        for (const cand of unixNpmCandidates) {
-            if (existsSync(cand)) return cand;
-        }
+        for (const cand of unixNpmCandidates) addIfExist(cand);
     }
 
     // 6. Check system PATH entries
@@ -123,10 +115,25 @@ function findCompilerBinary(startPath) {
 
         for (const pDir of pathDirs) {
             for (const name of cliNames) {
-                const fullP = join(pDir, name);
-                if (existsSync(fullP)) return fullP;
+                addIfExist(join(pDir, name));
             }
         }
+    }
+
+    // Return the newest binary by mtime timestamp so recent compiler rebuilds take precedence over older binaries
+    if (existing.length > 0) {
+        let newest = existing[0];
+        let newestTime = 0;
+        for (const cand of existing) {
+            try {
+                const mtime = statSync(cand).mtimeMs;
+                if (mtime > newestTime) {
+                    newestTime = mtime;
+                    newest = cand;
+                }
+            } catch (e) {}
+        }
+        return newest;
     }
 
     // Default fallback to 'flame' CLI (supports npm / cargo / system PATH via shell invocation)
@@ -274,7 +281,7 @@ function activate(context) {
         }
     }, '.', '@', ':'));
 
-    const tokenTypes = ['keyword', 'function', 'annotation'];
+    const tokenTypes = ['keyword', 'function', 'annotation', 'comment', 'string'];
     const tokenModifiers = ['declaration', 'readonly'];
     const legend = new vscode.SemanticTokensLegend(tokenTypes, tokenModifiers);
 
@@ -293,21 +300,49 @@ function activate(context) {
             const len = text.length;
             let i = 0;
 
+            const pushTokenRange = (startIdx, endIdx, typeIdx) => {
+                let curr = startIdx;
+                while (curr < endIdx) {
+                    let nextLine = text.indexOf('\n', curr);
+                    if (nextLine === -1 || nextLine >= endIdx) {
+                        let lineLen = endIdx - curr;
+                        if (lineLen > 0 && text[curr + lineLen - 1] === '\r') lineLen--;
+                        if (lineLen > 0) {
+                            const pos = document.positionAt(curr);
+                            tokensBuilder.push(pos.line, pos.character, lineLen, typeIdx, 0);
+                        }
+                        break;
+                    } else {
+                        let lineLen = nextLine - curr;
+                        if (lineLen > 0 && text[curr + lineLen - 1] === '\r') lineLen--;
+                        if (lineLen > 0) {
+                            const pos = document.positionAt(curr);
+                            tokensBuilder.push(pos.line, pos.character, lineLen, typeIdx, 0);
+                        }
+                        curr = nextLine + 1;
+                    }
+                }
+            };
+
             while (i < len) {
                 const ch = text[i];
                 const next = i + 1 < len ? text[i + 1] : '';
 
-                // 1. Single-line comments (// ...)
+                // 1. Single-line comments (// ...) - marked entirely as comment semantic token so nothing inside gets syntax highlighted!
                 if (ch === '/' && next === '/') {
+                    const start = i;
                     i += 2;
-                    while (i < len && text[i] !== '\n') {
+                    while (i < len && text[i] !== '\n' && text[i] !== '\r') {
                         i++;
                     }
+                    const pos = document.positionAt(start);
+                    tokensBuilder.push(pos.line, pos.character, i - start, 3, 0); // 3 = comment
                     continue;
                 }
 
-                // 2. Multi-line comments (/* ... */)
+                // 2. Multi-line comments (/* ... */) - marked entirely as comment semantic token!
                 if (ch === '/' && next === '*') {
+                    const start = i;
                     i += 2;
                     while (i < len) {
                         if (text[i] === '*' && i + 1 < len && text[i + 1] === '/') {
@@ -316,112 +351,60 @@ function activate(context) {
                         }
                         i++;
                     }
+                    pushTokenRange(start, i, 3); // 3 = comment
                     continue;
                 }
 
-                // 3. Interpolated strings ($"...")
+                // 3. Interpolated strings ($"...") - marked entirely as string semantic token outside braces!
                 if (ch === '$' && next === '"') {
+                    const start = i;
                     i += 2;
                     let braceDepth = 0;
                     while (i < len) {
                         if (braceDepth === 0) {
-                            if (text[i] === '\\') {
-                                i += 2;
-                                continue;
-                            }
-                            if (text[i] === '"') {
-                                i++;
-                                break;
-                            }
-                            if (text[i] === '{') {
-                                braceDepth = 1;
-                                i++;
-                                continue;
-                            }
+                            if (text[i] === '\\') { i += 2; continue; }
+                            if (text[i] === '"') { i++; break; }
+                            if (text[i] === '{') { braceDepth = 1; i++; continue; }
                             i++;
                         } else {
-                            // Inside interpolation expression { ... }
-                            if (text[i] === '/' && i + 1 < len && text[i + 1] === '/') {
-                                i += 2;
-                                while (i < len && text[i] !== '\n') i++;
-                                continue;
-                            }
-                            if (text[i] === '/' && i + 1 < len && text[i + 1] === '*') {
-                                i += 2;
-                                while (i < len) {
-                                    if (text[i] === '*' && i + 1 < len && text[i + 1] === '/') {
-                                        i += 2;
-                                        break;
-                                    }
-                                    i++;
-                                }
-                                continue;
-                            }
-                            if (text[i] === '"') {
-                                i++;
-                                while (i < len) {
-                                    if (text[i] === '\\') { i += 2; continue; }
-                                    if (text[i] === '"' || text[i] === '\n') { if (text[i] === '"') i++; break; }
-                                    i++;
-                                }
-                                continue;
-                            }
-                            if (text[i] === '\'') {
-                                i++;
-                                while (i < len) {
-                                    if (text[i] === '\\') { i += 2; continue; }
-                                    if (text[i] === '\'' || text[i] === '\n') { if (text[i] === '\'') i++; break; }
-                                    i++;
-                                }
-                                continue;
-                            }
-                            if (text[i] === '{') {
-                                braceDepth++;
-                                i++;
-                                continue;
-                            }
-                            if (text[i] === '}') {
-                                braceDepth--;
-                                i++;
-                                continue;
-                            }
+                            if (text[i] === '{') braceDepth++;
+                            else if (text[i] === '}') braceDepth--;
                             i++;
                         }
                     }
+                    pushTokenRange(start, i, 4); // 4 = string
                     continue;
                 }
 
-                // 4. Double quoted strings ("...")
+                // 4. Double quoted strings ("...") - marked entirely as string semantic token!
                 if (ch === '"') {
+                    const start = i;
                     i++;
                     while (i < len) {
-                        if (text[i] === '\\') {
-                            i += 2;
-                            continue;
-                        }
-                        if (text[i] === '"' || text[i] === '\n') {
+                        if (text[i] === '\\') { i += 2; continue; }
+                        if (text[i] === '"' || text[i] === '\n' || text[i] === '\r') {
                             if (text[i] === '"') i++;
                             break;
                         }
                         i++;
                     }
+                    pushTokenRange(start, i, 4); // 4 = string
                     continue;
                 }
 
-                // 5. Single quoted strings ('...')
+                // 5. Single quoted strings ('...') - marked entirely as string semantic token!
                 if (ch === '\'') {
+                    const start = i;
                     i++;
                     while (i < len) {
-                        if (text[i] === '\\') {
-                            i += 2;
-                            continue;
-                        }
-                        if (text[i] === '\'' || text[i] === '\n') {
+                        if (text[i] === '\\') { i += 2; continue; }
+                        if (text[i] === '\'' || text[i] === '\n' || text[i] === '\r') {
                             if (text[i] === '\'') i++;
                             break;
                         }
                         i++;
                     }
+                    pushTokenRange(start, i, 4); // 4 = string
                     continue;
                 }
 
@@ -474,6 +457,23 @@ function activate(context) {
                         }
                         continue;
                     }
+                }
+
+                // 8. Keywords (including 'or', 'and', 'not', etc.)
+                if (isIdentStart(ch)) {
+                    const start = i;
+                    let curr = i;
+                    while (curr < len && isIdentPart(text[curr])) {
+                        curr++;
+                    }
+                    const word = text.slice(start, curr);
+                    const keywords = ['or', 'and', 'not', 'if', 'else', 'match', 'for', 'in', 'while', 'loop', 'break', 'continue', 'defer', 'return', 'yield', 'await', 'async', 'thread', 'let', 'const', 'var', 'fn', 'struct', 'enum', 'trait', 'impl', 'export', 'import', 'mut', 'as', 'type', 'where', 'formula', 'self', 'Self', 'true', 'false', 'nil', 'annotation'];
+                    if (keywords.includes(word)) {
+                        const kwPos = document.positionAt(start);
+                        tokensBuilder.push(kwPos.line, kwPos.character, curr - start, 0, 0); // 0 = keyword
+                    }
+                    i = curr;
+                    continue;
                 }
 
                 i++;

@@ -1,0 +1,195 @@
+---
+title: Operators & Expressions
+description: Comprehensive guide to all operators in Flame, including logical keyword operators (and, or, not), increment and decrement (++, --), compound assignment (+=, -=), bitwise manipulation, and precedence.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Flame’s expression and operator syntax is designed to be **simple, explicit, predictable, and readable**. Whether writing control feedback loops for robotics, manipulating hardware registers on microcontrollers, or building multithreaded desktop automations, Flame provides intuitive operator semantics without hidden implicit casting or ambiguous syntax surprises.
+
+---
+
+## 1. Keyword Logical Operators (`and`, `or`, `not`)
+
+In mission-critical systems and robotics engineering, deeply nested symbol operators (`&&`, `||`, `!`) can easily become visually ambiguous or prone to misreading during critical code audits. Flame embraces clean, explicit **keyword logical operators** (`and`, `or`, `not`) as first-class standard syntax.
+
+| Operator | Meaning | Example | Behavior |
+| :--- | :--- | :--- | :--- |
+| **`and`** / **`&&`** | Logical AND | `is_online and is_calibrated` | Evaluates to `true` only if both operands are true. Short-circuits if left-hand is false. |
+| **`or`** / **`\|\|`** | Logical OR | `manual_override or emergency_stop` | Evaluates to `true` if either operand is true. Short-circuits if left-hand is true. |
+| **`not`** / **`!`** | Logical NOT | `not is_faulted` | Inverts a boolean condition (`true` becomes `false`, and vice-versa). |
+
+### Clean Boolean Logic Example
+```flame
+let motor_ready: Bool = true
+let lidar_online: Bool = true
+let safety_trip: Bool = false
+
+if motor_ready and lidar_online and not safety_trip {
+    print("[SYSTEM OK] All sub-systems operational. Engaging autonomous routing.")
+} else {
+    print("[FAULT] Cannot engage system: safety conditions unmet.")
+}
+```
+
+<Aside type="tip">
+Flame fully supports both keyword forms (`and`, `or`, `not`) and conventional symbolic styles (`&&`, `||`, `!`). For automation and hardware logic, using keyword forms is recommended for enhanced clarity.
+</Aside>
+
+---
+
+## 2. Arithmetic, Increment & Decrement Operators
+
+Flame provides full precision mathematical operators along with ergonomic unary increment and decrement primitives for loop counters, encoders, and iterative accumulation.
+
+### Basic Arithmetic Operators
+| Operator | Description | Example | Notes |
+| :--- | :--- | :--- | :--- |
+| **`+`** | Addition | `velocity + offset` | Also concatenates strings (`"Sensor: " + id`). |
+| **`-`** | Subtraction / Negation | `100 - error_margin`, `-voltage` | Unary negation flips sign on numeric values. |
+| **`*`** | Multiplication | `voltage * current_amps` | Computes mathematical product. |
+| **`/`** | Division | `distance / time_seconds` | Standard float or integer division. |
+| **`%`** | Modulo (Remainder) | `encoder_ticks % 360` | Computes remainder of integer division. |
+
+---
+
+## 3. Increment & Decrement Operators (`++`, `--`)
+
+When managing real-time hardware timers, sensor scan passes, or step-motor sequences, adjusting mutable variables by `1` is a continuous requirement. Flame natively supports both **prefix** and **postfix** increment and decrement operations on mutable variables and struct properties:
+
+| Syntax | Name | Behavior |
+| :--- | :--- | :--- |
+| **`var++`** | Postfix Increment | Evaluates the expression using current value, then increments `var` by `1`. |
+| **`++var`** | Prefix Increment | Increments `var` by `1` immediately, then evaluates to the new value. |
+| **`var--`** | Postfix Decrement | Evaluates the expression using current value, then decrements `var` by `1`. |
+| **`--var`** | Prefix Decrement | Decrements `var` by `1` immediately, then evaluates to the new value. |
+
+### Usage in Automation Loops
+```flame
+let mut encoder_count: Int = 0
+let mut timeout_ticks: Int = 10
+
+// Postfix incrementing encoder pulses
+encoder_count++
+print($"Current encoder pulse: {encoder_count}") // 1
+
+// Prefix decrementing timer countdown
+while --timeout_ticks > 0 {
+    if read_sensor_ack() {
+        print("Sensor acknowledged before timeout!")
+        break
+    }
+}
+```
+
+---
+
+## 4. Compound Assignment Operators (`+=`, `-=`, etc.)
+
+Compound assignment operators combine a binary operation with variable assignment, streamlining cumulative calculations such as PID control integral sum accumulation or energy consumption trackers.
+
+| Operator | Meaning | Expansion Equivalent | Typical Robotics Application |
+| :--- | :--- | :--- | :--- |
+| **`+=`** | Add and Assign | `x = x + y` | Accumulating integrated distance or position adjustments. |
+| **`-=`** | Subtract and Assign | `x = x - y` | Decrementing remaining battery buffer or reducing velocity speed trims. |
+| **`*=`** | Multiply and Assign | `x = x * y` | Applying gain amplification coefficients. |
+| **`/=`** | Divide and Assign | `x = x / y` | Scaling down resolution or normalizing sensory readings. |
+| **`%=`** | Modulo and Assign | `x = x % y` | Wrapping angle orientations within 0–360 degrees. |
+
+### PID Trim Accumulator Example
+```flame
+let mut throttle: Int = 1000
+let trim_adjustment: Int = 25
+
+// Increase throttle speed smoothly
+throttle += trim_adjustment
+print($"Adjusted throttle: {throttle} RPM") // 1025
+
+// Apply braking reduction
+throttle -= 150
+print($"Decelerated throttle: {throttle} RPM") // 875
+```
+
+---
+
+## 5. Bitwise Operators (Hardware & Register Manipulation)
+
+For low-level microcontrollers, GPIO interface buses, and industrial communication protocols (SPI/I2C/CAN), precise bitwise manipulation of configuration registers is essential. Flame offers standard 64-bit and 32-bit bitwise primitives:
+
+| Operator | Name | Example | Description |
+| :--- | :--- | :--- | :--- |
+| **`&`** | Bitwise AND | `status_reg & 0x01` | Evaluates bit intersection; used for checking flag masks. |
+| **`\|`** | Bitwise OR | `control_reg \| 0x80` | Evaluates bit union; used for setting specific configuration bits. |
+| **`^`** | Bitwise XOR | `flags ^ TOGGLE_MASK` | Evaluates exclusive OR; used for toggling hardware output pins. |
+| **`<<`** | Left Shift | `1 << pin_number` | Shifts bits left; creates power-of-two positional masks. |
+| **`>>`** | Right Shift | `raw_adc >> 4` | Shifts bits right; extracts high-order payload nibbles. |
+
+### Checking Register Status Flags
+```flame
+const FLAG_OVERTEMP: Int = 1 << 0   // 0x01 (Bit 0)
+const FLAG_OVERVOLTAGE: Int = 1 << 1 // 0x02 (Bit 1)
+
+let register_value: Int = 0x03       // Both flags active
+
+let is_overtemp = (register_value & FLAG_OVERTEMP) != 0
+let is_overvoltage = (register_value & FLAG_OVERVOLTAGE) != 0
+
+if is_overtemp and is_overvoltage {
+    print("[CRITICAL] Dual hardware thermal and electrical fault detected!")
+}
+```
+
+---
+
+## 6. Comparison & Relational Operators
+
+All comparison operations evaluate to a boolean truth value (`Bool`). Flame allows equality comparisons across primitives, objects, and optional `nil` values without implicit surprises:
+
+| Operator | Description | Example |
+| :--- | :--- | :--- |
+| **`==`** | Equality Check | `voltage == 3.3`, `sensor == nil` |
+| **`!=`** | Inequality Check | `state != Mode.Standby`, `driver != nil` |
+| **`<`** | Less Than | `temperature < 75.0` |
+| **`<=`** | Less Than or Equal | `pressure <= MAX_PSI_THRESHOLD` |
+| **`>`** | Greater Than | `battery_level > 20.0` |
+| **`>=`** | Greater Than or Equal | `speed_rpm >= target_rpm` |
+
+---
+
+## 7. Nil Safety Operators Summary
+
+To prevent unexpected crashes in automation, Flame provides dedicated operators for safe navigation and fallback evaluation when dealing with optional types (`Type?`):
+
+| Operator | Name | Syntax | Description |
+| :--- | :--- | :--- | :--- |
+| **`?.`** | **Safe Navigation** | `bot?.motor?.speed` | Accesses field or calls method only if object is non-nil; otherwise yields `nil`. |
+| **`?:`** | **Nil Coalescing** | `val ?: default` | Returns `val` if present; otherwise evaluates and returns `default`. |
+| **`!`** | **Non-Null Assertion** | `val!` | Unwraps optional asserting presence; panics safely if value is `nil`. |
+
+<Aside type="tip">
+For an in-depth exploration of optional variables, binding patterns (`if let`), and robotics safety workflows, read the complete guide on [Nil Safety & Optionals](/language-basics/nil-safety).
+</Aside>
+
+---
+
+## 8. Complete Operator Precedence & Associativity Table
+
+When expressions contain multiple operators, evaluation order is strictly dictated by the precedence hierarchy below, from **highest (evaluated first)** down to **lowest (evaluated last)**:
+
+| Level | Category | Operators | Associativity |
+| :---: | :--- | :--- | :--- |
+| **1** | Primary / Safe Access / Calls | `()`, `[]`, `.`, `?.`, `!()`, `ident()` | Left-to-right |
+| **2** | Postfix / Unary Increment | `var++`, `var--` | Left-to-right |
+| **3** | Unary / Prefix Increment | `++var`, `--var`, `not`, `!`, `-` (unary), `&`, `&mut`, `mut` | Right-to-left |
+| **4** | Multiplicative | `*`, `/`, `%` | Left-to-right |
+| **5** | Additive | `+`, `-` | Left-to-right |
+| **6** | Bitwise Shifts | `<<`, `>>` | Left-to-right |
+| **7** | Relational Comparisons | `<`, `<=`, `>`, `>=` | Left-to-right |
+| **8** | Equality Comparisons | `==`, `!=` | Left-to-right |
+| **9** | Bitwise AND | `&` | Left-to-right |
+| **10** | Bitwise XOR | `^` | Left-to-right |
+| **11** | Bitwise OR | `\|` | Left-to-right |
+| **12** | Nil Coalescing | `?:` | Right-to-left |
+| **13** | Logical AND | `and`, `&&` | Left-to-right |
+| **14** | Logical OR | `or`, `\|\|` | Left-to-right |
+| **15** | Assignment & Compound | `=`, `+=`, `-=`, `*=`, `/=`, `%=` | Right-to-left |

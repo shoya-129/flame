@@ -1,6 +1,6 @@
 use crate::diagnostics::Diagnostic;
 use crate::lexer::Span;
-use crate::parser::{BinaryOp, EnumVariant, Expr, LiteralValue, Param, Stmt};
+use crate::parser::{BinaryOp, EnumVariant, Expr, LiteralValue, Param, Stmt, UnaryOp};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -587,9 +587,81 @@ impl TypeChecker {
                 params,
                 return_type,
                 body,
+                annotations,
                 ..
+            } => {
+                let func_type = Type::Function(
+                    params
+                        .iter()
+                        .map(|param| self.parse_type_name(&param.type_name))
+                        .collect(),
+                    Box::new(
+                        return_type
+                            .as_ref()
+                            .map(|ret| self.parse_type_name(ret))
+                            .unwrap_or(Type::Nil),
+                    ),
+                );
+                self.define_var(
+                    name.clone(),
+                    VarInfo {
+                        ty: func_type,
+                        is_mut: false,
+                    },
+                );
+
+                let prev_return = self.current_return_type.clone();
+                self.current_return_type = Some(
+                    return_type
+                        .as_ref()
+                        .map(|ret| self.parse_type_name(ret))
+                        .unwrap_or(Type::Nil),
+                );
+
+                self.push_scope();
+                for anno in annotations {
+                    let ret_ty = if let Some(sig) = self.functions.get(&anno.name) {
+                        sig.return_type.clone()
+                    } else {
+                        Type::Unknown
+                    };
+                    self.define_var(
+                        anno.name.clone(),
+                        VarInfo {
+                            ty: ret_ty.clone(),
+                            is_mut: true,
+                        },
+                    );
+                    self.define_var(
+                        anno.name.to_lowercase(),
+                        VarInfo {
+                            ty: ret_ty,
+                            is_mut: true,
+                        },
+                    );
+                }
+                for Param {
+                    name,
+                    type_name,
+                    is_mut,
+                    ..
+                } in params
+                {
+                    self.define_var(
+                        name.clone(),
+                        VarInfo {
+                            ty: self.parse_type_name(type_name),
+                            is_mut: *is_mut,
+                        },
+                    );
+                }
+                for stmt in body {
+                    self.check_stmt(stmt);
+                }
+                self.pop_scope();
+                self.current_return_type = prev_return;
             }
-            | Stmt::AnnotationDecl {
+            Stmt::AnnotationDecl {
                 name,
                 params,
                 return_type,
@@ -951,6 +1023,43 @@ impl TypeChecker {
                 self.pop_scope();
                 Type::Nil
             }
+            Expr::Unary(op, inner, span) => match op {
+                UnaryOp::Neg => {
+                    let ty = self.infer_expr_type(inner);
+                    if self.is_numeric(&ty) {
+                        ty
+                    } else {
+                        self.error(
+                            "cannot apply unary '-' to non-numeric type".to_string(),
+                            span.clone(),
+                            None,
+                            None,
+                        );
+                        Type::Unknown
+                    }
+                }
+                UnaryOp::Not => {
+                    let _ = self.infer_expr_type(inner);
+                    Type::Bool
+                }
+                UnaryOp::NonNullAssert => {
+                    let ty = self.infer_expr_type(inner);
+                    ty
+                }
+                UnaryOp::PreInc | UnaryOp::PreDec | UnaryOp::PostInc | UnaryOp::PostDec => {
+                    let ty = self.infer_expr_type(inner);
+                    if !self.is_numeric(&ty) {
+                        self.error(
+                            "cannot increment/decrement non-numeric type".to_string(),
+                            span.clone(),
+                            None,
+                            None,
+                        );
+                    }
+                    ty
+                }
+            },
+            Expr::SafeDot(inner, member, span) => self.infer_dot_type(inner, member, span),
             Expr::Binary(left, op, right, span) => self.infer_binary_type(left, op, right, span),
             Expr::Dot(inner, member, span) => self.infer_dot_type(inner, member, span),
             Expr::StructInit(inner, fields, span) => {
@@ -1002,7 +1111,17 @@ impl TypeChecker {
     fn infer_binary_type(&mut self, left: &Expr, op: &BinaryOp, right: &Expr, span: &Span) -> Type {
         if matches!(
             op,
-            BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign
+            BinaryOp::Assign
+                | BinaryOp::PlusAssign
+                | BinaryOp::MinusAssign
+                | BinaryOp::MulAssign
+                | BinaryOp::DivAssign
+                | BinaryOp::ModAssign
+                | BinaryOp::BitAndAssign
+                | BinaryOp::BitOrAssign
+                | BinaryOp::BitXorAssign
+                | BinaryOp::ShlAssign
+                | BinaryOp::ShrAssign
         ) {
             if let Expr::Identifier(name, left_span) = left {
                 let rhs_ty = self.infer_expr_type(right);
@@ -1017,13 +1136,15 @@ impl TypeChecker {
                             None,
                         );
                     }
-                    if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                    if *op != BinaryOp::Assign {
                         if !self.is_numeric(&var.ty) || !self.is_numeric(&rhs_ty) {
                             if matches!(op, BinaryOp::PlusAssign)
                                 && matches!(var.ty, Type::String)
                                 && matches!(rhs_ty, Type::String)
                             {
                                 // String concatenation
+                            } else if matches!(var.ty, Type::Unknown) || matches!(rhs_ty, Type::Unknown) {
+                                // Ignore mismatch if type is Unknown
                             } else {
                                 self.error_binary_mismatch(op, &var.ty, &rhs_ty, span);
                             }
@@ -1044,13 +1165,15 @@ impl TypeChecker {
                 let lhs_ty = self.infer_dot_type(inner, member, span);
                 let rhs_ty = self.infer_expr_type(right);
 
-                if matches!(op, BinaryOp::PlusAssign | BinaryOp::MinusAssign) {
+                if *op != BinaryOp::Assign {
                     if !self.is_numeric(&lhs_ty) || !self.is_numeric(&rhs_ty) {
                         if matches!(op, BinaryOp::PlusAssign)
                             && matches!(lhs_ty, Type::String)
                             && matches!(rhs_ty, Type::String)
                         {
                             // String concatenation
+                        } else if matches!(lhs_ty, Type::Unknown) || matches!(rhs_ty, Type::Unknown) {
+                            // Ignore mismatch if type is Unknown
                         } else {
                             self.error_binary_mismatch(op, &lhs_ty, &rhs_ty, span);
                         }
@@ -1082,6 +1205,12 @@ impl TypeChecker {
                     }
                 } else if matches!(left_ty, Type::String) && matches!(right_ty, Type::String) {
                     Type::String
+                } else if matches!(left_ty, Type::Unknown) || matches!(right_ty, Type::Unknown) {
+                    if matches!(left_ty, Type::String) || matches!(right_ty, Type::String) {
+                        Type::String
+                    } else {
+                        Type::Unknown
+                    }
                 } else {
                     self.error_binary_mismatch(op, &left_ty, &right_ty, span);
                     Type::Unknown
@@ -1094,19 +1223,28 @@ impl TypeChecker {
                     } else {
                         Type::Int
                     }
+                } else if matches!(left_ty, Type::Unknown) || matches!(right_ty, Type::Unknown) {
+                    Type::Unknown
                 } else {
                     self.error_binary_mismatch(op, &left_ty, &right_ty, span);
                     Type::Unknown
                 }
             }
             BinaryOp::Eq | BinaryOp::Ne => {
-                if !self.is_compatible(&left_ty, &right_ty) {
+                if !matches!(left_ty, Type::Nil)
+                    && !matches!(right_ty, Type::Nil)
+                    && !matches!(left_ty, Type::Unknown)
+                    && !matches!(right_ty, Type::Unknown)
+                    && !self.is_compatible(&left_ty, &right_ty)
+                {
                     self.error_binary_mismatch(op, &left_ty, &right_ty, span);
                 }
                 Type::Bool
             }
             BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => {
                 if self.is_numeric(&left_ty) && self.is_numeric(&right_ty) {
+                    Type::Bool
+                } else if matches!(left_ty, Type::Unknown) || matches!(right_ty, Type::Unknown) {
                     Type::Bool
                 } else {
                     self.error_binary_mismatch(op, &left_ty, &right_ty, span);
@@ -1118,12 +1256,34 @@ impl TypeChecker {
                 self.expect_assignable(&Type::Bool, &right_ty, span, "logical expression");
                 Type::Bool
             }
+            BinaryOp::NilCoalesce => {
+                if matches!(left_ty, Type::Nil) {
+                    right_ty
+                } else {
+                    left_ty
+                }
+            }
+            BinaryOp::BitAnd
+            | BinaryOp::BitOr
+            | BinaryOp::BitXor
+            | BinaryOp::Shl
+            | BinaryOp::Shr => Type::Int,
             BinaryOp::Range => {
                 self.expect_assignable(&Type::Int, &left_ty, span, "range start");
                 self.expect_assignable(&Type::Int, &right_ty, span, "range end");
                 Type::Named("Range".to_string())
             }
-            BinaryOp::Assign | BinaryOp::PlusAssign | BinaryOp::MinusAssign => Type::Unknown,
+            BinaryOp::Assign
+            | BinaryOp::PlusAssign
+            | BinaryOp::MinusAssign
+            | BinaryOp::MulAssign
+            | BinaryOp::DivAssign
+            | BinaryOp::ModAssign
+            | BinaryOp::BitAndAssign
+            | BinaryOp::BitOrAssign
+            | BinaryOp::BitXorAssign
+            | BinaryOp::ShlAssign
+            | BinaryOp::ShrAssign => Type::Unknown,
         }
     }
 
@@ -1323,14 +1483,16 @@ impl TypeChecker {
                 }
             }
             _ => {
-                self.error(
-                    "struct-style initialization requires an enum struct variant constructor"
-                        .to_string(),
-                    span.clone(),
-                    None,
-                    None,
-                );
-                Type::Unknown
+                for (_, field_expr) in fields {
+                    self.infer_expr_type(field_expr);
+                }
+                if let Expr::Identifier(name, _) = inner {
+                    Type::Struct(name.clone())
+                } else if let Type::Named(name) = base_ty {
+                    Type::Struct(name)
+                } else {
+                    base_ty
+                }
             }
         }
     }
@@ -1751,6 +1913,21 @@ impl TypeChecker {
 
     fn parse_type_name(&self, type_name: &str) -> Type {
         let trimmed = type_name.trim();
+        if let Some(rest) = trimmed.strip_prefix("&mut ") {
+            return Type::Reference {
+                inner: Box::new(self.parse_type_name(rest)),
+                mutable: true,
+            };
+        }
+        if let Some(rest) = trimmed.strip_prefix('&') {
+            return Type::Reference {
+                inner: Box::new(self.parse_type_name(rest)),
+                mutable: false,
+            };
+        }
+        if let Some(rest) = trimmed.strip_suffix('?') {
+            return self.parse_type_name(rest);
+        }
         match trimmed {
             "Int" | "I32" | "I64" | "U32" | "U64" => Type::Int,
             "Float" | "F32" | "F64" => Type::Float,

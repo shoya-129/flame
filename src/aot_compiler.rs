@@ -573,15 +573,22 @@ fn should_skip_bridge_function(func: &crate::package_manager::FlameFunctionMeta)
     func.return_type.contains("Iter")
         || func.return_type.contains("Iterator")
         || func.return_type.contains("NonNil")
+        || func.return_type.contains("Timestamp")
         || func.name.contains("_iter")
         || func.name.starts_with("from_")
         || func.name.contains("unchecked")
+        || func.name == "now"
+        || func.name == "try_parse_ascii"
         || func.params.iter().any(|p| {
             p.type_name.contains("Bytes")
                 || p.type_name.contains("Variant")
                 || p.type_name.contains("Version")
                 || p.type_name.contains("Iter")
                 || p.type_name.contains("StandardUniform")
+                || p.type_name.contains("ClockSequence")
+                || p.type_name.contains("Context")
+                || p.type_name.contains("impl ")
+                || p.type_name.contains("[u8]")
                 || p.type_name == "Uuid"
         })
 }
@@ -691,6 +698,15 @@ fn generate_param_extraction(
             var_name, var_name
         ));
         code.push_str(&format!("        let {} = {}_path;\n", var_name, var_name));
+    } else if p_type.contains("&[u8]") || p_type.contains("& [u8]") || p_type == "[u8]" {
+        code.push_str(&format!(
+            "        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n",
+            var_name, c_idx
+        ));
+        code.push_str(&format!(
+            "        let {} = {}_cstr.to_bytes();\n",
+            var_name, var_name
+        ));
     } else if p_type == "bool" {
         code.push_str(&format!(
             "        let {} = c_args[{}].bool_val;\n",

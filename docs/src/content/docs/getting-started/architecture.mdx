@@ -3,7 +3,9 @@ title: Architecture & Analysis
 description: In-depth technical analysis of Flame's compilation model, memory safety, and performance characteristics.
 ---
 
-import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import { Aside, CardGrid } from '@astrojs/starlight/components';
+import LucideCard from '../../../components/LucideCard.astro';
+import { Trash2, Footprints, Rocket, Cpu } from 'lucide-astro';
 
 
 This document provides a deep architectural analysis of Flame's type system, compilation pipeline, memory management, and execution model.
@@ -13,6 +15,13 @@ This document provides a deep architectural analysis of Flame's type system, com
 ## Programming Language or Scripting Language?
 
 Flame is a **statically typed, compiled systems programming language**, designed with the expressive ergonomics of a modern scripting language. You can run files instantly with `flame run` as if they were scripts, or compile them into production binaries with `flame build`. Under the hood, however, Flame is a true Ahead-of-Time (AOT) compiled language.
+
+<Aside type="note" title="Execution Model">
+Flame behaves like **JavaScript and Python** at execution time:
+- Code executes **top-down sequentially**.
+- There is **no automatic `main()` entrypoint function** called by the compiler.
+- If you define a `fn main()`, it will only run if you explicitly call it (e.g. `main()`), or you can simply write statements directly at the file's top level.
+</Aside>
 
 ---
 
@@ -58,18 +67,22 @@ Flame **does not have a garbage collector (GC)**. There are no stop-the-world pa
 ## Performance Characteristics
 
 <CardGrid>
-  <Card title="Zero GC Pauses" icon="star">
+  <LucideCard title="Zero GC Pauses">
+    <Trash2 slot="icon" />
     Memory is reclaimed deterministically as variables exit scope, ensuring real-time responsiveness.
-  </Card>
-  <Card title="Instant Startup" icon="rocket">
+  </LucideCard>
+  <LucideCard title="Instant Startup">
+    <Rocket slot="icon" />
     Statically-linked native binaries start instantly without JVM/V8 cold-boot overhead.
-  </Card>
-  <Card title="Minimal Footprint" icon="laptop">
+  </LucideCard>
+  <LucideCard title="Minimal Footprint">
+    <Footprints slot="icon" />
     Binaries consume only the memory explicitly allocated by the program, ideal for embedded and microservices.
-  </Card>
-  <Card title="LLVM Optimizations" icon="setting">
+  </LucideCard>
+  <LucideCard title="LLVM Optimizations">
+    <Cpu slot="icon" />
     Leverages Rust and LLVM code generation pipelines for aggressive vectorization and inlining.
-  </Card>
+  </LucideCard>
 </CardGrid>
 
 ---

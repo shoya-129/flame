@@ -1,21 +1,49 @@
-<p align="center">
-  <img src="./assets/config.svg" alt="Config Icon" width="64" height="64" />
-</p>
+# Starlight Starter Kit: Basics
 
-# Flame Language Documentation
+[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
 
-Welcome to the official documentation for the Flame programming language. Flame is a fast, safe, and modern systems language powered by the Blaze compiler and VM that directly understands and compiles Rust crates.
+```
+npm create astro@latest -- --template starlight
+```
 
-## Core Language
+> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
 
-* **[Syntax and Control Flow](./syntax.md)**: Variables, mutability, `if`/`else`, `match`, loops, and defer.
-* **[Types, Structs, and Traits](./syntax.md#1-data-types)**: Functions, custom types (`struct` and `enum`), `impl` blocks, and traits.
-* **[Ownership and Borrowing](./ownership.md)**: Memory safety, `&T`, `&mut T`, and the borrow checker.
-* **[Concurrency and Async](./async.md)**: Writing asynchronous code with `async`, `await`, and `spawn`.
+## 🚀 Project Structure
 
-## Ecosystem and Tooling
+Inside of your Astro + Starlight project, you'll see the following folders and files:
 
-* **[Standard Library](./stddocs.md)**: Built-in functions, primitive types (Strings, Vectors, HashMaps), and standard utilities.
-* **[Using Native Rust Crates](./native_crates.md)**: How to add Rust crates to `flame.toml`, how the Blaze AOT compiler statically links them, and how to use VS Code intellisense to discover APIs natively from docs.rs.
-* **[Plugins & `@plugin`](./plugins.md)**: How to dynamically load native logic.
-* **[Modules and Imports](./modules.md)**: Organizing your Flame codebase with imports and exports.
+```
+.
+├── public/
+├── src/
+│   ├── assets/
+│   ├── content/
+│   │   └── docs/
+│   └── content.config.ts
+├── astro.config.mjs
+├── package.json
+└── tsconfig.json
+```
+
+Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+
+Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+
+Static assets, like favicons, can be placed in the `public/` directory.
+
+## 🧞 Commands
+
+All commands are run from the root of the project, from a terminal:
+
+| Command                   | Action                                           |
+| :------------------------ | :----------------------------------------------- |
+| `npm install`             | Installs dependencies                            |
+| `npm run dev`             | Starts local dev server at `localhost:4321`      |
+| `npm run build`           | Build your production site to `./dist/`          |
+| `npm run preview`         | Preview your build locally, before deploying     |
+| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
+| `npm run astro -- --help` | Get help using the Astro CLI                     |
+
+## 👀 Want to learn more?
+
+Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).

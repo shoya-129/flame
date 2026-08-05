@@ -2,7 +2,7 @@
 use crate::diagnostics::Diagnostic;
 use crate::lexer::{Span, Token, TokenKind};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -12,6 +12,14 @@ pub enum BinaryOp {
     Assign,
     PlusAssign,
     MinusAssign,
+    MulAssign,
+    DivAssign,
+    ModAssign,
+    BitAndAssign,
+    BitOrAssign,
+    BitXorAssign,
+    ShlAssign,
+    ShrAssign,
     Eq,
     Ne,
     Lt,
@@ -20,7 +28,24 @@ pub enum BinaryOp {
     Ge,
     And,
     Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    NilCoalesce,
     Range,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,
+    Not,
+    PreInc,
+    PreDec,
+    PostInc,
+    PostDec,
+    NonNullAssert,
 }
 
 #[derive(Debug, Clone)]
@@ -59,9 +84,11 @@ pub struct MatchArm {
 pub enum Expr {
     Literal(LiteralValue, Span),
     Identifier(String, Span),
+    Unary(UnaryOp, Box<Expr>, Span),
     Binary(Box<Expr>, BinaryOp, Box<Expr>, Span),
     Call(Box<Expr>, Vec<(Option<String>, Expr)>, Span),
     Dot(Box<Expr>, String, Span),
+    SafeDot(Box<Expr>, String, Span),
     Formula(Vec<(String, Expr)>, Span),
     ThreadSpawn(Box<Expr>, Span),
     Closure {
@@ -90,9 +117,11 @@ impl Expr {
         match self {
             Expr::Literal(_, s) => s.clone(),
             Expr::Identifier(_, s) => s.clone(),
+            Expr::Unary(_, _, s) => s.clone(),
             Expr::Binary(_, _, _, s) => s.clone(),
             Expr::Call(_, _, s) => s.clone(),
             Expr::Dot(_, _, s) => s.clone(),
+            Expr::SafeDot(_, _, s) => s.clone(),
             Expr::Formula(_, s) => s.clone(),
             Expr::ThreadSpawn(_, s) => s.clone(),
             Expr::Closure { span, .. } => span.clone(),
@@ -489,6 +518,12 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<String, Diagnostic> {
         let mut t = String::new();
+        if self.match_token(TokenKind::Ampersand) {
+            t.push('&');
+            if self.match_token(TokenKind::Mut) {
+                t.push_str("mut ");
+            }
+        }
         if self.match_token(TokenKind::OpenParen) {
             t.push('(');
             let mut sub_types = Vec::new();
@@ -523,6 +558,10 @@ impl Parser {
             )?;
             t.push_str(&sub_types.join(", "));
             t.push('>');
+        }
+
+        if self.match_token(TokenKind::Question) {
+            t.push('?');
         }
 
         if self.match_token(TokenKind::Arrow) {
@@ -795,8 +834,8 @@ impl Parser {
         while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
             let field_name = self.consume(TokenKind::Identifier, "expected field name")?;
             self.consume(TokenKind::Colon, "expected ':'")?;
-            let field_type = self.consume(TokenKind::Identifier, "expected field type")?;
-            fields.push((field_name.lexeme.clone(), field_type.lexeme.clone()));
+            let field_type = self.parse_type()?;
+            fields.push((field_name.lexeme.clone(), field_type));
             self.match_token(TokenKind::Comma);
         }
         self.consume(TokenKind::CloseBrace, "expected '}'")?;
@@ -1083,13 +1122,29 @@ impl Parser {
     }
 
     fn parse_assignment(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.parse_or()?;
+        let mut expr = self.parse_nil_coalesce()?;
         let op = if self.match_token(TokenKind::Equal) {
             Some(BinaryOp::Assign)
         } else if self.match_token(TokenKind::PlusEqual) {
             Some(BinaryOp::PlusAssign)
         } else if self.match_token(TokenKind::MinusEqual) {
             Some(BinaryOp::MinusAssign)
+        } else if self.match_token(TokenKind::StarEqual) {
+            Some(BinaryOp::MulAssign)
+        } else if self.match_token(TokenKind::SlashEqual) {
+            Some(BinaryOp::DivAssign)
+        } else if self.match_token(TokenKind::PercentEqual) {
+            Some(BinaryOp::ModAssign)
+        } else if self.match_token(TokenKind::AmpersandEqual) {
+            Some(BinaryOp::BitAndAssign)
+        } else if self.match_token(TokenKind::PipeEqual) {
+            Some(BinaryOp::BitOrAssign)
+        } else if self.match_token(TokenKind::CaretEqual) {
+            Some(BinaryOp::BitXorAssign)
+        } else if self.match_token(TokenKind::ShlEqual) {
+            Some(BinaryOp::ShlAssign)
+        } else if self.match_token(TokenKind::ShrEqual) {
+            Some(BinaryOp::ShrAssign)
         } else {
             None
         };
@@ -1103,6 +1158,21 @@ impl Parser {
                 col: expr.span().col,
             };
             expr = Expr::Binary(Box::new(expr), binary_op, Box::new(value), span);
+        }
+        Ok(expr)
+    }
+
+    fn parse_nil_coalesce(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_or()?;
+        while self.match_token(TokenKind::QuestionColon) {
+            let right = self.parse_or()?;
+            let span = Span {
+                start: expr.span().start,
+                end: right.span().end,
+                line: expr.span().line,
+                col: expr.span().col,
+            };
+            expr = Expr::Binary(Box::new(expr), BinaryOp::NilCoalesce, Box::new(right), span);
         }
         Ok(expr)
     }
@@ -1123,9 +1193,9 @@ impl Parser {
     }
 
     fn parse_and(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.parse_equality()?;
+        let mut expr = self.parse_bitor()?;
         while self.match_token(TokenKind::Ampersand2) {
-            let right = self.parse_equality()?;
+            let right = self.parse_bitor()?;
             let span = Span {
                 start: expr.span().start,
                 end: right.span().end,
@@ -1133,6 +1203,51 @@ impl Parser {
                 col: expr.span().col,
             };
             expr = Expr::Binary(Box::new(expr), BinaryOp::And, Box::new(right), span);
+        }
+        Ok(expr)
+    }
+
+    fn parse_bitor(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_bitxor()?;
+        while self.match_token(TokenKind::Pipe) {
+            let right = self.parse_bitxor()?;
+            let span = Span {
+                start: expr.span().start,
+                end: right.span().end,
+                line: expr.span().line,
+                col: expr.span().col,
+            };
+            expr = Expr::Binary(Box::new(expr), BinaryOp::BitOr, Box::new(right), span);
+        }
+        Ok(expr)
+    }
+
+    fn parse_bitxor(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_bitand()?;
+        while self.match_token(TokenKind::Caret) {
+            let right = self.parse_bitand()?;
+            let span = Span {
+                start: expr.span().start,
+                end: right.span().end,
+                line: expr.span().line,
+                col: expr.span().col,
+            };
+            expr = Expr::Binary(Box::new(expr), BinaryOp::BitXor, Box::new(right), span);
+        }
+        Ok(expr)
+    }
+
+    fn parse_bitand(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_equality()?;
+        while self.match_token(TokenKind::Ampersand) {
+            let right = self.parse_equality()?;
+            let span = Span {
+                start: expr.span().start,
+                end: right.span().end,
+                line: expr.span().line,
+                col: expr.span().col,
+            };
+            expr = Expr::Binary(Box::new(expr), BinaryOp::BitAnd, Box::new(right), span);
         }
         Ok(expr)
     }
@@ -1164,19 +1279,38 @@ impl Parser {
     }
 
     fn parse_comparison(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.parse_range()?;
+        let mut expr = self.parse_shift()?;
         while self.check(TokenKind::Lt)
             || self.check(TokenKind::Le)
             || self.check(TokenKind::Gt)
             || self.check(TokenKind::Ge)
         {
-            // Mapped comparison operators
             let tok = self.advance();
             let op = match tok.kind {
                 TokenKind::Le => BinaryOp::Le,
                 TokenKind::Gt => BinaryOp::Gt,
                 TokenKind::Ge => BinaryOp::Ge,
                 _ => BinaryOp::Lt,
+            };
+            let right = self.parse_shift()?;
+            let span = Span {
+                start: expr.span().start,
+                end: right.span().end,
+                line: expr.span().line,
+                col: expr.span().col,
+            };
+            expr = Expr::Binary(Box::new(expr), op, Box::new(right), span);
+        }
+        Ok(expr)
+    }
+
+    fn parse_shift(&mut self) -> Result<Expr, Diagnostic> {
+        let mut expr = self.parse_range()?;
+        while self.check(TokenKind::LtLt) || self.check(TokenKind::GtGt) {
+            let tok = self.advance();
+            let op = match tok.kind {
+                TokenKind::LtLt => BinaryOp::Shl,
+                _ => BinaryOp::Shr,
             };
             let right = self.parse_range()?;
             let span = Span {
@@ -1192,7 +1326,7 @@ impl Parser {
 
     fn parse_range(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_term()?;
-        if self.match_token(TokenKind::DoubleDot) {
+        if self.match_token(TokenKind::DoubleDot) || self.match_token(TokenKind::DoubleDotEqual) {
             let right = self.parse_term()?;
             let span = Span {
                 start: expr.span().start,
@@ -1227,11 +1361,15 @@ impl Parser {
 
     fn parse_factor(&mut self) -> Result<Expr, Diagnostic> {
         let mut expr = self.parse_unary()?;
-        while self.check(TokenKind::Star) || self.check(TokenKind::Slash) {
+        while self.check(TokenKind::Star)
+            || self.check(TokenKind::Slash)
+            || self.check(TokenKind::Percent)
+        {
             let tok = self.advance();
             let op = match tok.kind {
                 TokenKind::Star => BinaryOp::Mul,
-                _ => BinaryOp::Div,
+                TokenKind::Slash => BinaryOp::Div,
+                _ => BinaryOp::Mod,
             };
             let right = self.parse_unary()?;
             let span = Span {
@@ -1262,7 +1400,7 @@ impl Parser {
             };
             return Ok(Expr::Borrow(Box::new(expr), is_mut, span));
         }
-        if self.check(TokenKind::Minus) || self.check(TokenKind::Exclamation) {
+        if self.check(TokenKind::Mut) {
             let tok = self.advance();
             let expr = self.parse_unary()?;
             let span = Span {
@@ -1271,12 +1409,51 @@ impl Parser {
                 line: tok.span.line,
                 col: tok.span.col,
             };
-            return Ok(Expr::Binary(
-                Box::new(expr),
-                BinaryOp::Sub,
-                Box::new(Expr::Literal(LiteralValue::Int(0), span.clone())),
-                span,
-            ));
+            return Ok(Expr::Borrow(Box::new(expr), true, span));
+        }
+        if self.check(TokenKind::PlusPlus) {
+            let tok = self.advance();
+            let expr = self.parse_unary()?;
+            let span = Span {
+                start: tok.span.start,
+                end: expr.span().end,
+                line: tok.span.line,
+                col: tok.span.col,
+            };
+            return Ok(Expr::Unary(UnaryOp::PreInc, Box::new(expr), span));
+        }
+        if self.check(TokenKind::MinusMinus) {
+            let tok = self.advance();
+            let expr = self.parse_unary()?;
+            let span = Span {
+                start: tok.span.start,
+                end: expr.span().end,
+                line: tok.span.line,
+                col: tok.span.col,
+            };
+            return Ok(Expr::Unary(UnaryOp::PreDec, Box::new(expr), span));
+        }
+        if self.check(TokenKind::Minus) {
+            let tok = self.advance();
+            let expr = self.parse_unary()?;
+            let span = Span {
+                start: tok.span.start,
+                end: expr.span().end,
+                line: tok.span.line,
+                col: tok.span.col,
+            };
+            return Ok(Expr::Unary(UnaryOp::Neg, Box::new(expr), span));
+        }
+        if self.check(TokenKind::Exclamation) {
+            let tok = self.advance();
+            let expr = self.parse_unary()?;
+            let span = Span {
+                start: tok.span.start,
+                end: expr.span().end,
+                line: tok.span.line,
+                col: tok.span.col,
+            };
+            return Ok(Expr::Unary(UnaryOp::Not, Box::new(expr), span));
         }
         self.parse_primary()
     }
@@ -1286,13 +1463,19 @@ impl Parser {
         match token.kind {
             TokenKind::IntLiteral => {
                 let tok = self.advance();
-                let val = tok.lexeme.parse::<i64>().unwrap_or(0);
+                let clean = tok.lexeme.replace('_', "");
+                let val = if clean.starts_with("0x") || clean.starts_with("0X") {
+                    i64::from_str_radix(&clean[2..], 16).unwrap_or(0)
+                } else {
+                    clean.parse::<i64>().unwrap_or(0)
+                };
                 let expr = Expr::Literal(LiteralValue::Int(val), tok.span.clone());
                 self.parse_accessors(expr)
             }
             TokenKind::FloatLiteral => {
                 let tok = self.advance();
-                let val = tok.lexeme.parse::<f64>().unwrap_or(0.0);
+                let clean = tok.lexeme.replace('_', "");
+                let val = clean.parse::<f64>().unwrap_or(0.0);
                 let expr = Expr::Literal(LiteralValue::Float(val), tok.span.clone());
                 self.parse_accessors(expr)
             }
@@ -1525,7 +1708,36 @@ impl Parser {
         if idx >= self.tokens.len() || self.tokens[idx].kind != TokenKind::OpenParen {
             return false;
         }
+        if idx + 1 < self.tokens.len() {
+            let next = &self.tokens[idx + 1].kind;
+            if *next == TokenKind::CloseParen {
+                let after = idx + 2;
+                if after < self.tokens.len() {
+                    return matches!(self.tokens[after].kind, TokenKind::OpenBrace | TokenKind::Arrow);
+                }
+                return false;
+            }
+            if matches!(
+                next,
+                TokenKind::IntLiteral
+                    | TokenKind::FloatLiteral
+                    | TokenKind::StringLiteral
+                    | TokenKind::True
+                    | TokenKind::False
+                    | TokenKind::Nil
+                    | TokenKind::Exclamation
+                    | TokenKind::PlusPlus
+                    | TokenKind::MinusMinus
+                    | TokenKind::Minus
+                    | TokenKind::Plus
+                    | TokenKind::Star
+                    | TokenKind::Slash
+            ) {
+                return false;
+            }
+        }
         let mut parens = 0;
+        let mut in_default = false;
         while idx < self.tokens.len() {
             match self.tokens[idx].kind {
                 TokenKind::OpenParen => parens += 1,
@@ -1541,6 +1753,31 @@ impl Parser {
                         }
                         return false;
                     }
+                }
+                TokenKind::Equal if parens == 1 => in_default = true,
+                TokenKind::Comma if parens == 1 => in_default = false,
+                TokenKind::Pipe2
+                | TokenKind::Ampersand2
+                | TokenKind::EqualEqual
+                | TokenKind::ExclamationEqual
+                | TokenKind::Plus
+                | TokenKind::Minus
+                | TokenKind::Star
+                | TokenKind::Slash
+                | TokenKind::Percent
+                | TokenKind::QuestionColon
+                | TokenKind::Pipe
+                | TokenKind::Caret
+                | TokenKind::LtLt
+                | TokenKind::GtGt
+                | TokenKind::Le
+                | TokenKind::Ge
+                | TokenKind::Exclamation
+                | TokenKind::PlusPlus
+                | TokenKind::MinusMinus
+                    if parens == 1 && !in_default =>
+                {
+                    return false;
                 }
                 TokenKind::EOF => return false,
                 _ => {}
@@ -1630,6 +1867,42 @@ impl Parser {
                     col: expr.span().col,
                 };
                 expr = Expr::Dot(Box::new(expr), name.lexeme.clone(), span);
+            } else if self.match_token(TokenKind::QuestionDot) {
+                let name = self.consume(
+                    TokenKind::Identifier,
+                    "expected member identifier after '?.'",
+                )?;
+                let span = Span {
+                    start: expr.span().start,
+                    end: name.span.end,
+                    line: expr.span().line,
+                    col: expr.span().col,
+                };
+                expr = Expr::SafeDot(Box::new(expr), name.lexeme.clone(), span);
+            } else if self.match_token(TokenKind::PlusPlus) {
+                let span = Span {
+                    start: expr.span().start,
+                    end: self.tokens[self.index - 1].span.end,
+                    line: expr.span().line,
+                    col: expr.span().col,
+                };
+                expr = Expr::Unary(UnaryOp::PostInc, Box::new(expr), span);
+            } else if self.match_token(TokenKind::MinusMinus) {
+                let span = Span {
+                    start: expr.span().start,
+                    end: self.tokens[self.index - 1].span.end,
+                    line: expr.span().line,
+                    col: expr.span().col,
+                };
+                expr = Expr::Unary(UnaryOp::PostDec, Box::new(expr), span);
+            } else if self.match_token(TokenKind::Exclamation) {
+                let span = Span {
+                    start: expr.span().start,
+                    end: self.tokens[self.index - 1].span.end,
+                    line: expr.span().line,
+                    col: expr.span().col,
+                };
+                expr = Expr::Unary(UnaryOp::NonNullAssert, Box::new(expr), span);
             } else if self.check(TokenKind::Lt) && self.is_generic_call_lookahead() {
                 self.advance(); // consume '<'
                 while !self.check(TokenKind::Gt) && !self.check(TokenKind::EOF) {

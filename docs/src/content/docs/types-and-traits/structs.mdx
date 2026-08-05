@@ -30,12 +30,12 @@ struct User {
 You can create an instance of a struct by specifying its field values:
 
 ```flame
-let user = User (
+let user = User {
     id: 101,
     name: "Samantha",
     email: "samantha@example.com",
     is_admin: true
-)
+}
 
 print(user.name)       // "Samantha"
 print(user.is_admin)   // true
@@ -48,12 +48,12 @@ print(user.is_admin)   // true
 If you declare a struct variable with `let mut`, you can update its fields in-place:
 
 ```flame
-let mut session = User (
+let mut session = User {
     id: 1,
     name: "Guest",
     email: "guest@example.com",
     is_admin: false
-)
+}
 
 // Mutate fields
 session.name = "Admin"
@@ -80,11 +80,11 @@ struct Company {
     employees: Vec<User>
 }
 
-let office = Company (
+let office = Company {
     name: "Flame Tech",
     location: GeoLocation { lat: 37.7749, lng: -122.4194 },
     employees: [user]
-)
+}
 
 print(office.location.lat) // 37.7749
 ```

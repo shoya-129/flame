@@ -63,21 +63,19 @@ Flame strictly distinguishes method receiver types according to ownership rules:
 ## Usage Example
 
 ```flame
-fn main() {
-    // Call constructor
-    let mut my_acc = Account.new("Alice", 500.0)
+// Call constructor
+let mut my_acc = Account.new("Alice", 500.0)
 
-    // Call immutable method
-    print($"Current Balance: {my_acc.get_balance()}") // 500.0
+// Call immutable method
+print($"Current Balance: {my_acc.get_balance()}") // 500.0
 
-    // Call mutable method
-    my_acc.deposit(250.0)
-    print($"Updated Balance: {my_acc.get_balance()}") // 750.0
+// Call mutable method
+my_acc.deposit(250.0)
+print($"Updated Balance: {my_acc.get_balance()}") // 750.0
 
-    // Call consuming method (moves `my_acc`)
-    let payout = my_acc.close()
-    print($"Final payout: {payout}")
+// Call consuming method (moves `my_acc`)
+let payout = my_acc.close()
+print($"Final payout: {payout}")
 
-    // print(my_acc.get_balance()) // Error: `my_acc` was moved by `.close()`!
-}
+// print(my_acc.get_balance()) // Error: `my_acc` was moved by `.close()`!
 ```
