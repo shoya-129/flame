@@ -329,7 +329,7 @@ impl Parser {
                 self.parse_func_decl(annotations)
             }
             TokenKind::Import => self.parse_import_statement(),
-            TokenKind::Export => self.parse_export_statement(),
+            TokenKind::Export => self.parse_export_statement(annotations),
             TokenKind::Let => self.parse_var_decl(TokenKind::Let, annotations),
             TokenKind::Const => self.parse_var_decl(TokenKind::Const, annotations),
             TokenKind::Fn => self.parse_func_decl(annotations),
@@ -458,9 +458,23 @@ impl Parser {
         })
     }
 
-    fn parse_export_statement(&mut self) -> Result<Stmt, Diagnostic> {
+    fn parse_export_statement(&mut self, outer_annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
         let start_tok = self.consume(TokenKind::Export, "expected 'export' keyword")?;
-        let inner = self.parse_statement()?;
+        let mut inner = self.parse_statement()?;
+        if !outer_annotations.is_empty() {
+            match &mut inner {
+                Stmt::FuncDecl { annotations, .. }
+                | Stmt::LetDecl { annotations, .. }
+                | Stmt::ConstDecl { annotations, .. }
+                | Stmt::StructDecl { annotations, .. }
+                | Stmt::EnumDecl { annotations, .. } => {
+                    let mut combined = outer_annotations;
+                    combined.append(annotations);
+                    *annotations = combined;
+                }
+                _ => {}
+            }
+        }
         let end_span = inner.span();
         Ok(Stmt::ExportDecl(
             Box::new(inner),

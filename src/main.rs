@@ -1421,7 +1421,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     }
 
-    let mut hover;
+    let mut hover = None;
 
     if let Some(namespace) = namespace {
         let mut hover_found = None;
@@ -1536,7 +1536,6 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 }
             }
         } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {
-            let mut provided_completions = false;
             for method in &std_methods {
                 if member_prefix
                     .as_deref()
@@ -1546,29 +1545,27 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         label: method.clone(),
                         kind: "function".to_string(),
                         detail: format!("std.{}", namespace),
-                        documentation: None,
+                        documentation: crate::std_docs::get_std_function_doc(&namespace, method)
+                            .map(|d| d.to_string()),
                     });
-                    provided_completions = true;
                 }
             }
 
-            if !word_under_cursor.is_empty() {
-                if provided_completions && std_methods.contains(&word_under_cursor) {
-                    if let Some(doc) =
-                        crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor)
-                    {
-                        hover_found = Some(JsonHover {
-                            label: format!("{namespace}.{word_under_cursor}()"),
-                            documentation: Some(doc.to_string()),
-                        });
-                    } else {
-                        hover_found = Some(JsonHover {
-                            label: format!("{namespace}.{word_under_cursor}()"),
-                            documentation: Some(format!(
-                                "Standard library function: {namespace}.{word_under_cursor}"
-                            )),
-                        });
-                    }
+            if !word_under_cursor.is_empty() && std_methods.contains(&word_under_cursor) {
+                if let Some(doc) =
+                    crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor)
+                {
+                    hover_found = Some(JsonHover {
+                        label: format!("{namespace}.{word_under_cursor}()"),
+                        documentation: Some(doc.to_string()),
+                    });
+                } else {
+                    hover_found = Some(JsonHover {
+                        label: format!("{namespace}.{word_under_cursor}()"),
+                        documentation: Some(format!(
+                            "Standard library function: {namespace}.{word_under_cursor}"
+                        )),
+                    });
                 }
             }
         } else if let Some(local_stmts) =
@@ -1930,33 +1927,19 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
         if let Some(kw_hover) = ide::get_keyword_hover(&word_under_cursor) {
             hover = Some(kw_hover);
-        } else if word_under_cursor == "print" {
-            hover = Some(JsonHover {
-                label: "print(value)".to_string(),
-                documentation: Some(
-                    "```flame\nfn print(value: Any)\n```\nPrints the given value to standard output, followed by a newline.".to_string(),
-                ),
-            });
-        } else if word_under_cursor == "eprint" {
-            hover = Some(JsonHover {
-                label: "eprint(value)".to_string(),
-                documentation: Some("```flame\nfn eprint(value: Any)\n```\nPrints the given value to standard error, followed by a newline. Useful for logging errors or diagnostics.".to_string()),
-            });
-        } else if word_under_cursor == "thread" {
-            hover = Some(JsonHover {
-                label: "thread { ... }".to_string(),
-                documentation: Some("```flame\nfn thread(block: Block)\n```\nSpawns a new thread and executes the block.".to_string()),
-            });
-        } else {
-            hover = hover_found;
+        } else if let Some(hf) = hover_found {
+            hover = Some(hf);
         }
     };
 
-    // Prioritize exact AST hover, then keyword/stdlib hover, then scanned var hover
-    if let Some(ast) = exact_ast_hover {
-        hover = Some(ast);
-    } else if hover.is_none() {
-        hover = scanned_var_hover;
+    // Prioritize rich documentation (keywords, built-ins, standard library, decorators, native docs).
+    // If no rich doc exists, fall back to exact AST hover from typechecker, then scanned var hover.
+    if hover.is_none() {
+        if let Some(ast) = exact_ast_hover {
+            hover = Some(ast);
+        } else {
+            hover = scanned_var_hover;
+        }
     }
 
     JsonCheckOutput {

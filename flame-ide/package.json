@@ -2,7 +2,7 @@
   "name": "flame-language-support",
   "displayName": "Flame",
   "description": "Rich IDE syntax highlighting and configuration for the Flame programming language.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "icon": "flame.png",
   "publisher": "ezet-galaxy",
   "license": "ISC",
@@ -76,6 +76,17 @@
         "superType": "function",
         "description": "Style for Flame annotations (@Test, @Setup, etc.)"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Flame",
+      "properties": {
+        "flame.compilerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the Flame compiler CLI binary (e.g. flame or flamelang executable)."
+        }
+      }
+    }
   }
 }

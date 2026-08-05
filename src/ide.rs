@@ -54,6 +54,18 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Used in for-loops or containment checks. Example: `for x in list`",
     ),
     (
+        "as",
+        "Type casting or import alias keyword. Example: `let n = val as Int`",
+    ),
+    (
+        "type",
+        "Defines a type alias. Example: `type UserID = Int`",
+    ),
+    (
+        "where",
+        "Generic type constraint clause. Example: `fn test<T>(x: T) where T: Debug {}`",
+    ),
+    (
         "match",
         "Pattern matching. Example: `match x { 1 => ..., _ => ... }`",
     ),
@@ -68,6 +80,7 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Defers execution until the end of the scope. Example: `defer file.close()`",
     ),
     ("import", "Imports a module. Example: `import std.fs`"),
+    ("export", "Exports a function, struct, enum, or annotation for external modules. Example: `export fn process() {}`"),
     (
         "native",
         "Native dependencies import prefix. Example: `import native.mysql`",
@@ -85,12 +98,64 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Waits for an asynchronous task or thread to complete. Example: `await task`",
     ),
     (
+        "println",
+        "```flame\nfn println(value: Any)\n```\nPrints a value to standard output followed by a newline.\n\n**Example:**\n```flame\nprintln(\"Hello, Flame!\")\n```",
+    ),
+    (
         "print",
-        "Prints to standard output. Example: `print(\"hello\")`",
+        "```flame\nfn print(value: Any)\n```\nPrints a value to standard output without trailing newline.\n\n**Example:**\n```flame\nprint(\"Processing...\")\n```",
     ),
     (
         "eprint",
-        "Prints to standard error. Example: `eprint(\"error\")`",
+        "```flame\nfn eprint(value: Any)\n```\nPrints a value to standard error.\n\n**Example:**\n```flame\neprint(\"Error: operation failed\")\n```",
+    ),
+    (
+        "assert",
+        "```flame\nfn assert(condition: Bool, message: String = \"\")\n```\nAsserts that condition evaluates to `true`. Terminates execution with an error if false.\n\n**Example:**\n```flame\nassert(x > 0, \"x must be positive\")\n```",
+    ),
+    (
+        "assert_eq",
+        "```flame\nfn assert_eq(actual: Any, expected: Any, message: String = \"\")\n```\nAsserts that `actual` equals `expected`. Terminates execution with an error if values differ.\n\n**Example:**\n```flame\nassert_eq(status_code, 200)\n```",
+    ),
+    (
+        "assert_ne",
+        "```flame\nfn assert_ne(actual: Any, unexpected: Any, message: String = \"\")\n```\nAsserts that `actual` does NOT equal `unexpected`.\n\n**Example:**\n```flame\nassert_ne(result, nil)\n```",
+    ),
+    (
+        "assert_true",
+        "```flame\nfn assert_true(condition: Bool, message: String = \"\")\n```\nAsserts that `condition` is `true`.\n\n**Example:**\n```flame\nassert_true(list.is_empty())\n```",
+    ),
+    (
+        "assert_false",
+        "```flame\nfn assert_false(condition: Bool, message: String = \"\")\n```\nAsserts that `condition` is `false`.\n\n**Example:**\n```flame\nassert_false(file.exists())\n```",
+    ),
+    (
+        "panic",
+        "```flame\nfn panic(message: String)\n```\nTerminates program execution immediately with the specified error message.\n\n**Example:**\n```flame\npanic(\"Unrecoverable state reached\")\n```",
+    ),
+    (
+        "typeof",
+        "```flame\nfn typeof(value: Any) -> String\n```\nReturns the runtime type name of `value` as a String (e.g. `\"Int\"`, `\"String\"`, `\"Formula\"`).\n\n**Example:**\n```flame\nlet t = typeof(42)\n```",
+    ),
+    (
+        "range",
+        "```flame\nfn range(start: Int, end: Int, step: Int = 1) -> Vec<Int>\n```\nGenerates a vector of integers from `start` up to `end`.\n\n**Example:**\n```flame\nfor i in range(0, 5) { print(i) }\n```",
+    ),
+    (
+        "sleep",
+        "```flame\nfn sleep(ms: Int)\n```\nSuspends current thread execution for the specified milliseconds.\n\n**Example:**\n```flame\nsleep(1000)\n```",
+    ),
+    (
+        "mock_data",
+        "```flame\nfn mock_data(schema: String = \"default\") -> Formula\n```\nGenerates mock object data for testing. Supported schemas: `\"user\"`, `\"post\"`, `\"product\"`.\n\n**Example:**\n```flame\nlet user = mock_data(\"user\")\n```",
+    ),
+    (
+        "mock_api",
+        "```flame\nfn mock_api(url: String = \"*\", body: String = \"{}\", status: Int = 200) -> Formula\n```\nConfigures mock responses for API endpoints during tests.\n\n**Example:**\n```flame\nlet res = mock_api(\"/api/v1/users\", \"{\\\"id\\\": 1}\", 200)\n```",
+    ),
+    (
+        "mock_function",
+        "```flame\nfn mock_function(name: String, return_value: Any)\n```\nOverrides a named function in the current environment to return `return_value` during tests.\n\n**Example:**\n```flame\nmock_function(\"fetch_user\", formula { name: \"Alex\" })\n```",
     ),
     (
         "formula",
@@ -112,7 +177,7 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "input",
-        "```flame\nfn input(prompt: String) -> String\n```\nTakes a line of text input from standard input.\n\nExample:\n```flame\nlet name = input(\"Name: \")\n```",
+        "```flame\nfn input(prompt: String = \"\") -> String\n```\nTakes a line of text input from standard input.\n\nExample:\n```flame\nlet name = input(\"Name: \")\n```",
     ),
     (
         "push",
@@ -124,11 +189,11 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "len",
-        "Built-in Method: Returns the number of elements in the collection. Example: `let l = arr.len()`",
+        "Built-in Method: Returns the number of elements in the collection or string. Example: `let l = arr.len()`",
     ),
     (
         "is_empty",
-        "Built-in Method: Returns true if the collection contains no elements. Example: `if arr.is_empty() { ... }`",
+        "Built-in Method: Returns true if the collection or string contains no elements. Example: `if arr.is_empty() { ... }`",
     ),
     (
         "filter",
@@ -137,6 +202,50 @@ const KEYWORDS: &[(&str, &str)] = &[
     (
         "map",
         "Built-in Method: Creates a new array populated with the results of calling a provided function on every element. Example: `let mapped = arr.map((x: Int) { return x * 2 })`",
+    ),
+    (
+        "insert",
+        "Built-in Method: Inserts or updates a key-value pair in a Formula map. Example: `map.insert(\"role\", \"admin\")`",
+    ),
+    (
+        "get",
+        "Built-in Method: Retrieves a value by key from a Formula map. Example: `let val = map.get(\"key\")`",
+    ),
+    (
+        "remove",
+        "Built-in Method: Removes a key from a Formula map. Example: `map.remove(\"key\")`",
+    ),
+    (
+        "clone",
+        "Built-in Method: Explicitly copies a value to prevent ownership move. Example: `let copy = val.clone()`",
+    ),
+    (
+        "contains",
+        "Built-in Method: Checks if a string contains the given substring. Example: `str.contains(\"pattern\")`",
+    ),
+    (
+        "starts_with",
+        "Built-in Method: Checks if a string begins with the given prefix. Example: `str.starts_with(\"prefix\")`",
+    ),
+    (
+        "ends_with",
+        "Built-in Method: Checks if a string ends with the given suffix. Example: `str.ends_with(\"suffix\")`",
+    ),
+    (
+        "replace",
+        "Built-in Method: Replaces occurrences of a substring with another. Example: `str.replace(\"old\", \"new\")`",
+    ),
+    (
+        "trim",
+        "Built-in Method: Strips leading and trailing whitespace from a string. Example: `str.trim()`",
+    ),
+    (
+        "to_uppercase",
+        "Built-in Method: Converts a string to uppercase. Example: `str.to_uppercase()`",
+    ),
+    (
+        "to_lowercase",
+        "Built-in Method: Converts a string to lowercase. Example: `str.to_lowercase()`",
     ),
     (
         "annotation",
@@ -189,14 +298,6 @@ const KEYWORDS: &[(&str, &str)] = &[
     (
         "ExpectPanic",
         "```flame\n@ExpectPanic\n```\n**Annotated Function**\nAsserts that the test function MUST terminate with a panic or error; fails if the function completes successfully.",
-    ),
-    (
-        "Cli",
-        "```flame\n@Cli(name: String, version: String = \"1.0.0\")\n```\n**Annotated Function**\nAutomatically transforms the annotated function into a command-line interface (CLI) router. When this function is called, Flame parses `std::env::args()` and automatically dispatches execution to functions annotated with `@Command`.",
-    ),
-    (
-        "Command",
-        "```flame\n@Command(name: String)\n```\n**Annotated Function**\nRegisters the function as a CLI subcommand for the `@Cli` router. The router will automatically parse CLI flags/arguments based on this function's parameters and invoke it.",
     ),
     (
         "toInt",
@@ -258,13 +359,13 @@ pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
 }
 
 pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
+    let clean_word = word.trim_start_matches('@');
     KEYWORDS
         .iter()
-        .find(|(kw, _)| *kw == word)
+        .find(|(kw, _)| *kw == word || *kw == clean_word)
         .map(|(kw, doc)| {
-            let formatted_doc;
-            if doc.starts_with("```") {
-                formatted_doc = doc.to_string();
+            let formatted_doc = if doc.starts_with("```") {
+                doc.to_string()
             } else if let Some((desc, ex)) = doc.split_once("Example: `") {
                 let clean_ex = ex.trim_end_matches('`');
                 let kind = if desc.starts_with("Built-in Function:")
@@ -274,20 +375,20 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
                 } else {
                     "keyword"
                 };
-                formatted_doc = format!(
+                format!(
                     "```flame\n{} {}\n```\n{}\n\n**Example:**\n```flame\n{}\n```",
                     kind,
                     kw,
                     desc.trim(),
                     clean_ex
-                );
+                )
             } else if doc.starts_with("Built-in Type:") {
-                formatted_doc = format!("```flame\ntype {}\n```\n{}", kw, doc.trim());
+                format!("```flame\ntype {}\n```\n{}", kw, doc.trim())
             } else if doc.starts_with("Built-in Function:") || doc.starts_with("Built-in Method:") {
-                formatted_doc = format!("```flame\nfn {}\n```\n{}", kw, doc.trim());
+                format!("```flame\nfn {}\n```\n{}", kw, doc.trim())
             } else {
-                formatted_doc = format!("```flame\nkeyword {}\n```\n{}", kw, doc.trim());
-            }
+                format!("```flame\nkeyword {}\n```\n{}", kw, doc.trim())
+            };
 
             JsonHover {
                 label: kw.to_string(),
@@ -384,7 +485,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
 
     // Scan for function and annotation decls: `fn name(a: Type, b: Type)` or `annotation name(...) -> Ret`
     let fn_decl_re = Regex::new(
-        r"(fn|annotation)\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)(?:\s*->\s*([a-zA-Z0-9_<>, \t]+))?",
+        r"(?:export\s+)?(?:async\s+)?(fn|annotation)\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)(?:\s*->\s*([a-zA-Z0-9_<>, \t]+))?",
     )
     .unwrap();
     let arg_re = Regex::new(r"([a-zA-Z_]\w*)\s*:\s*([a-zA-Z_]\w*)").unwrap();
