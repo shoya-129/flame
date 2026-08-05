@@ -83,12 +83,14 @@ version = "0.1.0"
 entry = "src/main.fm"
 
 [native-dependencies]
-uuid = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
 axum = "0.7"
 
 [plugins]
 server = "./native"
 ```
+
+Just like a normal `Cargo.toml`, users can configure native crate features and version specifications manually by editing `flame.toml`.
 
 ---
 
@@ -110,8 +112,6 @@ Runs a specific `.fm` source file directly:
 # Run a specific file
 flame run src/main.fm
 
-# Run with local plugins and native bridge compilation
-flame run src/main.fm --local
 ```
 
 #### `flame build`
@@ -148,6 +148,18 @@ flame new my_app
 Downloads and registers external Flame modules or packages:
 ```bash
 flame add https://github.com/example/flame-package
+```
+
+#### `flame add <crate_name> --native`
+Adds a Rust crate as a native dependency under `[native-dependencies]` in your `flame.toml`:
+```bash
+flame add uuid --native
+```
+
+Just like a normal `Cargo.toml`, users can configure crate features manually by editing `flame.toml`:
+```toml
+[native-dependencies]
+uuid = { version = "1.0", features = ["v4"] }
 ```
 
 #### `flame native init [plugin_name]`

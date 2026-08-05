@@ -52,19 +52,17 @@ import { Trash2, Puzzle, Cpu, CheckCircle2 } from 'lucide-astro';
   <TabItem label="Hello World & Formula">
 ```flame
 // Clean, expressive syntax with formula objects
-fn main() {
-    let user = formula {
-        name: "Alex",
-        role: "Developer",
-        active: true,
-        greet: () {
-            print("Welcome to Flame!")
-        }
+let user = formula {
+    name: "Alex",
+    role: "Developer",
+    active: true,
+    greet: () {
+        print("Welcome to Flame!")
     }
-
-    print($"Hello, {user.name}! Role: {user.role}")
-    user.greet()
 }
+
+print($"Hello, {user.name}! Role: {user.role}")
+user.greet()
 ```
   </TabItem>
 
@@ -73,10 +71,9 @@ fn main() {
 // Statically compiles and links external Rust crates!
 import native.uuid
 
-fn main() {
-    let new_id = uuid.new_v4()
-    print($"Generated UUID: {new_id}")
-}
+let new_id = uuid.new_v4()
+print($"Generated UUID: {new_id}")
+
 ```
   </TabItem>
 
@@ -100,6 +97,8 @@ async fn main() {
     let total = await compute
     print($"Calculated sum: {total}")
 }
+
+await main()
 ```
   </TabItem>
 

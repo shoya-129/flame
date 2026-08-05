@@ -3,6 +3,9 @@ name = "flame-macro"
 version = "0.1.0"
 edition = "2021"
 description = "Attribute macros for Flame native plugins and daemon persistence"
+license = "ISC"
+repository = "https://github.com/shoya-129/flame"
+keywords = ["macro", "flame", "language", "scripting"]
 
 [lib]
 proc-macro = true
