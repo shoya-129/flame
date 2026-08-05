@@ -1,0 +1,96 @@
+---
+title: Modules & Imports
+description: Code organization with export, import, namespace resolution, and cross-folder modules in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+In Flame, every source file (`.fm`) acts as an isolated module. By default, declarations are private to the file unless explicitly marked with **`export`**.
+
+---
+
+## Exporting Symbols (`export`)
+
+Use `export` on functions, constants, structs, or annotations:
+
+```flame
+// math_utils.fm
+export fn add(a: Int, b: Int) -> Int {
+    return a + b
+}
+
+export const PI: Float = 3.14159
+
+// Private helper (cannot be accessed from outside)
+fn internal_helper() {
+    print("Private computation")
+}
+```
+
+---
+
+## Importing Modules (`import`)
+
+### Whole Module Import
+When imported by name, the module creates a namespace:
+
+```flame
+// main.fm
+import math_utils
+
+fn main() {
+    let result = math_utils.add(10, 20)
+    print($"Result: {result}, PI: {math_utils.PI}")
+}
+```
+
+### Specific Item Import
+You can selectively import symbols:
+
+```flame
+import math_utils.{add, PI}
+
+fn main() {
+    let sum = add(5, 10)
+    print($"Sum: {sum}")
+}
+```
+
+---
+
+## Module Resolution Rules
+
+Flame searches for imported modules in the following order:
+1. **Current Directory**: Relative files in the same folder.
+2. **Project Source Folders**: `src/`, `tests/`, `examples/src/`.
+3. **Project Root**: Root folder containing `flame.toml`.
+
+```flame
+// Cross-folder imports
+import src.exports
+import tests.helpers
+import utils.math
+```
+
+---
+
+## Exported Annotations
+
+Custom annotations exported from a module are automatically brought into scope without requiring namespace qualification:
+
+```flame
+// orm.fm
+export annotation Entity(table: String) -> String {
+    return table
+}
+
+// models.fm
+import orm
+
+@Entity("users")
+struct User {
+    id: Int,
+    name: String
+}
+```

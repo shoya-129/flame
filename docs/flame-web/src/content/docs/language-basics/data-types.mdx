@@ -1,0 +1,112 @@
+---
+title: Data Types & Formulas
+description: Comprehensive guide to primitive types, composite collections, vectors, tuples, and formula literals in Flame.
+---
+
+import { Aside, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
+
+Flame is statically typed with strong type inference. Types can either be explicitly declared or deduced automatically by the compiler.
+
+---
+
+## Primitive Types
+
+| Type | Description | Example |
+| :--- | :--- | :--- |
+| **`Int`** | 64-bit signed integer | `let age: Int = 28` |
+| **`Float`** | 64-bit IEEE 754 floating-point number | `let pi: Float = 3.14159` |
+| **`String`** | UTF-8 encoded text string | `let name: String = "Flame"` |
+| **`Bool`** | Boolean value (`true` or `false`) | `let is_ready: Bool = true` |
+| **`Nil`** | Represents the absence of a value (void / null) | `let empty = Nil` |
+
+### String Interpolation
+Flame supports expressive string interpolation using the `$` prefix:
+
+```flame
+let user = "Alice"
+let score = 98
+let message = $"Player {user} scored {score} points!"
+print(message)
+```
+
+---
+
+## Composite Types
+
+### Dynamic Vectors (`Vec<T>`)
+
+A dynamically sized collection of elements sharing type `T`.
+
+```flame
+let mut numbers: Vec<Int> = [10, 20, 30]
+
+// Common vector methods
+numbers.push(40)
+let last = numbers.pop() // 40
+let length = numbers.len() // 3
+
+// Functional transformations
+let doubled = numbers.map((x: Int) { return x * 2 })
+let filtered = numbers.filter((x: Int) { return x > 15 })
+
+print(doubled)  // [20, 40, 60]
+print(filtered) // [20, 30]
+```
+
+### Tuples
+
+Ordered collections of fixed size that can contain distinct types:
+
+```flame
+let point: (Int, Int) = (100, 250)
+let record: (String, Int, Bool) = ("Server", 8080, true)
+
+// Access tuple members
+let host = record.0
+let port = record.1
+```
+
+---
+
+## Formula Literals (Structured Maps)
+
+The **`formula`** literal is a flexible, map-like data structure ideal for JSON-style payloads, configuration objects, and dynamic key-value collections.
+
+<Aside type="tip">
+In `formula` objects, duplicate keys are automatically overwritten with the latest value without requiring `mut`!
+</Aside>
+
+```flame
+let config = formula {
+    host: "127.0.0.1",
+    port: 3000,
+    tags: ["prod", "web"],
+    options: {
+        ssl: true,
+        timeout: 5000
+    },
+    // Duplicate keys overwrite seamlessly:
+    port: 8080,
+    // Formulas can also store closures/anonymous functions:
+    on_connect: () {
+        print("Connected to server!")
+    }
+}
+
+print(config.host) // "127.0.0.1"
+print(config.port) // 8080
+config.on_connect()
+```
+
+### Formulas with Annotations
+
+Formulas are also commonly used as metadata payloads for custom annotations:
+
+```flame
+@Entity(formula { table: "users", cache_ttl: 3600 })
+struct UserRecord {
+    id: Int,
+    name: String
+}
+```

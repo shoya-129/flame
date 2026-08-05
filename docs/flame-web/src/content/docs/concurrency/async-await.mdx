@@ -1,0 +1,97 @@
+---
+title: Async & Await (Non-Blocking I/O)
+description: Asynchronous concurrency on multi-threaded Tokio worker pools, lazy futures, and missing-await pitfalls in Flame.
+---
+
+import { Aside, Tabs, TabItem, Card, CardGrid } from '@astrojs/starlight/components';
+
+Flame provides a high-performance asynchronous execution runtime designed specifically for high-concurrency non-blocking I/O operations—such as handling thousands of incoming HTTP requests, database queries, and socket streams—without sacrificing multi-core CPU utilization.
+
+---
+
+## Tokio Worker Pools vs. Single-Thread Loops
+
+Unlike legacy runtimes (such as Node.js) that bottleneck asynchronous I/O onto a single thread, Flame executes asynchronous tasks across **Rust's native multi-threaded Tokio worker pools**.
+
+- **Multi-Core Concurrency**: Asynchronous tasks are scheduled dynamically across all physical CPU cores.
+- **Deterministic State**: Worker threads process sockets in parallel and deliver structured event payloads over lock-free memory channels to Flame's execution engine.
+
+---
+
+## Anatomy of `async` and `await`
+
+When you define an `async fn`, it returns a **lazy future**:
+
+```flame
+async fn fetch_user_data(user_id: Int) -> String {
+    let response = await http.get("https://api.example.com/users/" + str(user_id))
+    return response.body
+}
+```
+
+<Aside type="note">
+In Flame, `await` is a **prefix operator** (e.g., `let res = await task`), placed *before* the expression, unlike Rust's postfix `.await`.
+</Aside>
+
+### How `await` Executes Under the Hood:
+1. **Task Suspension Without Thread Blocking**: The OS thread is never locked. The future state machine simply pauses.
+2. **Worker Hand-off**: The underlying Tokio worker immediately handles other concurrent requests.
+3. **Reactive Wakeup**: When incoming I/O packets arrive, the OS interrupt reactively wakes the task and resumes execution right past the `await` boundary.
+
+---
+
+## Common Pitfalls: The Missing `await`
+
+### 1. Unawaited HTTP / Network Requests
+In Flame, futures are lazy—no I/O is dispatched until evaluated with `await`:
+
+```flame
+// ❌ INCORRECT: Missing await does NOT send HTTP packets!
+let res = http.get("https://api.example.com/data")
+// res is an unresolved Future, not a Response struct!
+
+// ✅ CORRECT:
+let res = await http.get("https://api.example.com/data")
+print($"Status: {res.status_code}")
+```
+
+### 2. Unawaited Server Initialization
+```flame
+import native.server
+
+// ✅ Await socket binding so runtime engages persistent daemon lock:
+let app = await server.init()
+
+app.get("/status", () {
+    return { status: "Online" }
+})
+
+await app.listen(8080)
+```
+
+---
+
+## Separating I/O (`async`) from Compute (`thread`)
+
+<Aside type="caution" title="Avoid Thread Starvation">
+Never place heavy, blocking CPU-bound loops directly inside an `async` handler. Instead, offload compute to a dedicated OS thread!
+</Aside>
+
+```flame
+app.get("/compute", async (req) {
+    // Offload CPU math to a separate OS compute thread
+    let task = thread {
+        let mut sum = 0
+        let mut i = 0
+        while i < 100000000 {
+            sum = sum + i
+            i = i + 1
+        }
+        return sum
+    }
+
+    // Await thread completion without starving Tokio network workers!
+    let total = await task
+    return { status: "Done", sum: total }
+})
+```

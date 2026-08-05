@@ -1,0 +1,93 @@
+---
+title: Variables and Constants
+description: Variable declaration, mutability, constants, and scoping rules in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+In Flame, variables are **immutable by default** to encourage safe, concurrent programming practices.
+
+---
+
+## Immutable Variables (`let`)
+
+Use `let` to declare a variable. Once assigned, its value cannot be changed.
+
+```flame
+let language = "Flame"
+let year = 2026
+
+// Error: cannot mutate immutable variable
+// year = 2027
+```
+
+Type annotations are optional when the compiler can infer the type:
+
+```flame
+let count: Int = 10
+let rate: Float = 4.5
+let message: String = "Hello"
+```
+
+---
+
+## Mutable Variables (`let mut`)
+
+To allow a variable to be reassigned, use `let mut`:
+
+```flame
+let mut counter = 0
+counter = counter + 1
+counter = counter * 2
+
+print(counter) // Outputs: 2
+```
+
+<Aside type="tip">
+Prefer immutable `let` bindings whenever possible. Only mark variables as `mut` when in-place modification or reassignment is necessary.
+</Aside>
+
+---
+
+## Compile-Time Constants (`const`)
+
+Use `const` to declare a compile-time constant. Constants must always include an explicit type and can only be assigned expressions known at compile time:
+
+```flame
+const MAX_CONNECTIONS: Int = 1024
+const APP_NAME: String = "FlameServer"
+const TIMEOUT_SECONDS: Float = 30.0
+```
+
+### Differences Between `let` and `const`
+
+| Feature | `let` | `const` |
+| :--- | :--- | :--- |
+| **Mutability** | Immutable by default (`mut` optional) | Always strictly immutable |
+| **Type Annotation** | Optional (Inferred) | Mandatory |
+| **Evaluation Time** | Runtime | Compile-time |
+| **Scope** | Block-scoped | Module- or Block-scoped |
+
+---
+
+## Variable Scoping & Shadowing
+
+Variables are lexically scoped to the `{ ... }` block in which they are declared:
+
+```flame
+let x = 10
+{
+    let y = 20
+    print(x + y) // 30
+}
+// print(y) // Error: `y` is not in this scope
+```
+
+Shadowing is also supported:
+
+```flame
+let data = "123"
+let data: Int = data.toInt() // Shadows `data` with an Int type
+print(data + 1)              // 124
+```

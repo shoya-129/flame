@@ -1,0 +1,82 @@
+---
+title: Architecture & Analysis
+description: In-depth technical analysis of Flame's compilation model, memory safety, and performance characteristics.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+
+This document provides a deep architectural analysis of Flame's type system, compilation pipeline, memory management, and execution model.
+
+---
+
+## Programming Language or Scripting Language?
+
+Flame is a **statically typed, compiled systems programming language**, designed with the expressive ergonomics of a modern scripting language. You can run files instantly with `flame run` as if they were scripts, or compile them into production binaries with `flame build`. Under the hood, however, Flame is a true Ahead-of-Time (AOT) compiled language.
+
+---
+
+## Ahead-of-Time (AOT) Compilation
+
+Flame does **not** rely on an interpreter loop in production:
+
+```
+[ Flame Code (.fm) ]  +  [ Rust Crates (flame.toml) ]
+                    │
+                    ▼
+         [ Blaze AOT Compiler ]
+                    │
+     ┌──────────────┴──────────────┐
+     ▼                             ▼
+[.fmi Metadata]             [Native Rust FFI Bridge]
+(VS Code Intellisense)      (Static Linking)
+                    │
+                    ▼
+       [ Single Standalone Binary ]
+```
+
+1. **Native Bridging**: When you execute or build Flame code, the Blaze compiler produces a standalone, statically linked executable binary that interacts directly with the OS without requiring a virtual machine or interpreter.
+2. **Zero FFI Serialization**: Because Flame compiles to native code compatible with Rust's ABI, there is no JSON/memory serialization or context-switching penalty when Flame code invokes Rust functions.
+
+---
+
+## Compile-Time Memory Management
+
+Flame manages memory using a **Rust-like Ownership and Borrowing model**.
+
+<Aside type="caution" title="Zero Garbage Collection">
+Flame **does not have a garbage collector (GC)**. There are no stop-the-world pauses, runtime sweeps, or latency spikes.
+</Aside>
+
+### How Safety is Enforced at Compile-Time:
+1. **Single Ownership**: Each value has a single owning variable. When the owner goes out of scope, the memory is dropped deterministically via RAII.
+2. **Borrow Checker**: Values can be borrowed immutably (`&T`) or mutably (`&mut T`), but you cannot have mutable and immutable references to the same data at the same time.
+3. **Data-Race Free Concurrency**: Concurrency boundaries enforce lexical snapshot isolation (`Arc<Env>`), guaranteeing that race conditions and pointer invalidation cannot occur.
+
+---
+
+## Performance Characteristics
+
+<CardGrid>
+  <Card title="Zero GC Pauses" icon="star">
+    Memory is reclaimed deterministically as variables exit scope, ensuring real-time responsiveness.
+  </Card>
+  <Card title="Instant Startup" icon="rocket">
+    Statically-linked native binaries start instantly without JVM/V8 cold-boot overhead.
+  </Card>
+  <Card title="Minimal Footprint" icon="laptop">
+    Binaries consume only the memory explicitly allocated by the program, ideal for embedded and microservices.
+  </Card>
+  <Card title="LLVM Optimizations" icon="setting">
+    Leverages Rust and LLVM code generation pipelines for aggressive vectorization and inlining.
+  </Card>
+</CardGrid>
+
+---
+
+## Where Can Flame Be Used?
+
+- **High-Concurrency Web Services**: Fast async I/O on top of Tokio with native Axum HTTP integrations.
+- **Systems & Automation CLIs**: Fast startup, direct process/OS control (`std.process`, `std.os`), and zero dependency distribution.
+- **Desktop & Hardware Automation**: Built-in `std.desktop` (mouse, keyboard, hotkeys) and device drivers (`std.camera`, `std.bluetooth`, `std.serial`).
+- **Resource-Constrained Environments**: Edge computing and microservers where every megabyte and millisecond counts.

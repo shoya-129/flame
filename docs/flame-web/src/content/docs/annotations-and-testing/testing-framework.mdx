@@ -1,0 +1,85 @@
+---
+title: Native Testing Framework
+description: Built-in test runner, @Test, @Setup, @Cleanup, @Parameterized, assertions, mock helpers, and zero-cost release stripping in Flame.
+---
+
+import { Aside, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
+
+Flame features an integrated, zero-cost testing runner driven by PascalCase annotations. Run tests with `flame test`.
+
+---
+
+## Built-in Testing Annotations
+
+| Annotation | Description |
+| :--- | :--- |
+| **`@Test`** | Marks a function as an executable test case. |
+| **`@Setup`** | Runs before *each* individual test in the file. |
+| **`@Cleanup`** | Runs after *each* individual test in the file. |
+| **`@BeforeAll`** | Runs once before the entire test suite starts. |
+| **`@AfterAll`** | Runs once after all tests in the file complete. |
+| **`@Parameterized`** | Executes the test across a matrix of input arguments. |
+
+---
+
+## Example Test Suite
+
+```flame
+@Setup
+fn init_test_env() {
+    print("Setting up test sandbox...")
+}
+
+@Test(timeout: 3000)
+fn test_math_operations() {
+    let result = 10 * 5
+    assert_eq(result, 50, "Multiplication should equal 50")
+}
+
+@Parameterized([
+    [2, 3, 5],
+    [10, 15, 25],
+    [-5, 5, 0]
+])
+fn test_addition(a: Int, b: Int, expected: Int) {
+    assert_eq(a + b, expected)
+}
+
+@Cleanup
+fn tear_down() {
+    print("Test finished.")
+}
+```
+
+---
+
+## Built-in Test Assertions & Mock Helpers
+
+- `assert(condition, message = "assertion failed")`
+- `assert_true(condition, message = "assertion failed")`
+- `assert_false(condition, message = "assertion failed")`
+- `assert_eq(actual, expected, message = "")`
+- `assert_ne(actual, unexpected, message = "")`
+- `mock_data(schema: String) -> Formula`
+- `mock_api(url: String, body: String = "{\"status\": \"ok\"}", status: Int = 200) -> Formula`
+- `mock_function(function_name: String, return_value: Any)`
+
+```flame
+@Test
+fn test_mocking() {
+    let user = mock_data("user")
+    assert_eq(user.id, 1001)
+
+    let api_res = mock_api("/v1/health")
+    assert_true(api_res.ok)
+}
+```
+
+---
+
+## Zero-Cost Production Stripping
+
+<Aside type="tip" title="Zero Overhead">
+All test-annotated functions (`@Test`, `@Setup`, `@Cleanup`, `@BeforeAll`, `@AfterAll`, `@Parameterized`) are **automatically stripped** during `flame build --release`. Test code adds zero bytes and zero overhead to production binaries.
+</Aside>

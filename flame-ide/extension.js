@@ -278,26 +278,205 @@ function activate(context) {
     const tokenModifiers = ['declaration', 'readonly'];
     const legend = new vscode.SemanticTokensLegend(tokenTypes, tokenModifiers);
 
+    function isIdentStart(ch) {
+        return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_';
+    }
+
+    function isIdentPart(ch) {
+        return isIdentStart(ch) || (ch >= '0' && ch <= '9');
+    }
+
     context.subscriptions.push(vscode.languages.registerDocumentSemanticTokensProvider(['flame'], {
         provideDocumentSemanticTokens(document) {
             const tokensBuilder = new vscode.SemanticTokensBuilder(legend);
             const text = document.getText();
-            const regex = /(@[a-zA-Z_][a-zA-Z0-9_]*)|(\bannotation\b)(\s+[a-zA-Z_][a-zA-Z0-9_]*)?/g;
-            let match;
-            while ((match = regex.exec(text)) !== null) {
-                if (match[1]) {
-                    const startPos = document.positionAt(match.index + 1);
-                    tokensBuilder.push(startPos.line, startPos.character, match[1].length - 1, 2, 0);
-                } else if (match[2]) {
-                    const kwPos = document.positionAt(match.index);
-                    tokensBuilder.push(kwPos.line, kwPos.character, match[2].length, 0, 0);
-                    if (match[3]) {
-                        const trimmed = match[3].trimStart();
-                        const offset = match[0].indexOf(trimmed);
-                        const namePos = document.positionAt(match.index + offset);
-                        tokensBuilder.push(namePos.line, namePos.character, trimmed.length, 1, 0);
+            const len = text.length;
+            let i = 0;
+
+            while (i < len) {
+                const ch = text[i];
+                const next = i + 1 < len ? text[i + 1] : '';
+
+                // 1. Single-line comments (// ...)
+                if (ch === '/' && next === '/') {
+                    i += 2;
+                    while (i < len && text[i] !== '\n') {
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 2. Multi-line comments (/* ... */)
+                if (ch === '/' && next === '*') {
+                    i += 2;
+                    while (i < len) {
+                        if (text[i] === '*' && i + 1 < len && text[i + 1] === '/') {
+                            i += 2;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 3. Interpolated strings ($"...")
+                if (ch === '$' && next === '"') {
+                    i += 2;
+                    let braceDepth = 0;
+                    while (i < len) {
+                        if (braceDepth === 0) {
+                            if (text[i] === '\\') {
+                                i += 2;
+                                continue;
+                            }
+                            if (text[i] === '"') {
+                                i++;
+                                break;
+                            }
+                            if (text[i] === '{') {
+                                braceDepth = 1;
+                                i++;
+                                continue;
+                            }
+                            i++;
+                        } else {
+                            // Inside interpolation expression { ... }
+                            if (text[i] === '/' && i + 1 < len && text[i + 1] === '/') {
+                                i += 2;
+                                while (i < len && text[i] !== '\n') i++;
+                                continue;
+                            }
+                            if (text[i] === '/' && i + 1 < len && text[i + 1] === '*') {
+                                i += 2;
+                                while (i < len) {
+                                    if (text[i] === '*' && i + 1 < len && text[i + 1] === '/') {
+                                        i += 2;
+                                        break;
+                                    }
+                                    i++;
+                                }
+                                continue;
+                            }
+                            if (text[i] === '"') {
+                                i++;
+                                while (i < len) {
+                                    if (text[i] === '\\') { i += 2; continue; }
+                                    if (text[i] === '"' || text[i] === '\n') { if (text[i] === '"') i++; break; }
+                                    i++;
+                                }
+                                continue;
+                            }
+                            if (text[i] === '\'') {
+                                i++;
+                                while (i < len) {
+                                    if (text[i] === '\\') { i += 2; continue; }
+                                    if (text[i] === '\'' || text[i] === '\n') { if (text[i] === '\'') i++; break; }
+                                    i++;
+                                }
+                                continue;
+                            }
+                            if (text[i] === '{') {
+                                braceDepth++;
+                                i++;
+                                continue;
+                            }
+                            if (text[i] === '}') {
+                                braceDepth--;
+                                i++;
+                                continue;
+                            }
+                            i++;
+                        }
+                    }
+                    continue;
+                }
+
+                // 4. Double quoted strings ("...")
+                if (ch === '"') {
+                    i++;
+                    while (i < len) {
+                        if (text[i] === '\\') {
+                            i += 2;
+                            continue;
+                        }
+                        if (text[i] === '"' || text[i] === '\n') {
+                            if (text[i] === '"') i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 5. Single quoted strings ('...')
+                if (ch === '\'') {
+                    i++;
+                    while (i < len) {
+                        if (text[i] === '\\') {
+                            i += 2;
+                            continue;
+                        }
+                        if (text[i] === '\'' || text[i] === '\n') {
+                            if (text[i] === '\'') i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 6. Annotation: @identifier (e.g. @test, @std.test)
+                if (ch === '@') {
+                    if (i + 1 < len && isIdentStart(text[i + 1])) {
+                        let curr = i + 1;
+                        while (curr < len && isIdentPart(text[curr])) {
+                            curr++;
+                        }
+                        const pos = document.positionAt(i + 1);
+                        tokensBuilder.push(pos.line, pos.character, curr - (i + 1), 2, 0);
+                        i = curr;
+                        while (i < len && text[i] === '.' && i + 1 < len && isIdentStart(text[i + 1])) {
+                            const segStart = i + 1;
+                            curr = segStart;
+                            while (curr < len && isIdentPart(text[curr])) {
+                                curr++;
+                            }
+                            const segPos = document.positionAt(segStart);
+                            tokensBuilder.push(segPos.line, segPos.character, curr - segStart, 2, 0);
+                            i = curr;
+                        }
+                        continue;
+                    }
+                    i++;
+                    continue;
+                }
+
+                // 7. Keyword "annotation" declaration: annotation <name>
+                if (text.startsWith('annotation', i)) {
+                    const prevChar = i > 0 ? text[i - 1] : ' ';
+                    const nextChar = i + 10 < len ? text[i + 10] : ' ';
+                    if (!isIdentPart(prevChar) && !isIdentPart(nextChar)) {
+                        const kwPos = document.positionAt(i);
+                        tokensBuilder.push(kwPos.line, kwPos.character, 10, 0, 0);
+                        i += 10;
+                        let look = i;
+                        while (look < len && (text[look] === ' ' || text[look] === '\t')) {
+                            look++;
+                        }
+                        if (look < len && isIdentStart(text[look])) {
+                            const nameStart = look;
+                            while (look < len && isIdentPart(text[look])) {
+                                look++;
+                            }
+                            const namePos = document.positionAt(nameStart);
+                            tokensBuilder.push(namePos.line, namePos.character, look - nameStart, 1, 0);
+                            i = look;
+                        }
+                        continue;
                     }
                 }
+
+                i++;
             }
             return tokensBuilder.build();
         }

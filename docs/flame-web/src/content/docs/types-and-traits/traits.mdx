@@ -1,0 +1,82 @@
+---
+title: Traits & Interfaces
+description: Defining shared interfaces, polymorphism contracts, and implementing traits for custom types in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+A **`trait`** defines a contract—a collection of method signatures that multiple structs or enums can implement to provide polymorphic behavior.
+
+---
+
+## Declaring a Trait
+
+```flame
+trait Describable {
+    fn describe(&self) -> String
+}
+
+trait Drawable {
+    fn draw(&self)
+    fn area(&self) -> Float
+}
+```
+
+---
+
+## Implementing Traits for Types
+
+Use `impl Trait for Type` to satisfy a trait interface:
+
+```flame
+struct Circle {
+    radius: Float
+}
+
+impl Drawable for Circle {
+    fn draw(&self) {
+        print($"Drawing circle with radius {self.radius}")
+    }
+
+    fn area(&self) -> Float {
+        return 3.14159 * self.radius * self.radius
+    }
+}
+
+struct Rectangle {
+    width: Float,
+    height: Float
+}
+
+impl Drawable for Rectangle {
+    fn draw(&self) {
+        print($"Drawing rectangle {self.width}x{self.height}")
+    }
+
+    fn area(&self) -> Float {
+        return self.width * self.height
+    }
+}
+```
+
+---
+
+## Using Trait Polymorphism
+
+You can write generic functions or receive traits as parameters:
+
+```flame
+fn render_shape(shape: &Drawable) {
+    shape.draw()
+    print($"Shape area: {shape.area()}")
+}
+
+fn main() {
+    let circle = Circle { radius: 5.0 }
+    let rect = Rectangle { width: 4.0, height: 6.0 }
+
+    render_shape(&circle)
+    render_shape(&rect)
+}
+```

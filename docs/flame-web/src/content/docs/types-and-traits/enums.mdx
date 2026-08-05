@@ -1,0 +1,71 @@
+---
+title: Enums & Pattern Matching
+description: Algebraic data types, enum declarations, payload variants, and pattern matching in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Flame supports powerful algebraic **`enum`** types whose variants can optionally encapsulate data payloads.
+
+---
+
+## Declaring Enums
+
+Enums can have simple unit variants, or variants containing typed payloads (tuples or structs):
+
+```flame
+enum ConnectionState {
+    Disconnected,
+    Connecting(String),      // Variant holding an IP/URL string
+    Connected(Int),          // Variant holding an active socket ID
+    Failed(String, Int)      // Variant holding error message and error code
+}
+```
+
+---
+
+## Pattern Matching with `match`
+
+You can inspect and destructure enum variants using the `match` expression:
+
+```flame
+fn handle_connection(state: ConnectionState) {
+    match state {
+        ConnectionState.Disconnected => {
+            print("System is offline.")
+        },
+        ConnectionState.Connecting(host) => {
+            print($"Establishing handshake with {host}...")
+        },
+        ConnectionState.Connected(socket_id) => {
+            print($"Active session established on socket #{socket_id}!")
+        },
+        ConnectionState.Failed(reason, code) => {
+            eprint($"Connection failed ({code}): {reason}")
+        }
+    }
+}
+```
+
+---
+
+## Implementing Methods on Enums
+
+Just like structs, enums can have `impl` blocks:
+
+```flame
+impl ConnectionState {
+    fn is_online(&self) -> Bool {
+        match self {
+            ConnectionState.Connected(_) => true,
+            _ => false
+        }
+    }
+}
+
+let current = ConnectionState.Connected(42)
+if current.is_online() {
+    print("Ready to send packets.")
+}
+```

@@ -1,0 +1,96 @@
+---
+title: Structs
+description: Defining custom data structures with named fields, instantiation, and field access in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+In Flame, data structures and their behavior are cleanly decoupled: **`struct`** defines the data shape and memory layout, while **`impl`** defines associated functions and methods.
+
+---
+
+## Defining a Struct
+
+Declare a struct with named, typed fields:
+
+```flame
+struct User {
+    id: Int,
+    name: String,
+    email: String,
+    is_admin: Bool
+}
+```
+
+---
+
+## Instantiating Structs
+
+You can create an instance of a struct by specifying its field values:
+
+```flame
+let user = User (
+    id: 101,
+    name: "Samantha",
+    email: "samantha@example.com",
+    is_admin: true
+)
+
+print(user.name)       // "Samantha"
+print(user.is_admin)   // true
+```
+
+---
+
+## Mutable Struct Instances
+
+If you declare a struct variable with `let mut`, you can update its fields in-place:
+
+```flame
+let mut session = User (
+    id: 1,
+    name: "Guest",
+    email: "guest@example.com",
+    is_admin: false
+)
+
+// Mutate fields
+session.name = "Admin"
+session.is_admin = true
+
+print(session.name) // "Admin"
+```
+
+---
+
+## Nested Structs
+
+Structs can freely embed other custom structs, formulas, or vectors:
+
+```flame
+struct GeoLocation {
+    lat: Float,
+    lng: Float
+}
+
+struct Company {
+    name: String,
+    location: GeoLocation,
+    employees: Vec<User>
+}
+
+let office = Company (
+    name: "Flame Tech",
+    location: GeoLocation { lat: 37.7749, lng: -122.4194 },
+    employees: [user]
+)
+
+print(office.location.lat) // 37.7749
+```
+
+---
+
+## Next Steps
+
+To add methods and constructors to your structs, explore [Impl & Methods](/types-and-traits/impl-and-methods/).

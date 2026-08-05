@@ -1,0 +1,83 @@
+---
+title: Impl & Methods
+description: Attaching associated functions, methods, constructors, and mutators to structs with impl blocks in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+In Flame, methods and associated functions are defined within **`impl`** blocks attached to a `struct` or `enum`.
+
+---
+
+## Defining an `impl` Block
+
+```flame
+struct Account {
+    owner: String,
+    balance: Float
+}
+
+impl Account {
+    // 1. Associated Function / Constructor (No self parameter)
+    fn new(owner: String, initial_deposit: Float) -> Account {
+        return Account {
+            owner: owner,
+            balance: initial_deposit
+        }
+    }
+
+    // 2. Immutable Method (Borrows self immutably: &self)
+    fn get_balance(&self) -> Float {
+        return self.balance
+    }
+
+    // 3. Mutable Method (Borrows self mutably: &mut self)
+    fn deposit(&mut self, amount: Float) {
+        self.balance = self.balance + amount
+    }
+
+    // 4. Value Method (Consumes/Moves self: self)
+    fn close(self) -> Float {
+        print($"Closing account for {self.owner}")
+        return self.balance
+    }
+}
+```
+
+---
+
+## Method Receiver Types
+
+Flame strictly distinguishes method receiver types according to ownership rules:
+
+| Receiver | Syntax | Semantics |
+| :--- | :--- | :--- |
+| **Associated Function** | `fn name(...)` | Called on the type itself: `Account.new(...)` |
+| **Immutable Borrow** | `fn name(&self)` | Reads data from instance without modifying or consuming it |
+| **Mutable Borrow** | `fn name(&mut self)` | Can modify instance fields in-place |
+| **Consuming Move** | `fn name(self)` | Takes ownership of instance; variable cannot be used afterwards |
+
+---
+
+## Usage Example
+
+```flame
+fn main() {
+    // Call constructor
+    let mut my_acc = Account.new("Alice", 500.0)
+
+    // Call immutable method
+    print($"Current Balance: {my_acc.get_balance()}") // 500.0
+
+    // Call mutable method
+    my_acc.deposit(250.0)
+    print($"Updated Balance: {my_acc.get_balance()}") // 750.0
+
+    // Call consuming method (moves `my_acc`)
+    let payout = my_acc.close()
+    print($"Final payout: {payout}")
+
+    // print(my_acc.get_balance()) // Error: `my_acc` was moved by `.close()`!
+}
+```

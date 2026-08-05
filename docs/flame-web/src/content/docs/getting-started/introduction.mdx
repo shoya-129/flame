@@ -1,0 +1,95 @@
+---
+title: Introduction to Flame
+description: Overview, core principles, and feature tour of the Flame programming language.
+---
+
+import { Card, CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
+# What is Flame?
+
+**Flame** is a fast, safe, and modern systems programming language powered by the **Blaze compiler and VM**. It combines the ergonomics, expressive syntax, and developer velocity of modern scripting languages with the raw performance, deterministic memory management, and static safety of Rust.
+
+---
+
+## Core Philosophy
+
+Flame was built around the principle: **"Don't reinvent the wheel; just use Rust's."**
+
+Instead of creating an isolated language ecosystem from scratch, Flame treats Rust crates as a **second source language**. When you add a crate in your project manifest (`flame.toml`), the compiler parses the crate, generates static type bridges, and compiles them directly into a single native binary with **zero runtime FFI overhead**.
+
+---
+
+## Key Highlights
+
+<CardGrid>
+  <Card title="Ahead-of-Time (AOT) Compilation" icon="setting">
+    Compiles directly to native machine code. No heavy VM interpreter runtime required in production.
+  </Card>
+  <Card title="No Garbage Collector" icon="shield">
+    Compile-time ownership and borrow checking guarantees memory safety with zero runtime stutters or GC pause spikes.
+  </Card>
+  <Card title="Native Tokio & Multi-Core Threads" icon="rocket">
+    Combines asynchronous non-blocking I/O (`async`/`await`) with dedicated multi-core OS worker threads (`thread { ... }`).
+  </Card>
+  <Card title="First-Class IDE Intellisense" icon="laptop">
+    Automatic `.fmi` metadata generation powers VS Code autocomplete and hover documentation directly from `docs.rs`.
+  </Card>
+</CardGrid>
+
+---
+
+## Language at a Glance
+
+Here is a quick overview of Flame's syntax and core features:
+
+```flame
+import std.fs
+import native.uuid
+
+// 1. Struct and Impl definition
+struct ServerConfig {
+    host: String,
+    port: Int,
+    enabled: Bool
+}
+
+impl ServerConfig {
+    fn new(host: String, port: Int) -> ServerConfig {
+        return ServerConfig {
+            host: host,
+            port: port,
+            enabled: true
+        }
+    }
+
+    fn describe(&self) -> String {
+        return $"Server listening on {self.host}:{self.port}"
+    }
+}
+
+// 2. Main Entrypoint
+fn main() {
+    let config = ServerConfig.new("127.0.0.1", 8080)
+    print(config.describe())
+
+    // Direct Rust crate usage
+    let session_id = uuid.new_v4()
+    print($"Session ID: {session_id}")
+
+    // Map-like formula literals
+    let response = formula {
+        status: 200,
+        ok: true,
+        data: ["items", "users"]
+    }
+    print(response.toString())
+}
+```
+
+---
+
+## Next Steps
+
+- Follow the [Installation & Toolchain Guide](/getting-started/installation/) to setup Flame on your machine.
+- Read [Architecture & Analysis](/getting-started/architecture/) to learn how Flame achieves native speed and safety.
+- Explore [Language Basics](/language-basics/variables/) to start coding.

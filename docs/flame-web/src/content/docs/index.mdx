@@ -1,0 +1,117 @@
+---
+title: Flame Programming Language
+description: A fast, safe, and modern systems language powered by the Blaze compiler that natively compiles Rust crates.
+template: splash
+hero:
+  tagline: Blazing-fast Ahead-of-Time compilation, memory safety without garbage collection, and seamless zero-cost Rust crate interoperability.
+  actions:
+    - text: Get Started
+      link: /getting-started/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: Explore Standard Library
+      link: /standard-library/overview/
+      icon: open-book
+      variant: secondary
+    - text: View on GitHub
+      link: https://github.com/shoya-129/flame
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
+## Why Flame?
+
+<CardGrid>
+	<Card title="Zero-Overhead Rust Interoperability" icon="puzzle">
+		Import any Rust crate directly in `flame.toml` with `import native.uuid` or `import native.axum`. Statically linked with zero FFI overhead.
+	</Card>
+	<Card title="No Garbage Collector, Pure Safety" icon="seti:rust">
+		Rust-style Ownership and Borrowing system guarantees memory safety and data-race prevention at compile time with zero GC pauses.
+	</Card>
+	<Card title="True Multithreaded Concurrency" icon="rocket">
+		Combines **Tokio worker pools** for non-blocking I/O with dedicated **`thread { ... }`** compute workers across multi-core CPUs.
+	</Card>
+	<Card title="Integrated Native Test Runner" icon="approve-check-circle">
+		PascalCase annotations like `@Test`, `@Setup`, `@Cleanup`, and `@Parameterized` with zero-cost production stripping during release builds.
+	</Card>
+</CardGrid>
+
+---
+
+## Quick Taste of Flame
+
+<Tabs>
+  <TabItem label="Hello World & Formula">
+```flame
+// Clean, expressive syntax with formula objects
+fn main() {
+    let user = formula {
+        name: "Alex",
+        role: "Developer",
+        active: true,
+        greet: () {
+            print("Welcome to Flame!")
+        }
+    }
+
+    print($"Hello, {user.name}! Role: {user.role}")
+    user.greet()
+}
+```
+  </TabItem>
+
+  <TabItem label="Native Rust Crates">
+```flame
+// Statically compiles and links external Rust crates!
+import native.uuid
+
+fn main() {
+    let new_id = uuid.new_v4()
+    print($"Generated UUID: {new_id}")
+}
+```
+  </TabItem>
+
+  <TabItem label="Async Networking & Threads">
+```flame
+import std.thread
+
+async fn main() {
+    // Spawn a parallel physical compute thread
+    let compute = thread {
+        let mut sum = 0
+        let mut i = 0
+        while i < 1000000 {
+            sum = sum + i
+            i = i + 1
+        }
+        return sum
+    }
+
+    // Await thread completion asynchronously
+    let total = await compute
+    print($"Calculated sum: {total}")
+}
+```
+  </TabItem>
+
+  <TabItem label="Zero-Cost Testing">
+```flame
+@Test(timeout: 2000)
+fn test_addition() {
+    let sum = 2 + 2
+    assert_eq(sum, 4, "Math must be correct")
+}
+
+@Parameterized([
+    [10, 20, 30],
+    [5, 5, 10]
+])
+fn test_math(a: Int, b: Int, expected: Int) {
+    assert_eq(a + b, expected)
+}
+```
+  </TabItem>
+</Tabs>

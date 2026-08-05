@@ -1,0 +1,87 @@
+---
+title: Explicit Type Conversions
+description: Built-in universal type conversion methods, radix parsing, safe try-parsers, and string formatters in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Flame provides a rich set of universal type conversion methods on all values. This avoids confusing implicit type coercion and ensures predictable runtime behavior.
+
+---
+
+## String Parsing Methods
+
+Flame offers both panicking and safe non-panicking (`try*`) conversion methods on strings:
+
+### Integer Parsing: `.toInt()` & `.tryInt()`
+
+- **`.toInt(radix: Int = 10)`**: Parses a string into an integer. Supports any radix base between 2 and 36. Throws a runtime error if parsing fails.
+- **`.tryInt(radix: Int = 10)`**: Non-panicking version. Returns `Nil` if the string cannot be parsed.
+
+```flame
+let dec = "42".toInt()          // 42
+let hex = "1A".toInt(16)        // 26
+let bin = "1010".toInt(2)       // 10
+
+// Safe parsing
+let safe_val = "100".tryInt()   // 100
+let failed   = "abc".tryInt()   // Nil
+```
+
+### Float Parsing: `.toFloat()` & `.tryFloat()`
+
+- **`.toFloat()` / `.toDouble()`**: Converts a string decimal into a 64-bit `Float`.
+- **`.tryFloat()` / `.tryDouble()`**: Non-panicking version. Returns `Nil` upon invalid format.
+
+```flame
+let pi = "3.14159".toFloat()
+let invalid_pi = "not_a_number".tryFloat() // Nil
+```
+
+### Boolean Parsing: `.toBool()` & `.tryBool()`
+
+Converts case-insensitive strings like `"true"`, `"false"`, `"1"`, or `"0"` into a boolean:
+
+```flame
+let is_prod = "true".toBool() // true
+let flag = "0".toBool()       // false
+```
+
+### UTF-8 Bytes: `.toBytes()`
+
+Converts a string into a dynamic array of UTF-8 byte values (`Vec<Int>`):
+
+```flame
+let bytes = "Flame".toBytes() // [70, 108, 97, 109, 101]
+```
+
+---
+
+## Universal Formatters & Character Conversion
+
+### `.toString(precision: Int)`
+
+Every value (primitives, structs, formulas, vectors) can be converted to a readable string:
+
+```flame
+let list_str = [1, 2, 3].toString()  // "[1, 2, 3]"
+
+// Float formatting with precision:
+let pi_str = 3.14159265.toString(2)  // "3.14"
+```
+
+---
+
+## Quick Reference Table
+
+| Method | Source Type | Return Type | Throws on Error? |
+| :--- | :--- | :--- | :--- |
+| `.toInt(radix?)` | `String` | `Int` | Yes |
+| `.tryInt(radix?)` | `String` | `Int \| Nil` | No (`Nil`) |
+| `.toFloat()` | `String` | `Float` | Yes |
+| `.tryFloat()` | `String` | `Float \| Nil` | No (`Nil`) |
+| `.toBool()` | `String` | `Bool` | Yes |
+| `.tryBool()` | `String` | `Bool \| Nil` | No (`Nil`) |
+| `.toBytes()` | `String` | `Vec<Int>` | No |
+| `.toString(precision?)` | `Any` | `String` | No |

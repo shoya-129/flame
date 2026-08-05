@@ -1,0 +1,92 @@
+---
+title: Platform Devices & Hardware Interfacing
+description: Camera frame capture, Bluetooth LE scanning, serial ports, and raw HID streams in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Flame provides native driver abstractions for embedded hardware, peripherals, and multimedia devices.
+
+---
+
+## Webcam & Camera Capture (`std.camera`)
+
+```flame
+import std.camera
+
+fn main() {
+    // List available video input devices
+    let devices = camera.list_devices()
+    print($"Found {devices.len()} camera(s)")
+
+    // Open default camera (device 0)
+    let cam = camera.open(0)
+
+    // Capture single RGB frame
+    let frame = cam.capture_frame()
+    print($"Captured frame: {frame.width}x{frame.height}")
+
+    // Save frame directly as JPEG or PNG
+    frame.save_image("snapshot.jpg")
+}
+```
+
+---
+
+## Bluetooth Low Energy (`std.bluetooth`)
+
+```flame
+import std.bluetooth
+
+async fn main() {
+    let adapter = await bluetooth.default_adapter()
+    
+    print("Scanning for BLE devices for 5 seconds...")
+    let devices = await adapter.scan(timeout_seconds: 5)
+    
+    for dev in devices {
+        print($"Device: {dev.name} [MAC: {dev.address}], RSSI: {dev.rssi} dBm")
+    }
+}
+```
+
+---
+
+## Serial Port Communication (`std.serial`)
+
+```flame
+import std.serial
+
+fn main() {
+    // List serial ports (COM ports on Windows, /dev/tty on Linux/macOS)
+    let ports = serial.available_ports()
+    print($"Available serial ports: {ports}")
+
+    // Open port with baud rate
+    let port = serial.open("COM3", baud_rate: 115200)
+
+    // Write binary packet
+    port.write([0xAA, 0x01, 0xFF])
+
+    // Read response
+    let response = port.read_exact(4)
+    print($"Received bytes: {response}")
+}
+```
+
+---
+
+## Raw HID Streams (`std.hid`)
+
+```flame
+import std.hid
+
+fn main() {
+    // Discover connected USB HID controllers
+    let devices = hid.enumerate(vendor_id: 0x046D) // Logitech
+    for dev in devices {
+        print($"HID device: {dev.product_string}")
+    }
+}
+```

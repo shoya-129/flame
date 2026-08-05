@@ -1,0 +1,96 @@
+---
+title: Functions & Closures
+description: Function definitions, parameter passing, return types, anonymous closures, and async functions in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Functions are the primary building blocks of code organization in Flame.
+
+---
+
+## Defining Functions (`fn`)
+
+Use the `fn` keyword to declare a function. Parameters require explicit type annotations, and the return type is declared with `->`:
+
+```flame
+fn calculate_area(width: Float, height: Float) -> Float {
+    return width * height
+}
+
+let area = calculate_area(5.5, 10.0)
+print($"Area: {area}")
+```
+
+If a function does not return a value, the `-> Nil` return type can be omitted:
+
+```flame
+fn log_message(msg: String) {
+    print($"[LOG]: {msg}")
+}
+```
+
+---
+
+## Closures & Anonymous Functions
+
+Flame supports anonymous functions (closures) that can capture variables from their surrounding lexical environment:
+
+```flame
+let factor = 10
+
+// Define an inline closure
+let multiply = (x: Int) {
+    return x * factor
+}
+
+print(multiply(5)) // 50
+```
+
+Closures can be passed as arguments to collection methods:
+
+```flame
+let nums = [1, 2, 3, 4, 5]
+let doubled = nums.map((n: Int) { return n * 2 })
+let evens = nums.filter((n: Int) { return n % 2 == 0 })
+
+print(doubled) // [2, 4, 6, 8, 10]
+print(evens)   // [2, 4]
+```
+
+---
+
+## Asynchronous Functions (`async fn`)
+
+Functions marked with `async fn` execute concurrently without blocking OS worker threads and return a future:
+
+```flame
+async fn fetch_api_status(url: String) -> String {
+    // Non-blocking network I/O
+    return "200 OK"
+}
+```
+
+<Aside type="note">
+For complete details on asynchronous tasks and runtime scheduling, visit the [Async & Await Guide](/concurrency/async-await/).
+</Aside>
+
+---
+
+## Built-in Standard I/O Functions
+
+Flame includes standard global I/O functions out of the box:
+
+- **`print(...)`**: Prints values to standard output (`stdout`) followed by a newline.
+- **`eprint(...)`**: Prints values to standard error (`stderr`) followed by a newline (ideal for warnings/errors).
+- **`input(prompt: String) -> String`**: Displays a prompt and reads a line of input from `stdin`.
+
+```flame
+let user_name = input("Please enter your username: ")
+if user_name.len() == 0 {
+    eprint("Username cannot be empty!")
+} else {
+    print($"Welcome, {user_name}!")
+}
+```

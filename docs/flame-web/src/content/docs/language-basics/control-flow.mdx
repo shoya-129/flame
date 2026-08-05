@@ -1,0 +1,119 @@
+---
+title: Control Flow & Patterns
+description: Conditionals, pattern matching, loops, defer, and flow modifiers in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Flame provides a robust set of control flow structures designed for both safety and readability.
+
+---
+
+## Conditionals
+
+### `if` / `else if` / `else`
+
+Standard conditional branching:
+
+```flame
+let score = 85
+
+if score >= 90 {
+    print("Grade: A")
+} else if score >= 80 {
+    print("Grade: B")
+} else {
+    print("Grade: C")
+}
+```
+
+### Pattern Matching (`match`)
+
+Flame features powerful, expressive pattern matching with `match`:
+
+```flame
+let status_code = 200
+
+match status_code {
+    200 => print("OK"),
+    404 => print("Not Found"),
+    500 => print("Internal Server Error"),
+    _   => print("Unknown Status Code") // `_` acts as default fallback
+}
+```
+
+---
+
+## Loops
+
+Flame supports three distinct looping paradigms:
+
+### `while` Loops
+Executes as long as the condition evaluates to `true`:
+
+```flame
+let mut count = 0
+while count < 5 {
+    print($"Count: {count}")
+    count = count + 1
+}
+```
+
+### Infinite Loops (`loop`)
+Creates an infinite loop, ideal for servers, game loops, or event dispatchers:
+
+```flame
+let mut ticks = 0
+loop {
+    ticks = ticks + 1
+    if ticks > 10 {
+        break // explicitly break out
+    }
+}
+```
+
+### `for` .. `in` Iteration
+Iterates over dynamic collections, ranges, or vectors:
+
+```flame
+let fruits = ["Apple", "Banana", "Orange"]
+
+for fruit in fruits {
+    print($"Fruit: {fruit}")
+}
+```
+
+---
+
+## Scope Exit Cleanup (`defer`)
+
+The `defer` statement schedules a statement or block of code to run **at the exact moment the enclosing function or scope exits**.
+
+<Aside type="tip" title="Resource Safety">
+`defer` is ideal for closing file handles, unlocking mutexes, and cleaning up temporary buffers, ensuring they are executed even if an early `return` occurs!
+</Aside>
+
+```flame
+import std.fs
+
+fn process_log() {
+    let file = fs.read("app.log")
+    defer print("Finished processing file!") // Runs when process_log() returns
+    
+    // ... parse log data ...
+    if file.len() == 0 {
+        return // defer still runs here!
+    }
+    
+    print("Log processed successfully.")
+}
+```
+
+---
+
+## Loop Modifiers
+
+- **`break`**: Immediately terminates the innermost loop.
+- **`continue`**: Skips the remaining statements in the current iteration and begins the next iteration.
+- **`return`**: Exits the current function, optionally returning a value.

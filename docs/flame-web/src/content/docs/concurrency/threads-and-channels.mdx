@@ -1,0 +1,91 @@
+---
+title: Threads & Channels (Compute)
+description: True multithreading, dedicated OS compute threads, lexical snapshot isolation, and thread channels in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Flame cleanly separates **I/O Concurrency** (`async`/`await`) from **Computational Multi-Core Concurrency** (`thread { ... }`).
+
+---
+
+## Architecture: Execution Model vs Concurrency Model
+
+Rather than cloning interpreter instances per thread (which causes memory bloat and state divergence), Flame uses **Lexical Snapshot Isolation**:
+
+![Flame Multithreading Architecture](../../assets/flame_multithreading_diagram.png)
+
+1. **Multi-Core Workers**: Incoming network sockets and background workers execute in parallel across CPU cores.
+2. **Atomic Memory Channels**: Results and event payloads are passed safely over lock-free message channels.
+3. **Deterministic State**: Flame's engine evaluates tasks deterministically without mutex deadlock risks.
+
+---
+
+## Spawning Dedicated Compute Threads (`thread`)
+
+To run CPU-intensive calculations in parallel on an independent physical CPU core:
+
+```flame
+import std.thread
+
+fn main() {
+    print($"Main Thread ID: {thread.id()}")
+
+    // Spawn an independent OS thread
+    let handle = thread {
+        print($"Worker Thread ID: {thread.id()}")
+        
+        let mut sum = 0
+        let mut i = 0
+        while i < 50000000 {
+            sum = sum + i
+            i = i + 1
+        }
+        return sum
+    }
+
+    // Main thread continues executing without blocking...
+    print("Main thread is working...")
+
+    // Synchronize and receive the result
+    let result = await handle
+    print($"Worker computed result: {result}")
+}
+```
+
+---
+
+## Channels: `send` & `recv`
+
+Channels allow direct message-passing between threads:
+
+```flame
+import std.thread
+
+fn main() {
+    // Create a channel: (Sender, Receiver)
+    let (tx, rx) = thread.channel()
+
+    let worker = thread {
+        tx.send(formula {
+            kind: "task_complete",
+            processed_items: 500
+        })
+    }
+
+    // Receive message (blocks until ready)
+    let message = rx.recv()
+    await worker
+
+    print($"Received message: {message.kind}, count: {message.processed_items}")
+}
+```
+
+---
+
+## Thread Safety & Panic Isolation
+
+- **Panic Isolation**: If a compute thread encounters a runtime error or division-by-zero, the panic is trapped inside the thread boundary. Awaiting the handle resolves cleanly without crashing your main server.
+- **Automatic Resource Cleanup**: RAII ensures all memory allocated within a worker thread is reclaimed immediately upon completion.
+- **Graceful Shutdown**: The runtime monitors all active worker threads and waits for clean resolution before process exit.

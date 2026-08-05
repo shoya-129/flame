@@ -1,0 +1,73 @@
+---
+title: Threading, Math & Time (std.thread, std.math, std.time)
+description: Multi-threading primitives, mathematical operations, timing precision, and sleep utilities in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Core standard modules for performance computing, mathematical calculations, and time tracking.
+
+---
+
+## High-Precision Time (`std.time`)
+
+```flame
+import std.time
+
+fn main() {
+    // Current UNIX timestamp in milliseconds
+    let now_ms = time.now()
+    print($"Current Timestamp: {now_ms}")
+
+    // High precision benchmarking
+    let start = time.instant()
+
+    // Sleep the current thread
+    time.sleep_ms(250) // pauses for 250 milliseconds
+
+    let elapsed = time.elapsed_ms(start)
+    print($"Elapsed: {elapsed} ms")
+}
+```
+
+---
+
+## Math Routines (`std.math`)
+
+```flame
+import std.math
+
+fn main() {
+    print($"PI: {math.PI}")
+    print($"E: {math.E}")
+
+    let square_root = math.sqrt(144.0) // 12.0
+    let power = math.pow(2.0, 10.0)     // 1024.0
+    let sine = math.sin(math.PI / 2.0)  // 1.0
+
+    print($"Min: {math.min(10, 20)}, Max: {math.max(10, 20)}")
+}
+```
+
+---
+
+## Threading Module (`std.thread`)
+
+```flame
+import std.thread
+
+fn main() {
+    print($"Active thread: {thread.id()}")
+    
+    // Channel creation
+    let (tx, rx) = thread.channel()
+    
+    let t = thread {
+        tx.send("hello from thread")
+    }
+    
+    let msg = rx.recv()
+    await t
+    print(msg)
+}
+```

@@ -1,0 +1,58 @@
+---
+title: Ownership & Move Semantics
+description: Memory safety without garbage collection, ownership rules, move semantics, and RAII destruction in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Flame achieves high performance and complete memory safety through a **compile-time ownership model** inspired by Rust. This eliminates both memory leaks and the unpredictable latency spikes of a Garbage Collector (GC).
+
+---
+
+## The Three Rules of Ownership
+
+1. **Every value in Flame has a variable that is called its *owner*.**
+2. **There can only be one owner at a time.**
+3. **When the owner goes out of scope, the value is dropped automatically from memory (RAII).**
+
+---
+
+## Move Semantics
+
+When a variable is assigned to another variable or passed by value to a function, ownership of the data is **moved**:
+
+```flame
+fn consume_data(s: String) {
+    print($"Received: {s}")
+} // `s` is dropped here when the function exits
+
+fn main() {
+    let original = "Hello Flame"
+    
+    // Ownership is transferred (moved) to `consume_data`
+    consume_data(original)
+    
+    // ERROR: `original` was moved and is no longer valid!
+    // print(original) 
+}
+```
+
+---
+
+## Scope & Deterministic Drops (RAII)
+
+Memory is freed the moment an owner exits its lexical `{ ... }` block:
+
+```flame
+{
+    let buffer = [1, 2, 3, 4, 5]
+    print(buffer.len()) // 5
+} // `buffer` goes out of scope; heap allocation is freed immediately!
+
+// `buffer` is inaccessible here
+```
+
+<Aside type="tip">
+If you want to use a value in multiple places without transferring ownership, use [References & Borrowing](/memory-and-safety/borrowing/) instead of moving.
+</Aside>

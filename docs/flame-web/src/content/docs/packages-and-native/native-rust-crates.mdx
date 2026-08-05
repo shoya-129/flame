@@ -1,0 +1,68 @@
+---
+title: Using Native Rust Crates
+description: Seamlessly importing and statically compiling Rust crates in Flame with zero FFI overhead.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+
+Flame's philosophy is: **"Don't reinvent the wheel; just use Rust's."**
+
+Flame treats Rust crates as a first-class source language. When you build a Flame project, the compiler resolves Rust dependencies, generates static bridges, and statically compiles them directly into your final executable binary.
+
+---
+
+## 1. Adding a Crate (`flame.toml`)
+
+Add any public crate from [crates.io](https://crates.io) under `[native-dependencies]`:
+
+```toml
+[package]
+name = "my_app"
+version = "0.1.0"
+
+[native-dependencies]
+uuid = "1.0"
+axum = "0.7"
+regex = "1.10"
+chrono = "0.4"
+```
+
+---
+
+## 2. Importing the Crate
+
+In your Flame `.fm` files, import the crate using the `native.` prefix:
+
+```flame
+import native.uuid
+import native.chrono
+
+fn main() {
+    let id = uuid.new_v4()
+    print($"Generated UUID: {id}")
+}
+```
+
+---
+
+## 3. Discovering APIs: `docs.rs` & `.fmi` Intellisense
+
+Because Flame links directly with Rust, **the API you call in Flame is identical to the Rust crate API**:
+
+1. **Docs on `docs.rs`**: You can look up any crate on [docs.rs](https://docs.rs) to see its functions, structs, and methods.
+2. **VS Code Intellisense (`.fmi`)**: When you run `flame build` or `flame run`, the compiler runs `cargo rustdoc` to generate `.fmi` (Flame Meta Interface) files.
+3. **Editor Autocomplete**: In VS Code, typing `uuid.` immediately displays completion items, argument signatures, and original crate docstrings!
+
+---
+
+## Under the Hood: The Static Bridge Pipeline
+
+```
+[ flame.toml ] ──► [ cargo rustdoc ] ──► [ .fmi AST Metadata ]
+                                                │
+[ Flame Source ] ──► [ Blaze AOT Engine ] ─────┼──► [ Static Rust Bridge ]
+                                                │
+                                                ▼
+                                     [ Single Executable Binary ]
+```

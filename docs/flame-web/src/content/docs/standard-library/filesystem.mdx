@@ -1,0 +1,71 @@
+---
+title: File System (std.fs)
+description: File reading, writing, directory walking, metadata inspection, and streaming in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `std.fs` module provides comprehensive file and directory operations.
+
+---
+
+## File Reading & Writing
+
+```flame
+import std.fs
+
+fn main() {
+    // Write text to a file
+    fs.write("output.txt", "Hello from Flame!")
+
+    // Read file contents as a UTF-8 string
+    let content = fs.read("output.txt")
+    print(content) // "Hello from Flame!"
+
+    // Append to existing file
+    fs.append("output.txt", "\nSecond line added.")
+
+    // Check file existence
+    if fs.exists("output.txt") {
+        print("File confirmed on disk.")
+    }
+}
+```
+
+---
+
+## Directory Operations
+
+```flame
+import std.fs
+
+fn main() {
+    // Create directory (recursively creates parents)
+    fs.create_dir_all("data/backups/daily")
+
+    // Read directory entries
+    let entries = fs.read_dir("data")
+    for entry in entries {
+        print($"Found: {entry.name}, is_file: {entry.is_file}")
+    }
+
+    // Remove file or directory
+    fs.remove_file("output.txt")
+    fs.remove_dir_all("data/backups")
+}
+```
+
+---
+
+## API Summary Table
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `fs.read` | `path: String` | `String` | Reads entire file into string. |
+| `fs.write` | `path: String, data: String` | `Nil` | Writes string to file. |
+| `fs.append` | `path: String, data: String` | `Nil` | Appends string to file. |
+| `fs.exists` | `path: String` | `Bool` | Checks if path exists. |
+| `fs.remove_file` | `path: String` | `Nil` | Deletes a file. |
+| `fs.create_dir` | `path: String` | `Nil` | Creates a single folder. |
+| `fs.create_dir_all` | `path: String` | `Nil` | Creates full folder tree. |
+| `fs.read_dir` | `path: String` | `Vec<DirEntry>` | Lists files in directory. |

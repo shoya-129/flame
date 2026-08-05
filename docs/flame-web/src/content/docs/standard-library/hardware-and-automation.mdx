@@ -1,0 +1,60 @@
+---
+title: Hardware & Desktop Automation
+description: Native mouse control, keyboard simulation, clipboard access, and screen resolution queries in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+The `std.desktop` module enables native cross-platform GUI automation, robot testing, and macro scripting without third-party dependencies.
+
+---
+
+## Mouse Automation
+
+Control cursor position, simulate clicks, and scroll:
+
+```flame
+import std.desktop
+
+fn main() {
+    // Get primary display resolution
+    let screen = desktop.screen_size()
+    print($"Screen resolution: {screen.width}x{screen.height}")
+
+    // Move cursor to coordinates
+    desktop.mouse_move(500, 300)
+
+    // Click left / right button
+    desktop.mouse_click("left")
+    desktop.mouse_double_click("left")
+
+    // Scroll wheel (delta_y)
+    desktop.mouse_scroll(-5)
+}
+```
+
+---
+
+## Keyboard Simulation & Clipboard
+
+Type text, press key chords, and manipulate the OS clipboard:
+
+```flame
+import std.desktop
+
+fn main() {
+    // Type a string
+    desktop.type_text("Hello Automated World!")
+
+    // Key presses
+    desktop.key_down("ctrl")
+    desktop.key_tap("c")
+    desktop.key_up("ctrl")
+
+    // Clipboard Read / Write
+    desktop.clipboard_set("Copied text from Flame")
+    let clip = desktop.clipboard_get()
+    print($"Current Clipboard: {clip}")
+}
+```

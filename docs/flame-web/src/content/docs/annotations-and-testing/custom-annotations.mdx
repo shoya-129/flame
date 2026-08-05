@@ -1,0 +1,56 @@
+---
+title: Custom Annotations & Flame CLI
+description: Creating custom annotation functions, metadata reflection, and CLI commands in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Flame allows developers to declare **custom annotations** using the `annotation` keyword. Annotations can accept typed arguments, map payloads, or formula configurations.
+
+---
+
+## Defining a Custom Annotation
+
+```flame
+// Declare an annotation with parameters
+annotation Route(method: String, path: String) -> Formula {
+    return formula {
+        method: method,
+        path: path
+    }
+}
+
+annotation Cached(ttl_seconds: Int = 300) -> Int {
+    return ttl_seconds
+}
+```
+
+---
+
+## Applying Annotations to Declarations
+
+Annotations can decorate functions, structs, and fields:
+
+```flame
+@Route(method: "GET", path: "/api/users")
+@Cached(60)
+fn get_user_list() {
+    print("Fetching active users...")
+}
+```
+
+---
+
+## Flame CLI Command Reference
+
+The unified `flame` binary handles your entire development lifecycle:
+
+### Core Commands
+
+| Command | Usage | Description |
+| :--- | :--- | :--- |
+| **`flame run <file>`** | `flame run src/main.fm` | Fast AOT development execution. |
+| **`flame build`** | `flame build [--release]` | Compiles a standalone native executable. |
+| **`flame test`** | `flame test` | Runs all `@Test` functions in the project. |
+| **`flame check`** | `flame check src/main.fm --json` | IDE type-checker & diagnostics engine. |
+| **`flame format`** | `flame format src/main.fm --stdout` | Formats Flame source code files. |

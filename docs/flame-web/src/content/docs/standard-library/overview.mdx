@@ -1,0 +1,50 @@
+---
+title: Standard Library Overview
+description: Overview of built-in modules, implementation status, and API coverage in Flame.
+---
+
+import { Aside, Card, CardGrid, Badge } from '@astrojs/starlight/components';
+
+
+Flame comes with a rich standard library (`std.*`) implemented in native Rust for maximum speed and deterministic safety.
+
+---
+
+## Module Index & Status
+
+<CardGrid>
+  <Card title="File System (std.fs)" icon="document">
+    File I/O, directory traversal, streaming, metadata, and path manipulation.
+    <br/><Badge text="Production Ready" variant="success" />
+  </Card>
+  <Card title="Process & OS (std.process, std.os, std.env)" icon="laptop">
+    Command execution, environment variables, system signals, and OS queries.
+    <br/><Badge text="Production Ready" variant="success" />
+  </Card>
+  <Card title="Threading & Math (std.thread, std.math, std.time)" icon="rocket">
+    Physical OS compute threads, channels, high-precision timestamps, and math routines.
+    <br/><Badge text="Production Ready" variant="success" />
+  </Card>
+  <Card title="Hardware & Desktop Automation" icon="setting">
+    Cross-platform mouse control, keyboard emulation, hotkey listening, and display queries.
+    <br/><Badge text="Available" variant="note" />
+  </Card>
+  <Card title="Platform Devices (Bluetooth, Camera, HID, Serial)" icon="star">
+    Webcam capture, Bluetooth LE scanning, serial port communication, and raw HID streams.
+    <br/><Badge text="Available" variant="note" />
+  </Card>
+</CardGrid>
+
+---
+
+## Importing Standard Modules
+
+Standard modules are imported using the `std.` namespace:
+
+```flame
+import std.fs
+import std.os
+import std.thread
+import std.math
+import std.time
+```

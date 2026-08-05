@@ -1,0 +1,118 @@
+:root {
+	--sl-color-accent-low: #3b0016;
+	--sl-color-accent: #ff0068;
+	--sl-color-accent-high: #FF0068;
+	--sl-color-white: #ffffff;
+	--sl-color-gray-1: #eceef2;
+	--sl-color-gray-2: #c0c2c7;
+	--sl-color-gray-3: #888b96;
+	--sl-color-gray-4: #545861;
+	--sl-color-gray-5: #353841;
+	--sl-color-gray-6: #1e2025;
+	--sl-color-black: #121316;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #ffe0ec;
+	--sl-color-accent: #ff0068;
+	--sl-color-accent-high: #b80047;
+}
+
+/* Custom glow and hero tweaks */
+.hero {
+	position: relative;
+	overflow: hidden;
+}
+
+.hero::before {
+	content: '';
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 600px;
+	height: 600px;
+	background: radial-gradient(circle, rgba(255, 0, 104, 0.22) 0%, rgba(255, 64, 128, 0.08) 50%, transparent 70%);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+	z-index: -1;
+	filter: blur(40px);
+}
+
+.hero img {
+	filter: drop-shadow(0 0 35px rgba(255, 0, 104, 0.5));
+	transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.3s ease;
+}
+
+.hero img:hover {
+	transform: scale(1.05) rotate(1deg);
+	filter: drop-shadow(0 0 50px rgba(255, 0, 104, 0.8));
+}
+
+/* Custom 2x2 card alignment and hover styling */
+.card-grid {
+	display: grid !important;
+	grid-template-columns: 1fr !important;
+	gap: 1.5rem !important;
+	align-items: stretch;
+}
+
+@media (min-width: 42rem) {
+	.card-grid {
+		grid-template-columns: repeat(2, 1fr) !important;
+	}
+}
+
+.card {
+	position: relative;
+	z-index: 1;
+	border: 1px solid var(--sl-color-gray-5) !important;
+	border-radius: 14px !important;
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
+	transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease !important;
+	backdrop-filter: blur(10px);
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.card:hover {
+	z-index: 10 !important;
+	border-color: #ff0068 !important;
+	transform: translateY(-4px) !important;
+	box-shadow: 0 12px 32px -8px rgba(255, 0, 104, 0.35) !important;
+}
+
+/* Callout and badge accent enhancements */
+.starlight-aside--note {
+	border-inline-start-color: #ff0068 !important;
+}
+
+.starlight-aside--tip {
+	border-inline-start-color: #ff4d94 !important;
+}
+
+/* Code block appearance */
+pre {
+	border-radius: 10px !important;
+	border: 1px solid var(--sl-color-gray-5) !important;
+	font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace !important;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: var(--sl-color-black);
+}
+
+::-webkit-scrollbar-thumb {
+	background: var(--sl-color-gray-5);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: #ff0068;
+}
