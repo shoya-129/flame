@@ -15,6 +15,7 @@ Flame features a comprehensive suite of **built-in PascalCase annotations** that
 | :--- | :--- | :--- | :--- |
 | **`@Cli`** | **CLI Builder** | `@Cli(name: String, version: String, description: String)` | Marks an entry function as a CLI application root and passes parsed arguments as `cli: Cli`. |
 | **`@Command`** | **CLI Builder** | `@Command(name: String, about: String)` | Marks a function as an executable CLI subcommand handler with auto-mapped flag parameters. |
+| **`@Embedded`**| **Embedded** | `@Embedded(target: String = "arduino-uno", baud: Int = 115200)` | Defines the infinite hardware loop (`void loop()`) for zero-cost bare-metal firmware compilation. |
 | **`@Test`** | **Testing** | `@Test(timeout: Int = 5000, skip: Bool = false, only: Bool = false, tags: Vector = [])` | Marks a function as an automated test case executed via `flame test`. Stripped in release builds. |
 | **`@Setup`** | **Testing** | `@Setup` | Runs before every test case in the current file. Stripped in release builds. |
 | **`@Cleanup`** | **Testing** | `@Cleanup` | Runs after every test case in the current file. Stripped in release builds. |

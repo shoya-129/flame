@@ -1,17 +1,82 @@
 ---
 title: Embedded Ecosystem (std.embedded)
-description: The complete platform-independent hardware runtime and hardware abstraction layer (HAL) for ARM, AVR, ESP32, STM32, RP2040, and Robotics in Flame.
+description: The complete platform-independent hardware runtime, bare-metal transpiler, and hardware abstraction layer (HAL) for ARM, AVR, ESP32, STM32, RP2040, and Robotics in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Flame's embedded hardware ecosystem (`std.embedded`) represents a paradigm shift in firmware engineering. Unlike traditional C++ Arduino libraries or raw microcontroller registers, Flame delivers a **platform-independent hardware abstraction layer (HAL)** backed by Rust's industry-standard `embedded-hal 1.0` ecosystem.
+Flame's embedded hardware ecosystem (`std.embedded`) represents a paradigm shift in firmware engineering. Unlike traditional C++ Arduino libraries or raw microcontroller registers, Flame delivers both a **platform-independent hardware abstraction layer (HAL)** and a **zero-cost bare-metal hardware transpiler** backed by Rust's industry-standard `embedded-hal` and `arduino-hal` architecture.
 
-Write **one hardware program**, and compile without modification to:
-- **ARM Cortex-M & STM32** (`stm32-hal`)
+Write **one hardware program**, and execute or burn firmware without modification to:
+- **Atmel AVR & Arduino Uno/Mega/Nano** (`arduino-hal`, `avr-hal`, `atmega328p`)
 - **Espressif ESP32 & ESP8266** (`esp-hal` / `esp-idf`)
-- **Raspberry Pi RP2040 & Linux GPIO** (`rp2040-hal`, `rppal`)
-- **Atmel AVR & Arduino Uno/Mega** (`arduino-hal`, `avr-hal`)
+- **ARM Cortex-M & STM32** (`stm32-hal`)
+- **Raspberry Pi RP2040** (`rp2040-hal`)
+- **Linux GPIO / Edge Robotics** (`rppal` / Userland HAL)
+
+---
+
+## Bare-Metal Hardware Compilation (`@Embedded`)
+
+When deploying firmware directly to physical microcontrollers (such as an Arduino Uno, ESP32, or STM32 chip), traditional embedded developers use a manual two-stage design consisting of `void setup()` and an infinite `void loop()`.
+
+Flame automates this workflow cleanly using the **`@Embedded`** architectural decorator. Functions annotated with `@Embedded` act as continuous hardware execution loops, while declarations above them automatically compile into hardware peripheral setups.
+
+```flame
+import std.embedded
+import std.thread
+
+
+// Hardware capabilities initialize once during system boot
+let led = embedded.pin(13)
+let button = embedded.pin(2)
+
+// @Embedded designates the infinite real-time microcontroller hardware loop
+@Embedded(target = "arduino-uno", baud = 115200)
+fn firmware_loop() {
+    led.mode("OUTPUT")
+    button.mode("INPUT_PULLUP")
+
+    // Read logic level from pushbutton
+    if button.read() == 0 {
+        print("[UART] Button active - Toggling LED HIGH")
+        led.high()
+    } else {
+        led.low()
+    }
+    thread.sleep(100)
+}
+```
+
+<Aside type="tip">
+When working in Flame IDE (VSCode), autocompletions inside quotes instantly suggest target hardware names (`"arduino-uno"`, `"esp32"`, `"stm32"`, `"rp2040"`) and pin modes (`"OUTPUT"`, `"INPUT"`, `"INPUT_PULLUP"`, `"PWM"`), accompanied by full documentation!
+</Aside>
+
+---
+
+## Hardware Toolchain & CLI Commands
+
+Flame provides native subcommand integration for compiling, burning, and inspecting physical microcontrollers:
+
+### 1. Build Zero-Cost Bare-Metal Firmware
+When you execute `flame build`, the compiler detects `@Embedded(target = "...")` in your code (or inspects `flame.toml` / `--target`) and directly transpiles your Flame AST into a freestanding `#![no_std]` Rust binary, generating production-grade `.elf` and `.hex` machine firmware:
+```bash
+flame build --target arduino-uno
+```
+
+### 2. Burn Firmware to Hardware Device (`flame flash`)
+Builds and directly burns the generated machine code onto connected hardware chips over serial or debugging programmers (invoking `avrdude`, `espflash`, or `probe-rs` automatically):
+```bash
+flame flash --port COM3
+# Or equivalently using the unified run workflow:
+flame run src/main.fm --device
+```
+
+### 3. Connect to Serial UART Monitor (`flame monitor`)
+Opens an interactive, low-latency UART telemetry session with your connected board to stream print statements and debug metrics:
+```bash
+flame monitor --port COM3 --baud 115200
+```
 
 ---
 
@@ -21,8 +86,8 @@ Flame's embedded architecture is governed by five fundamental engineering rules:
 
 1. **Everything is a Capability Object**: No unsafe global functions like `digitalWrite(13, HIGH)`. Instead, hardware pins and peripherals are constructed as independent capability objects with strong methods: `let led = embedded.pin(13)`.
 2. **Resource Ownership**: Pins and bus lines cannot be accidentally double-allocated. Once `pin(13)` is constructed, ownership rules guard against conflicting directional modes.
-3. **Platform-Independent Signatures**: Calling `.angle(120)` on a servo works identical across AVR hardware PWM timers and Linux userland pigpio drivers.
-4. **Clean Scope & Zero Boilerplate**: Write script execution logic directly without mandatory C-style `void setup()` and `void loop()` ceremonies.
+3. **Platform-Independent Signatures**: Calling `.angle(120)` on a servo works identically across AVR hardware PWM timers and Linux userland drivers.
+4. **Clean Scope & Zero Boilerplate**: Write execution logic directly without mandatory C-style `void setup()` and `void loop()` ceremonies.
 5. **No Redundancy**: Traditional computer networking (`WiFi`, `Ethernet`, `MQTT`, `HTTP`) lives natively in Flame's general networking standard library rather than polluting the bare-metal microcontroller module.
 
 ---
@@ -38,9 +103,9 @@ import std.embedded
 let led = embedded.pin(13)
 let sensor_pin = embedded.pin(2)
 
-// Configure bidirectional mode ("Output" or "Input")
-led.mode("Output")
-sensor_pin.mode("Input")
+// Configure bidirectional mode ("OUTPUT", "INPUT", or "INPUT_PULLUP")
+led.mode("OUTPUT")
+sensor_pin.mode("INPUT")
 
 // Assert digital logic levels
 led.high()
@@ -140,34 +205,11 @@ spi_dac.transfer([0x01, 0xFF])
 
 ---
 
-## System Specs & Persistent Storage
-
-Query active target platform architecture, monitor watchdog timeouts, and save configurations across reboots in non-volatile EEPROM/Flash:
-
-```flame
-import std.embedded
-
-// Inspect system processor brand and clock architecture
-let specs = embedded.board
-println($"Running on Architecture: {specs.arch} with {specs.memory} bytes RAM")
-
-// Store persistent calibration constants in Flash/EEPROM memory
-let flash = embedded.flash
-flash.write(0x1000, 42)
-let saved_val = flash.read(0x1000)
-
-// Feed Watchdog timer to prevent automated system reset
-let wdt = embedded.watchdog
-wdt.feed()
-```
-
----
-
 ## Complete API Reference
 
 | Constructor / Method | Capability Object | Primary Methods & Properties |
 | :--- | :--- | :--- |
-| `embedded.pin(num: Int)` | **GPIO Pin** | `.mode("Input"/"Output")`, `.high()`, `.low()`, `.toggle()`, `.read()` |
+| `embedded.pin(num: Int)` | **GPIO Pin** | `.mode("INPUT"/"OUTPUT"/"INPUT_PULLUP")`, `.high()`, `.low()`, `.toggle()`, `.read()` |
 | `embedded.analog(pin: Int)` | **ADC Channel** | `.read()`, `.readVoltage()`, `.readPercent()` |
 | `embedded.pwm(pin: Int)` | **PWM Driver** | `.write(duty: Float)`, `.enable()`, `.disable()` |
 | `embedded.servo(pin: Int)` | **Servo Actuator**| `.angle(deg: Int)`, `.rotate(deg: Int)`, `.stop()` |

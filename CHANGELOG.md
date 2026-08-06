@@ -4,6 +4,17 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.1.9] - 2026-08-06 (Codename: *Flame Spark*)
+
+### ⚡ Embedded Toolchain Enhancements
+- **Native `thread.sleep` Translation**: The zero-cost bare-metal compiler now safely transpiles native `thread.sleep()` routines directly into architecture-specific hardware delay instructions (e.g., `arduino_hal::delay_ms()`), eliminating the need for standalone global sleep functions in firmware code.
+
+### 🎨 IDE Intellisense & Developer Experience
+- **Dynamic Hardware Methods**: The Flame language server now proactively injects native embedded capabilities (`mode()`, `high()`, `low()`, `read()`, `angle()`, `speed()`) into the property autocomplete matrix. This allows instant hardware method suggestions on variables like `led.` or `sensor.` even before full global type inference resolves their underlying physical hardware struct.
+- **Method String Literal Completions**: Upgraded the internal cursor extraction algorithm to intelligently preserve quotation marks (`"`), enabling the language server to trigger accurate completion dropdowns for hardware configurations. Typing `sensor.mode("` now instantly suggests hardware-aware constants like `"INPUT_PULLUP"`, `"OUTPUT"`, and `"PWM"` complete with markdown documentation.
+- **Documentation Overhaul**: Added comprehensive documentation for the `@Embedded` architecture directive inside the built-in annotations guide.
+
+
 ## [0.1.8] - 2026-08-06 (Codename: *Flame Spark*)
 
 ### 🎨 IDE Syntax Highlighting & Developer Experience (`flame-ide`)

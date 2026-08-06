@@ -1,5 +1,6 @@
 pub mod aot_compiler;
 mod diagnostics;
+pub mod embedded;
 mod formatter;
 pub mod ide;
 mod lexer;
@@ -95,7 +96,17 @@ fn main() {
         "list-plugins" => {
             list_plugins_command(&args);
         }
+        "flash" => {
+            flash_project(&args);
+        }
+        "monitor" => {
+            monitor_project(&args);
+        }
         "run" => {
+            if args.contains(&"--device".to_string()) {
+                flash_project(&args);
+                return;
+            }
             if args.len() < 3 {
                 println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run");
                 println!("usage: flame run <file_path.fm>");
@@ -220,7 +231,15 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}run{} <file>           Compile and run a Flame source file",
+        "  {}run{} <file> [--device] Compile and run a Flame source file (or device hardware)",
+        cyan, reset
+    );
+    println!(
+        "  {}flash{} [--target <board>] [--port <COM>] Build & burn bare-metal firmware to microcontroller",
+        cyan, reset
+    );
+    println!(
+        "  {}monitor{} [--port <COM>] [--baud 115200] Connect to hardware serial UART telemetry stream",
         cyan, reset
     );
     println!(
@@ -338,11 +357,24 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     let is_release = args.contains(&"--release".to_string()) || args.contains(&"-r".to_string());
     let force_local = args.contains(&"--local".to_string());
     let mut pkg_name = "app".to_string();
+    let mut target = None;
+    for i in 0..args.len() {
+        if args[i] == "--target" && i + 1 < args.len() {
+            target = Some(args[i + 1].clone());
+        }
+    }
     if let Ok(toml_str) = fs::read_to_string("flame.toml") {
         for line in toml_str.lines() {
-            if line.trim().starts_with("name =") {
-                if let Some(val) = line.split('=').nth(1) {
+            let t = line.trim();
+            if t.starts_with("name =") {
+                if let Some(val) = t.split('=').nth(1) {
                     pkg_name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                }
+            } else if t.starts_with("target =") {
+                if let Some(val) = t.split('=').nth(1) {
+                    if target.is_none() {
+                        target = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                    }
                 }
             }
         }
@@ -371,6 +403,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     if main_path.exists() {
         println!("\x1b[1;36m   Compiling\x1b[0m targets (src/main.fm)...");
 
+        let mut all_stmts = Vec::new();
         // Parse all files in src/ to ensure full build-time diagnostics
         if let Ok(entries) = fs::read_dir("src") {
             for entry in entries.flatten() {
@@ -395,9 +428,30 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                         println!("\x1b[1;31merror:\x1b[0m build failed due to type errors");
                         std::process::exit(1);
                     }
+                    all_stmts.extend(stmts);
                 }
             }
         }
+
+        if target.is_none() {
+            if let Some((detected_target, _)) = embedded::codegen::detect_embedded_target(&all_stmts) {
+                target = Some(detected_target);
+            }
+        }
+
+        if let Some(t) = target {
+            match embedded::codegen::generate_baremetal_firmware_project(&all_stmts, &t, &pkg_name) {
+                Ok(build_dir) => {
+                    println!("\x1b[1;32m    Finished\x1b[0m embedded bare-metal firmware project at {}", build_dir.display());
+                    return Some(build_dir);
+                }
+                Err(e) => {
+                    println!("\x1b[1;31merror:\x1b[0m {}", e);
+                    return None;
+                }
+            }
+        }
+
         println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
         let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
@@ -473,6 +527,87 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         );
         return None;
     }
+}
+
+fn flash_project(args: &[String]) {
+    let toml_path = Path::new("flame.toml");
+    let mut pkg_name = "app".to_string();
+    let mut toml_target = None;
+    if toml_path.exists() {
+        if let Ok(toml_str) = fs::read_to_string("flame.toml") {
+            for line in toml_str.lines() {
+                let t = line.trim();
+                if t.starts_with("name =") {
+                    if let Some(val) = t.split('=').nth(1) {
+                        pkg_name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                    }
+                } else if t.starts_with("target =") {
+                    if let Some(val) = t.split('=').nth(1) {
+                        toml_target = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let mut port = None;
+    let mut target = toml_target;
+    for i in 0..args.len() {
+        if args[i] == "--port" && i + 1 < args.len() {
+            port = Some(args[i + 1].as_str());
+        } else if args[i] == "--target" && i + 1 < args.len() {
+            target = Some(args[i + 1].to_string());
+        }
+    }
+
+    let main_path = Path::new("src/main.fm");
+    let content = if main_path.exists() {
+        fs::read_to_string(main_path).unwrap_or_default()
+    } else if args.len() >= 3 && !args[2].starts_with("-") && Path::new(&args[2]).exists() {
+        fs::read_to_string(&args[2]).unwrap_or_default()
+    } else {
+        println!("\x1b[1;31merror:\x1b[0m no src/main.fm or Flame file found to flash.");
+        return;
+    };
+
+    let stmts = match parse_file_stmts(main_path, &content) {
+        Ok(s) => s,
+        Err(e) => {
+            e.print(&content);
+            return;
+        }
+    };
+
+    let mut _baud = 115200;
+    if let Some((detected_target, detected_baud)) = embedded::codegen::detect_embedded_target(&stmts) {
+        if target.is_none() {
+            target = Some(detected_target);
+        }
+        _baud = detected_baud;
+    }
+
+    let target_str = target.unwrap_or_else(|| "arduino-uno".to_string());
+    match embedded::codegen::generate_baremetal_firmware_project(&stmts, &target_str, &pkg_name) {
+        Ok(build_dir) => {
+            let _ = embedded::flasher::build_and_flash(&target_str, port, &build_dir, &pkg_name);
+        }
+        Err(err) => println!("\x1b[1;31merror:\x1b[0m {}", err),
+    }
+}
+
+fn monitor_project(args: &[String]) {
+    let mut port = None;
+    let mut baud = 115200;
+    for i in 0..args.len() {
+        if args[i] == "--port" && i + 1 < args.len() {
+            port = Some(args[i + 1].as_str());
+        } else if args[i] == "--baud" && i + 1 < args.len() {
+            if let Ok(b) = args[i + 1].parse::<u32>() {
+                baud = b;
+            }
+        }
+    }
+    embedded::flasher::open_serial_monitor(port, baud);
 }
 
 fn run_file(path_str: &str, force_local: bool, script_args: &[String]) {
@@ -1861,6 +1996,16 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         "filter",
                         "Returns a new collection containing only the elements for which the provided closure returns true.\n\nExample:\n```flame\narr.filter((x) { return x > 0 })\n```",
                     ),
+                    ("mode", "Configures digital pin direction. Values: `\"OUTPUT\"`, `\"INPUT\"`, `\"INPUT_PULLUP\"`, `\"PWM\"` (Hardware Pin)"),
+                    ("high", "Drives digital pin voltage to logical HIGH (Hardware Pin)"),
+                    ("low", "Drives digital pin voltage to logical LOW (Hardware Pin)"),
+                    ("toggle", "Flips digital pin voltage to opposite state (Hardware Pin)"),
+                    ("read", "Reads digital/analog logic level or ADC raw value (Hardware Pin/ADC)"),
+                    ("angle", "Sets absolute target rotation angle in degrees (Hardware Servo)"),
+                    ("speed", "Sets throttle output as percentage (Hardware Motor)"),
+                    ("forward", "Sets directional polarization to forward (Hardware Motor)"),
+                    ("reverse", "Sets directional polarization to reverse (Hardware Motor)"),
+                    ("stop", "Electro-dynamically brakes shaft to halt (Hardware Motor/Servo)"),
                 ];
 
                 for (method, doc) in &builtin_methods {
@@ -2067,7 +2212,7 @@ fn extract_word_at_cursor(line: &str, col: usize) -> String {
     // Scan backwards
     while start > 0 {
         if let Some(&ch) = chars.get(start - 1) {
-            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' || ch == '"' || ch == '-' {
                 start -= 1;
             } else {
                 break;
@@ -2081,7 +2226,7 @@ fn extract_word_at_cursor(line: &str, col: usize) -> String {
     let mut end = col.saturating_sub(1);
     while end < chars.len() {
         if let Some(&ch) = chars.get(end) {
-            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' {
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '@' || ch == '"' || ch == '-' {
                 end += 1;
             } else {
                 break;

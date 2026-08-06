@@ -8,3 +8,4 @@ pub mod stdlib;
 pub mod typechecker;
 pub mod vm;
 pub mod native_std;
+pub mod embedded;

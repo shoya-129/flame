@@ -328,6 +328,10 @@ const KEYWORDS: &[(&str, &str)] = &[
         "```flame\n@Parameterized(arguments: Vector<Tuple>)\n```\n**Annotated Function**\nExpands a test into multiple independent test cases, passing each tuple element as parameters to the test function.",
     ),
     (
+        "Embedded",
+        "```flame\n@Embedded(target: String = \"arduino-uno\", baud: Int = 115200)\n```\n**Embedded Hardware Loop Annotation**\nMarks a function as a continuous hardware execution loop (equivalent to Arduino's `void loop()`).\nDuring `flame build`, the compiler automatically extracts the target device (e.g., `\"arduino-uno\"`, `\"esp32\"`, `\"stm32\"`, `\"rp2040\"`) and transpiles the AST directly to freestanding zero-cost `#![no_std]` Rust firmware.",
+    ),
+    (
         "Benchmark",
         "```flame\n@Benchmark\n```\n**Annotated Function**\nExecutes the function as a high-precision performance benchmark during `flame test`, reporting average, minimum, and maximum execution times.",
     ),
@@ -381,8 +385,38 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
 ];
 
+const EMBEDDED_LITERALS: &[(&str, &str, &str)] = &[
+    ("arduino-uno", "Hardware Target (AVR ATmega328P)", "Zero-cost `#![no_std]` compiler target for classic Arduino Uno boards."),
+    ("esp32", "Hardware Target (Xtensa/RISC-V)", "Zero-cost compiler target for ESP32 Wi-Fi & Bluetooth chips."),
+    ("stm32", "Hardware Target (ARM Cortex-M)", "Zero-cost compiler target for STM32 32-bit microcontrollers."),
+    ("rp2040", "Hardware Target (Raspberry Pi Silicon)", "Zero-cost compiler target for dual-core ARM Cortex-M0+ RP2040 chips."),
+    ("atmega328p", "Hardware Target (Bare AVR IC)", "Direct chip compiler target for standalone ATmega328P microcontrollers."),
+    ("mega", "Hardware Target (Arduino Mega 2560)", "Compiler target for ATmega2560 extended GPIO boards."),
+    ("avr-nano", "Hardware Target (Arduino Nano)", "Compiler target for compact ATmega328P Nano breakout boards."),
+    ("OUTPUT", "Pin Mode Parameter", "Configures digital pin as push-pull output driver."),
+    ("INPUT", "Pin Mode Parameter", "Configures pin as high-impedance floating input."),
+    ("INPUT_PULLUP", "Pin Mode Parameter", "Configures pin input with internal 20K pull-up resistor active."),
+    ("PWM", "Pin Mode Parameter", "Configures pin for Pulse-Width Modulation wave output."),
+    ("HIGH", "Digital Output Level", "Drives pin voltage to VCC (5V / 3.3V)."),
+    ("LOW", "Digital Output Level", "Drives pin voltage to Ground (0V)."),
+];
+
+pub fn get_literal_completions(prefix: &str) -> Vec<JsonCompletion> {
+    let clean = prefix.trim_matches('"').trim_matches('\'');
+    EMBEDDED_LITERALS
+        .iter()
+        .filter(|(val, _, _)| val.starts_with(clean) || clean.is_empty())
+        .map(|(val, kind, doc)| JsonCompletion {
+            label: format!("\"{}\"", val),
+            kind: "value".to_string(),
+            detail: kind.to_string(),
+            documentation: Some(format!("```flame\n\"{}\"\n```\n**{}**\n{}", val, kind, doc)),
+        })
+        .collect()
+}
+
 pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
-    KEYWORDS
+    let mut comps: Vec<JsonCompletion> = KEYWORDS
         .iter()
         .filter(|(kw, _)| kw.starts_with(prefix) || prefix.is_empty())
         .map(|(kw, doc)| JsonCompletion {
@@ -391,12 +425,15 @@ pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
             detail: "keyword".to_string(),
             documentation: Some(doc.to_string()),
         })
-        .collect()
+        .collect();
+    comps.extend(get_literal_completions(prefix));
+    comps
 }
+
 
 pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
     let clean_word = word.trim_start_matches('@');
-    KEYWORDS
+    let mut hover = KEYWORDS
         .iter()
         .find(|(kw, _)| *kw == word || *kw == clean_word)
         .map(|(kw, doc)| {
@@ -430,7 +467,18 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
                 label: kw.to_string(),
                 documentation: Some(formatted_doc),
             }
-        })
+        });
+
+    if hover.is_none() {
+        let clean_lit = word.trim_matches('"').trim_matches('\'');
+        if let Some((val, kind, doc)) = EMBEDDED_LITERALS.iter().find(|(val, _, _)| *val == clean_lit) {
+            hover = Some(JsonHover {
+                label: format!("\"{}\"", val),
+                documentation: Some(format!("```flame\n\"{}\"\n```\n**{}**\n{}", val, kind, doc)),
+            });
+        }
+    }
+    hover
 }
 
 #[derive(Debug)]
