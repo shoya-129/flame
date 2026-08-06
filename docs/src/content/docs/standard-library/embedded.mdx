@@ -3,7 +3,12 @@ title: Embedded Ecosystem (std.embedded)
 description: The complete platform-independent hardware runtime, bare-metal transpiler, and hardware abstraction layer (HAL) for ARM, AVR, ESP32, STM32, RP2040, and Robotics in Flame.
 ---
 
-import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import { Aside, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Alpha Phase (Ready for Testing)">
+The Flame bare-metal embedded transpiler and toolchain (`flame flash`, `flame monitor`, `flame build --target`) are currently in **Alpha** (<Badge text="v0.1.9+" variant="success" />). 
+It is fully operational and ready for testing on real microcontrollers, but hardware ABIs and core HAL traits may evolve before the final stable release.
+</Aside>
 
 Flame's embedded hardware ecosystem (`std.embedded`) represents a paradigm shift in firmware engineering. Unlike traditional C++ Arduino libraries or raw microcontroller registers, Flame delivers both a **platform-independent hardware abstraction layer (HAL)** and a **zero-cost bare-metal hardware transpiler** backed by Rust's industry-standard `embedded-hal` and `arduino-hal` architecture.
 
