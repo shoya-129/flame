@@ -4,7 +4,6 @@ description: The complete platform-independent hardware runtime and hardware abs
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
-import FlameSimulator from '../../../components/FlameSimulator.astro';
 
 Flame's embedded hardware ecosystem (`std.embedded`) represents a paradigm shift in firmware engineering. Unlike traditional C++ Arduino libraries or raw microcontroller registers, Flame delivers a **platform-independent hardware abstraction layer (HAL)** backed by Rust's industry-standard `embedded-hal 1.0` ecosystem.
 
@@ -13,14 +12,6 @@ Write **one hardware program**, and compile without modification to:
 - **Espressif ESP32 & ESP8266** (`esp-hal` / `esp-idf`)
 - **Raspberry Pi RP2040 & Linux GPIO** (`rp2040-hal`, `rppal`)
 - **Atmel AVR & Arduino Uno/Mega** (`arduino-hal`, `avr-hal`)
-
----
-
-## ⚡ Try Live: Interactive Virtual Hardware Workstation
-
-Test out Flame's hardware syntax directly in your browser using our virtual microcontroller simulation lab. Type in the code editor to see **Flame Intellisense autocompletion** in action, then click **Execute Hardware Script** to watch the virtual OLED framebuffer, hobby servo arm, and DC motor H-bridge respond in real time!
-
-<FlameSimulator />
 
 ---
 
