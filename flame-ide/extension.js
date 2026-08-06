@@ -355,24 +355,48 @@ function activate(context) {
                     continue;
                 }
 
-                // 3. Interpolated strings ($"...") - marked entirely as string semantic token outside braces!
+                // 3. Interpolated strings ($"...") - emit string tokens ONLY outside {...} braces!
                 if (ch === '$' && next === '"') {
-                    const start = i;
-                    i += 2;
-                    let braceDepth = 0;
+                    let segStart = i;
+                    i += 2; // skip $"
                     while (i < len) {
-                        if (braceDepth === 0) {
-                            if (text[i] === '\\') { i += 2; continue; }
-                            if (text[i] === '"') { i++; break; }
-                            if (text[i] === '{') { braceDepth = 1; i++; continue; }
+                        if (text[i] === '\\') { i += 2; continue; }
+                        if (text[i] === '"') {
                             i++;
-                        } else {
-                            if (text[i] === '{') braceDepth++;
-                            else if (text[i] === '}') braceDepth--;
-                            i++;
+                            if (i > segStart) pushTokenRange(segStart, i, 4); // 4 = string
+                            break;
                         }
+                        if (text[i] === '{') {
+                            if (i > segStart) pushTokenRange(segStart, i, 4);
+                            i++; // skip '{' so it remains white code punctuation
+                            let braceDepth = 1;
+                            while (i < len && braceDepth > 0) {
+                                if (text[i] === '{') braceDepth++;
+                                else if (text[i] === '}') {
+                                    braceDepth--;
+                                    if (braceDepth === 0) {
+                                        i++; // skip '}' so it remains white code punctuation
+                                        segStart = i; // resume string segment after '}'
+                                        break;
+                                    }
+                                }
+                                if (isIdentStart(text[i])) {
+                                    const startId = i;
+                                    while (i < len && isIdentPart(text[i])) i++;
+                                    const word = text.slice(startId, i);
+                                    const keywords = ['or', 'and', 'not', 'if', 'else', 'match', 'for', 'in', 'while', 'loop', 'break', 'continue', 'defer', 'return', 'yield', 'await', 'async', 'thread', 'let', 'const', 'var', 'fn', 'struct', 'enum', 'trait', 'impl', 'export', 'import', 'mut', 'as', 'type', 'where', 'formula', 'self', 'Self', 'true', 'false', 'nil'];
+                                    if (keywords.includes(word)) {
+                                        const kwPos = document.positionAt(startId);
+                                        tokensBuilder.push(kwPos.line, kwPos.character, i - startId, 0, 0);
+                                    }
+                                    continue;
+                                }
+                                i++;
+                            }
+                            continue;
+                        }
+                        i++;
                     }
-                    pushTokenRange(start, i, 4); // 4 = string
                     continue;
                 }
 

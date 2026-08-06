@@ -2039,11 +2039,12 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
 fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<String>) {
     let upto = line.chars().take(col.saturating_sub(1)).collect::<String>();
     if let Some(dot_index) = upto.rfind('.') {
+        let after_dot = &upto[dot_index + 1..];
+        if !after_dot.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+            return (None, None);
+        }
         let left = upto[..dot_index].trim();
-        let right = upto[dot_index + 1..]
-            .chars()
-            .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-            .collect::<String>();
+        let right = after_dot.to_string();
         return (
             left.split(|c: char| !c.is_alphanumeric() && c != '_')
                 .filter(|s| !s.is_empty())
