@@ -4,6 +4,15 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.1.8] - 2026-08-06 (Codename: *Flame Spark*)
+
+### 🎨 IDE Syntax Highlighting & Developer Experience (`flame-ide`)
+- **String Interpolation Embedded Scoping**: Resolved a visual limitation in the VS Code syntax extension where expressions within interpolated string templates (e.g., `$"System RAM: {board.memory}"`) received monolithic blue string coloring. Injected authoritative TextMate embedded source language boundaries (`contentName: source.flame.embedded` and `meta.embedded.line.flame`), enabling expressions within braces `{...}` to render in vivid code colors without string token bleed.
+- **Dotted Property Highlighting**: Added dedicated `variable.other.property.flame` TextMate grammatical matchers to clearly highlight accessed attributes and structural properties in bright editor accents.
+- **Exhaustive Embedded Intellisense Hovers**: Upgraded the internal language server and documentation engine (`std_docs.rs`) to display rich Markdown method prototypes, hardware usage guidelines, and parameter summaries when hovering over any of the 22 embedded drivers and constructors.
+
+---
+
 ## [0.1.7] - 2026-08-06 (Codename: *Flame Spark*)
 
 ### 🤖 Native Embedded Systems Runtime & HAL (`std.embedded`)
@@ -16,11 +25,6 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 - **Cross-Compilation Feature Gates**: Configured conditional compiler workspace target features across `avr`, `esp32`, `stm32`, and `rp2040` architectures, paired with direct Linux userland memory-mapped GPIO drivers (`rppal`) for Single-Board Computers (Raspberry Pi / BeagleBone).
 - **Real Host Hardware Discovery**: Integrated `sysinfo` within `embedded.board` to dynamically probe and expose genuine host CPU core brands, clock architecture, memory statistics, and kernel specifications.
 - **Zero Boilerplate Firmware**: Removed traditional mandatory C++ micro-controller lifecycles (`void setup()` and `void loop()`), empowering engineers to write concise, script-level hardware logic from line one.
-
-### 🎨 IDE Syntax Highlighting & Developer Experience (`flame-ide`)
-- **String Interpolation Embedded Scoping**: Resolved a visual limitation in the VS Code syntax extension where expressions within interpolated string templates (e.g., `$"System RAM: {board.memory}"`) received monolithic blue string coloring. Injected authoritative TextMate embedded source language boundaries (`contentName: source.flame.embedded` and `meta.embedded.line.flame`), enabling expressions within braces `{...}` to render in vivid code colors without string token bleed.
-- **Dotted Property Highlighting**: Added dedicated `variable.other.property.flame` TextMate grammatical matchers to clearly highlight accessed attributes and structural properties in bright editor accents.
-- **Exhaustive Embedded Intellisense Hovers**: Upgraded the internal language server and documentation engine (`std_docs.rs`) to display rich Markdown method prototypes, hardware usage guidelines, and parameter summaries when hovering over any of the 22 embedded drivers and constructors.
 
 ### 📚 Interactive Web Hardware Simulation Lab & Documentation
 - **Live Virtual Circuit Workstation (`FlameSimulator.astro`)**: Designed and launched a stunning, high-performance virtual hardware simulation lab directly within the Flame Starlight documentation portal.
