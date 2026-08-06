@@ -637,6 +637,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "camera" => Some(crate::native_std::camera::init()),
         "bluetooth" => Some(crate::native_std::bluetooth::init()),
         "serial" => Some(crate::native_std::serial::init()),
+        "embedded" => Some(crate::native_std::embedded::init()),
         _ => None,
     }?;
 

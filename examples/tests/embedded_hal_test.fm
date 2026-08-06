@@ -1,0 +1,51 @@
+import std.embedded
+
+@Test
+fn test_embedded_gpio() {
+    print("[TEST] Verifying GPIO capability object...")
+    let led = embedded.pin(13)
+    led.mode("Output")
+    led.high().assert_eq(true)
+    led.read().assert_eq(true)
+    led.low().assert_eq(true)
+    led.read().assert_eq(false)
+    let toggled = led.toggle()
+    toggled.assert_eq(true)
+}
+
+@Test
+fn test_embedded_adc() {
+    print("[TEST] Verifying ADC analog capability...")
+    let adc = embedded.analog(0)
+    let raw = adc.read()
+    print($"Raw ADC reading: {raw}")
+    let volt = adc.readVoltage()
+    print($"ADC Voltage: {volt}V")
+}
+
+@Test
+fn test_embedded_actuators() {
+    print("[TEST] Verifying Actuator and Robotics drivers...")
+    let s = embedded.servo(5)
+    s.angle(90).assert_eq(true)
+    s.stop().assert_eq(true)
+
+    let m = embedded.motor(9, 7, 8)
+    m.speed(75.5).assert_eq(true)
+    m.forward().assert_eq(true)
+    m.stop().assert_eq(true)
+}
+
+@Test
+fn test_embedded_system_hardware() {
+    print("[TEST] Verifying System and Non-Volatile Memory...")
+    let b = embedded.board
+    print($"Target Board Name: {b.name}")
+    print($"CPU Specification: {b.cpu}")
+    print($"Architecture: {b.architecture}")
+    print($"System Memory: {b.memory}")
+    
+    embedded.flash.write(0x20, 999).assert_eq(true)
+    let read_val = embedded.flash.read(0x20)
+    read_val.assert_eq(999)
+}

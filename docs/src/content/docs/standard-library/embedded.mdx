@@ -1,0 +1,191 @@
+---
+title: Embedded Ecosystem (std.embedded)
+description: The complete platform-independent hardware runtime and hardware abstraction layer (HAL) for ARM, AVR, ESP32, STM32, RP2040, and Robotics in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+import FlameSimulator from '../../../components/FlameSimulator.astro';
+
+Flame's embedded hardware ecosystem (`std.embedded`) represents a paradigm shift in firmware engineering. Unlike traditional C++ Arduino libraries or raw microcontroller registers, Flame delivers a **platform-independent hardware abstraction layer (HAL)** backed by Rust's industry-standard `embedded-hal 1.0` ecosystem.
+
+Write **one hardware program**, and compile without modification to:
+- **ARM Cortex-M & STM32** (`stm32-hal`)
+- **Espressif ESP32 & ESP8266** (`esp-hal` / `esp-idf`)
+- **Raspberry Pi RP2040 & Linux GPIO** (`rp2040-hal`, `rppal`)
+- **Atmel AVR & Arduino Uno/Mega** (`arduino-hal`, `avr-hal`)
+
+---
+
+## ⚡ Try Live: Interactive Virtual Hardware Workstation
+
+Test out Flame's hardware syntax directly in your browser using our virtual microcontroller simulation lab. Type in the code editor to see **Flame Intellisense autocompletion** in action, then click **Execute Hardware Script** to watch the virtual OLED framebuffer, hobby servo arm, and DC motor H-bridge respond in real time!
+
+<FlameSimulator />
+
+---
+
+## Core Architecture & Design Principles
+
+Flame's embedded architecture is governed by five fundamental engineering rules:
+
+1. **Everything is a Capability Object**: No unsafe global functions like `digitalWrite(13, HIGH)`. Instead, hardware pins and peripherals are constructed as independent capability objects with strong methods: `let led = embedded.pin(13)`.
+2. **Resource Ownership**: Pins and bus lines cannot be accidentally double-allocated. Once `pin(13)` is constructed, ownership rules guard against conflicting directional modes.
+3. **Platform-Independent Signatures**: Calling `.angle(120)` on a servo works identical across AVR hardware PWM timers and Linux userland pigpio drivers.
+4. **Clean Scope & Zero Boilerplate**: Write script execution logic directly without mandatory C-style `void setup()` and `void loop()` ceremonies.
+5. **No Redundancy**: Traditional computer networking (`WiFi`, `Ethernet`, `MQTT`, `HTTP`) lives natively in Flame's general networking standard library rather than polluting the bare-metal microcontroller module.
+
+---
+
+## Digital GPIO & Analog ADCs
+
+### GPIO Capability Pin (`embedded.pin`)
+Digital pins govern logical state signals (3.3V / 5V vs 0.0V).
+
+```flame
+import std.embedded
+
+let led = embedded.pin(13)
+let sensor_pin = embedded.pin(2)
+
+// Configure bidirectional mode ("Output" or "Input")
+led.mode("Output")
+sensor_pin.mode("Input")
+
+// Assert digital logic levels
+led.high()
+led.low()
+led.toggle()
+
+// Read logic level as integer boolean (1 or 0)
+let state = sensor_pin.read()
+println($"Pin 2 level is: {state}")
+```
+
+### Analog-to-Digital Converter (`embedded.analog`)
+Read continuous environmental sensor voltages with 12-bit binary conversion resolutions:
+
+```flame
+import std.embedded
+
+let pot = embedded.analog(0)
+
+// Sample raw ADC binary word (0 - 4095 on 12-bit DACs)
+let raw = pot.read()
+
+// Read calibrated voltage directly
+let voltage = pot.readVoltage()
+
+// Sample ratio as 0.0% to 100.0%
+let percent = pot.readPercent()
+println($"Potentiometer dial at {percent}% ({voltage}V)")
+```
+
+---
+
+## Actuators & Robotics Control
+
+### Hobby Servo Motors (`embedded.servo`)
+Control precise robotic joint rotations via pulse-width horn signaling:
+
+```flame
+import std.embedded
+
+let arm = embedded.servo(5)
+
+// Set absolute target rotation angle in degrees (0 - 180)
+arm.angle(90)
+
+// Smoothly sweep angle
+arm.rotate(135)
+```
+
+### H-Bridge DC Motor Driver (`embedded.motor`)
+Drive standard dual-channel DC motors and robotic wheels using Direction, Brake, and PWM speed pins:
+
+```flame
+import std.embedded
+
+// Define H-Bridge Pin Mapping: (PWM_PIN, DIR_PIN_A, DIR_PIN_B)
+let left_wheel = embedded.motor(9, 7, 8)
+
+// Set directional polarization
+left_wheel.forward()
+
+// Set throttle output as percentage of full system bus voltage
+left_wheel.speed(75.5)
+
+// Coast or electro-dynamically brake motor shaft to halt
+left_wheel.stop()
+```
+
+---
+
+## Buses & Displays
+
+### I2C / SPI OLED Framebuffer (`embedded.display`)
+Directly render geometric glyphs and monitoring dashboards onto SPI/I2C graphic matrices (SSD1306, SH1106, TFT displays):
+
+```flame
+import std.embedded
+
+let oled = embedded.display
+oled.clear()
+oled.text("Flame OS Telemetry")
+oled.text("Battery: 99.4%")
+```
+
+### Synchronous I2C & SPI Bus Transactions
+Transact directly with custom registers over 2-wire (`I2C`) or 4-wire (`SPI`) protocols:
+
+```flame
+import std.embedded
+
+let bus = embedded.i2c(0x68) // Target MPU-6050 Accelerometer
+bus.write([0x6B, 0x00])      // Wake device from sleeping low-power register
+
+let spi_dac = embedded.spi()
+spi_dac.transfer([0x01, 0xFF])
+```
+
+---
+
+## System Specs & Persistent Storage
+
+Query active target platform architecture, monitor watchdog timeouts, and save configurations across reboots in non-volatile EEPROM/Flash:
+
+```flame
+import std.embedded
+
+// Inspect system processor brand and clock architecture
+let specs = embedded.board
+println($"Running on Architecture: {specs.arch} with {specs.memory} bytes RAM")
+
+// Store persistent calibration constants in Flash/EEPROM memory
+let flash = embedded.flash
+flash.write(0x1000, 42)
+let saved_val = flash.read(0x1000)
+
+// Feed Watchdog timer to prevent automated system reset
+let wdt = embedded.watchdog
+wdt.feed()
+```
+
+---
+
+## Complete API Reference
+
+| Constructor / Method | Capability Object | Primary Methods & Properties |
+| :--- | :--- | :--- |
+| `embedded.pin(num: Int)` | **GPIO Pin** | `.mode("Input"/"Output")`, `.high()`, `.low()`, `.toggle()`, `.read()` |
+| `embedded.analog(pin: Int)` | **ADC Channel** | `.read()`, `.readVoltage()`, `.readPercent()` |
+| `embedded.pwm(pin: Int)` | **PWM Driver** | `.write(duty: Float)`, `.enable()`, `.disable()` |
+| `embedded.servo(pin: Int)` | **Servo Actuator**| `.angle(deg: Int)`, `.rotate(deg: Int)`, `.stop()` |
+| `embedded.motor(pwm, d1, d2)` | **DC Motor Driver**| `.forward()`, `.reverse()`, `.speed(pct: Float)`, `.stop()` |
+| `embedded.i2c(addr: Int)` | **I2C Slave Bus** | `.write(bytes: Array)`, `.scan()` |
+| `embedded.spi()` | **SPI Master Bus**| `.transfer(bytes: Array)` |
+| `embedded.can(baud: Int)` | **CAN Bus Network**| `.send(frame: Formula)` |
+| `embedded.display` | **OLED / TFT Screen**| `.clear()`, `.text(content: String)` |
+| `embedded.diffDrive(m1, m2)`| **Rover Kinematics**| `.forward()`, `.rotate(deg: Int)`, `.stop()` |
+| `embedded.board` | **System Metadata** | Properties: `.arch`, `.cpu`, `.os`, `.memory` |
+| `embedded.flash` | **Non-Volatile ROM** | `.write(addr: Int, val: Int)`, `.read(addr: Int)` |
+| `embedded.watchdog` | **Watchdog Timer** | `.feed()` |

@@ -105,6 +105,7 @@ export default defineConfig({
 						{ label: 'Hardware & Desktop Automation', slug: 'standard-library/hardware-and-automation' },
 						{ label: 'Threading & Math (std.thread, std.math, std.time)', slug: 'standard-library/threading-and-time' },
 						{ label: 'Platform Devices (Bluetooth, Camera, HID, Serial)', slug: 'standard-library/platform-devices' },
+						{ label: 'Embedded Ecosystem (std.embedded)', slug: 'standard-library/embedded' },
 					],
 				},
 			],

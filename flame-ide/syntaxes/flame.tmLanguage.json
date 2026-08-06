@@ -179,25 +179,33 @@
       "patterns": [
         {
           "name": "string.quoted.double.interpolated.flame",
-          "begin": "\\$\"",
+          "begin": "(\\$)(\")",
+          "beginCaptures": {
+            "1": { "name": "keyword.other.interpolation.begin.flame" },
+            "2": { "name": "punctuation.definition.string.begin.flame" }
+          },
           "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.flame" }
+          },
           "patterns": [
             {
               "name": "constant.character.escape.flame",
               "match": "\\\\."
             },
             {
-              "name": "meta.interpolation.flame",
+              "name": "meta.template.expression.flame meta.embedded.line.flame",
+              "contentName": "source.flame.embedded",
               "begin": "\\{",
               "beginCaptures": {
                 "0": {
-                  "name": "punctuation.definition.template-expression.begin.flame"
+                  "name": "punctuation.definition.template-expression.begin.flame punctuation.section.embedded.begin.flame"
                 }
               },
               "end": "\\}",
               "endCaptures": {
                 "0": {
-                  "name": "punctuation.definition.template-expression.end.flame"
+                  "name": "punctuation.definition.template-expression.end.flame punctuation.section.embedded.end.flame"
                 }
               },
               "patterns": [
@@ -259,11 +267,15 @@
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
         },
         {
+          "name": "variable.other.property.flame",
+          "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
           "name": "variable.other.macro.flame",
           "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*"
         },
         {
-          "name": "variable.other.flame",
+          "name": "variable.other.readwrite.flame",
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
         }
       ]

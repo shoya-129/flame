@@ -2711,26 +2711,56 @@ impl Runner {
                                     }
                                     let child_env =
                                         Arc::new(Mutex::new(Env::new_child(env.clone())));
+                                    let is_self_method = params.first().map_or(false, |p| {
+                                        p.name == "self"
+                                            || p.name == "&self"
+                                            || p.name == "&mut self"
+                                            || p.type_name == "Self"
+                                            || p.type_name == "&Self"
+                                            || p.type_name == "&mut Self"
+                                    });
                                     let mut self_val = inner_val.clone();
                                     if let Expr::Identifier(var_name, _) = &**inner_expr {
                                         self_val = Value::RefPath(
                                             crate::vm::RefPath::Var(var_name.clone(), env.clone()),
                                             true,
                                         );
+                                    } else if let Expr::Dot(owner_expr, field_name, _) = &**inner_expr {
+                                        if let Expr::Identifier(owner_name, _) = &**owner_expr {
+                                            self_val = Value::RefPath(
+                                                crate::vm::RefPath::Field {
+                                                    owner: owner_name.clone(),
+                                                    member: field_name.clone(),
+                                                    env: env.clone(),
+                                                },
+                                                true,
+                                            );
+                                        }
                                     }
-                                    child_env.lock().unwrap().define(
-                                        "self".to_string(),
-                                        self_val,
-                                        true,
-                                    );
-                                    for (i, p) in params.iter().enumerate() {
-                                        if i < args.len() {
+                                    if is_self_method {
+                                        let p0 = &params[0];
+                                        self.bind_param(child_env.clone(), p0, self_val.clone());
+                                    } else {
+                                        child_env.lock().unwrap().define(
+                                            "self".to_string(),
+                                            self_val,
+                                            true,
+                                        );
+                                    }
+                                    let param_offset = if is_self_method { 1 } else { 0 };
+                                    for (i, p) in params.iter().enumerate().skip(param_offset) {
+                                        let arg_idx = i - param_offset;
+                                        if arg_idx < args.len() {
                                             let arg_val =
-                                                self.eval_expr(&args[i].1, env.clone())?;
-                                            if let Expr::Identifier(src_name, _) = &args[i].1 {
+                                                self.eval_expr(&args[arg_idx].1, env.clone())?;
+                                            if let Expr::Identifier(src_name, _) = &args[arg_idx].1 {
                                                 env.lock().unwrap().move_var(src_name);
                                             }
                                             self.bind_param(child_env.clone(), p, arg_val);
+                                        } else if let Some(def_expr) = &p.default_val {
+                                            if let Ok(val) = self.eval_expr(def_expr, child_env.clone()) {
+                                                self.bind_param(child_env.clone(), p, val);
+                                            }
                                         }
                                     }
                                     let mut last_val = Value::Nil;
@@ -2746,6 +2776,9 @@ impl Runner {
                                 }
                                 if let Value::NativeCallback(cb) = val {
                                     let mut evaled_args = Vec::new();
+                                    if !map.contains_key("__module__") {
+                                        evaled_args.push(inner_val.clone());
+                                    }
                                     for (_, arg_expr) in args {
                                         let arg_v = self.eval_expr(arg_expr, env.clone())?;
                                         evaled_args.push(arg_v);
@@ -2852,7 +2885,25 @@ impl Runner {
                                         || p.type_name == "&mut Self"
                                 });
                                 if is_self_method {
-                                    evaled_args.push(receiver_val.clone());
+                                    let mut self_val = receiver_val.clone();
+                                    if let Expr::Identifier(var_name, _) = &**inner_expr {
+                                        self_val = Value::RefPath(
+                                            crate::vm::RefPath::Var(var_name.clone(), env.clone()),
+                                            true,
+                                        );
+                                    } else if let Expr::Dot(owner_expr, field_name, _) = &**inner_expr {
+                                        if let Expr::Identifier(owner_name, _) = &**owner_expr {
+                                            self_val = Value::RefPath(
+                                                crate::vm::RefPath::Field {
+                                                    owner: owner_name.clone(),
+                                                    member: field_name.clone(),
+                                                    env: env.clone(),
+                                                },
+                                                true,
+                                            );
+                                        }
+                                    }
+                                    evaled_args.push(self_val);
                                 }
                                 for (_, arg_expr) in args {
                                     let arg_v = self.eval_expr(arg_expr, env.clone())?;
@@ -3379,10 +3430,13 @@ impl Runner {
 
     fn bind_param(&self, child_env: Arc<Mutex<Env>>, param: &Param, arg_val: Value) {
         // Store RefPath arguments directly; never re-wrap as RefPath::Var(param.name).
-        child_env
-            .lock()
-            .unwrap()
-            .define(param.name.clone(), arg_val, param.is_mut);
+        let mut env = child_env.lock().unwrap();
+        let name = param.name.clone();
+        let is_mut = param.is_mut || name.contains("mut");
+        env.define(name.clone(), arg_val.clone(), is_mut);
+        if name == "&self" || name == "&mut self" || name == "mut self" {
+            env.define("self".to_string(), arg_val, is_mut);
+        }
     }
 
     fn load_rust_file_methods(&self, rs_code: &str, env: Arc<Mutex<Env>>) {

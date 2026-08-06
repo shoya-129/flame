@@ -4,6 +4,32 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.1.7] - 2026-08-06 (Codename: *Flame Spark*)
+
+### 🤖 Native Embedded Systems Runtime & HAL (`std.embedded`)
+- **Industry-Standard Rust HAL Architecture**: Transformed Flame's embedded library from a simulated serial messaging prototype into a legitimate hardware abstraction layer (**HAL**) backed by Rust's standard `embedded-hal 1.0`, `embedded-io`, and `embedded-storage` trait architectures.
+- **Capability-Based Resource Ownership**: Eliminated unsafe, globally exposed procedures (like Arduino's C-style `digitalWrite`) in favor of exclusive capability objects with strongly typed methods:
+  - **Digital GPIO & Analog ADCs**: Construct pin capabilities (`embedded.pin(13)`) with directional mode setting, logic toggling (`.high()`, `.low()`, `.toggle()`), and calibrated 12-bit ADC voltage sampling (`embedded.analog(0).readVoltage()`).
+  - **Actuators & Robotics Kinematics**: Precision hobby servo horn angle sweeping (`embedded.servo(5).angle(120)`), dual-channel H-bridge DC motor throttling (`embedded.motor(9, 7, 8).speed(85.0)`), and two-wheel rover differential drive kinematics (`embedded.diffDrive(m1, m2)`).
+  - **Hardware Buses & Displays**: Direct synchronous communications over `I2C`, `SPI`, and automotive `CAN` buses, along with real-time matrix framebuffer rendering for OLED/TFT displays (`embedded.display.text("Telemetry Active")`).
+  - **Persistent Memory & Watchdogs**: Store non-volatile configuration words in Flash and EEPROM across reboots, and feed hardware Watchdog countdown timers (`embedded.watchdog.feed()`) to guard against mission critical deadlocks.
+- **Cross-Compilation Feature Gates**: Configured conditional compiler workspace target features across `avr`, `esp32`, `stm32`, and `rp2040` architectures, paired with direct Linux userland memory-mapped GPIO drivers (`rppal`) for Single-Board Computers (Raspberry Pi / BeagleBone).
+- **Real Host Hardware Discovery**: Integrated `sysinfo` within `embedded.board` to dynamically probe and expose genuine host CPU core brands, clock architecture, memory statistics, and kernel specifications.
+- **Zero Boilerplate Firmware**: Removed traditional mandatory C++ micro-controller lifecycles (`void setup()` and `void loop()`), empowering engineers to write concise, script-level hardware logic from line one.
+
+### 🎨 IDE Syntax Highlighting & Developer Experience (`flame-ide`)
+- **String Interpolation Embedded Scoping**: Resolved a visual limitation in the VS Code syntax extension where expressions within interpolated string templates (e.g., `$"System RAM: {board.memory}"`) received monolithic blue string coloring. Injected authoritative TextMate embedded source language boundaries (`contentName: source.flame.embedded` and `meta.embedded.line.flame`), enabling expressions within braces `{...}` to render in vivid code colors without string token bleed.
+- **Dotted Property Highlighting**: Added dedicated `variable.other.property.flame` TextMate grammatical matchers to clearly highlight accessed attributes and structural properties in bright editor accents.
+- **Exhaustive Embedded Intellisense Hovers**: Upgraded the internal language server and documentation engine (`std_docs.rs`) to display rich Markdown method prototypes, hardware usage guidelines, and parameter summaries when hovering over any of the 22 embedded drivers and constructors.
+
+### 📚 Interactive Web Hardware Simulation Lab & Documentation
+- **Live Virtual Circuit Workstation (`FlameSimulator.astro`)**: Designed and launched a stunning, high-performance virtual hardware simulation lab directly within the Flame Starlight documentation portal.
+- **Intention-Driven Monaco Editor**: Integrated a responsive code editor widget complete with line numbering, syntax coloring, and an interactive **Flame Intellisense Autocompletion Matrix** offering instant suggestions for keywords and all `std.embedded` hardware capabilities.
+- **Animated Hardware Telemetry Canvas**: Constructed an interactive visualization bench featuring real-time RGB glowing LED logic indicators, rotating servo motor horns displaying exact degree angles, spinning DC motor rotors with PWM duty percentage readouts, a graphic I2C/SPI OLED display screen framebuffer, and a live Logic Analyzer oscilloscope waveform trace.
+- **Comprehensive Starlight Guide**: Published the complete **Embedded Ecosystem (std.embedded)** engineering tutorial and reference manual ([embedded.mdx](docs/src/content/docs/standard-library/embedded.mdx)), showcasing best practices in modern firmware and robotics development.
+
+---
+
 ## [0.1.6] - 2026-08-05 (Codename: *Flame Spark*)
 
 ### 🤖 Explicit Systems Syntax & Nil-Safety Foundations

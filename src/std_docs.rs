@@ -208,6 +208,24 @@ The `serial` module provides RS-232 serial port communication (useful for Arduin
 let port = serial.open(\"COM3\", 9600)
 ```
 "),
+        "embedded" | "std.embedded" => Some("# Module `embedded`
+
+The `std.embedded` ecosystem provides modern capability-based objects for GPIO hardware, buses, actuators, sensors, and robotics.
+
+## Submodules
+- **`io`**: `pin()`, `analog()`, `pwm()`, `dac()`
+- **`comm`**: `uart()`, `spi()`, `i2c()`, `can()`
+- **`devices`**: `servo()`, `motor()`, `stepper()`, `encoder()`, `sensor()`, `display()`
+- **`robotics`**: `diffDrive()`, `pid()`, `imu()`
+- **`system`**: `board`, `watchdog()`, `flash()`, `eeprom()`
+
+**Example**:
+```flame
+import std.embedded
+let led = embedded.pin(13)
+led.high()
+```
+"),
         _ => None,
     }
 }
@@ -382,6 +400,32 @@ let path = env.get(\"PATH\")
 let port = serial.open(\"COM3\", 9600)
 ```",
         ),
+        ("embedded" | "std.embedded", "pin") => Some(
+            "Creates an exclusive digital GPIO Pin capability object backed by native `embedded-hal` drivers.\n\n**Methods**:\n- `.mode(dir)`: Set directional mode (`\"Input\"` or `\"Output\"`).\n- `.high()`: Assert voltage HIGH (3.3V / 5V).\n- `.low()`: Clear voltage LOW (0.0V).\n- `.toggle()`: Flip the active digital logic state.\n- `.read()`: Read active logic pin level."
+        ),
+        ("embedded" | "std.embedded", "analog") => Some(
+            "Creates an ADC (Analog-to-Digital Converter) capability object.\n\n**Methods**:\n- `.read()`: Sample raw 12-bit binary representation.\n- `.readVoltage()`: Convert raw reading to calibrated voltage float.\n- `.readPercent()`: Sample analog input as 0.0 - 100.0% ratio."
+        ),
+        ("embedded" | "std.embedded", "pwm") => Some("Creates a Pulse-Width Modulation (PWM) frequency output driver.\n\n**Methods**:\n- `.write(duty)`: Set duty cycle value.\n- `.enable()` / `.disable()`: Toggle hardware timer clock signal."),
+        ("embedded" | "std.embedded", "dac") => Some("Creates a Digital-to-Analog Converter (DAC) object for accurate analog voltage generation.\n\n**Methods**:\n- `.write(voltage)`: Emit specified steady DC voltage onto pin."),
+        ("embedded" | "std.embedded", "uart") => Some("Creates an asynchronous UART / RS-232 / RS-485 serial communication bus driver.\n\n**Methods**:\n- `.println(str)`: Transmit line over TX wire.\n- `.readLine()`: Receive line from RX buffer."),
+        ("embedded" | "std.embedded", "i2c") => Some("Creates an I2C slave transaction driver object for two-wire synchronized bus communications.\n\n**Methods**:\n- `.write(data)`: Transact data stream to specified 7-bit / 10-bit slave address.\n- `.scan()`: Enumerate active devices on SDA/SCL lines."),
+        ("embedded" | "std.embedded", "spi") => Some("Creates a high-speed synchronous SPI bus transaction driver.\n\n**Methods**:\n- `.transfer(bytes)`: Exposes synchronous duplex MOSI/MISO frame byte transfer."),
+        ("embedded" | "std.embedded", "can") => Some("Creates a CAN Bus network driver for automotive, industrial, and drone communication networks.\n\n**Methods**:\n- `.send(frame)`: Broadcast standard arbitration frame across differential lines."),
+        ("embedded" | "std.embedded", "servo") => Some("Creates an angle-controlled PWM actuator object for precision hobby servos.\n\n**Methods**:\n- `.angle(deg)`: Rotate horn directly to target angle in degrees.\n- `.rotate(deg)`: Sweep angle slowly.\n- `.stop()`: De-energize signal servo motor."),
+        ("embedded" | "std.embedded", "motor") => Some("Creates an H-bridge DC motor actuator capability object.\n\n**Methods**:\n- `.forward()` / `.reverse()`: Set directional rotation.\n- `.speed(pct)`: Throttle motor power PWM.\n- `.stop()`: Coast or brake motor shaft."),
+        ("embedded" | "std.embedded", "stepper") => Some("Creates a precision stepper motor controller via Step and Direction pins.\n\n**Methods**:\n- `.step(count)`: Emit precise step pulse train.\n- `.rotate(deg)`: Calculate pulses and rotate shaft by desired angle."),
+        ("embedded" | "std.embedded", "encoder") => Some("Creates a hardware quadrature rotary encoder interface.\n\n**Methods**:\n- `.reset()`: Reset internal directional counter integer to zero."),
+        ("embedded" | "std.embedded", "sensor") => Some("Creates an abstract IoT sensor interface (e.g. BME280, MPU6050, DHT22) returning live environmental readings.\n\n**Methods**:\n- `.read()`: Poll sensor registers over I2C/SPI and update `.temperature`, `.humidity`, and `.pressure` properties."),
+        ("embedded" | "std.embedded", "display") => Some("Creates an SPI/I2C framebuffer graphic display controller for OLED and TFT screens.\n\n**Methods**:\n- `.clear()`: Wipe screen buffer to black.\n- `.text(str)`: Draw vector glyph text directly to buffer."),
+        ("embedded" | "std.embedded", "diffDrive") => Some("Creates a two-wheel differential drive kinematics controller for autonomous rovers and robots.\n\n**Methods**:\n- `.forward()`: Energize both wheel motors in tandem.\n- `.rotate(deg)`: Perform opposite-axle pivoting turn.\n- `.stop()`: Halt all drivetrain actuators."),
+        ("embedded" | "std.embedded", "pid") => Some("Creates a Proportional-Integral-Derivative (PID) closed-loop algorithmic controller for robotics.\n\n**Methods**:\n- `.update(sample)`: Compute feedback error against `.target` and return corrective actuation compensation ratio."),
+        ("embedded" | "std.embedded", "imu") => Some("Creates a Inertial Measurement Unit (IMU) sensor reading real-time acceleration vectors (`.acceleration.x/y/z`) and compass orientation (`.heading`)."),
+        ("embedded" | "std.embedded", "board") => Some("Inspects host and microcontroller system specs, yielding real detected CPU architecture, processor brand, OS kernel, and memory totals."),
+        ("embedded" | "std.embedded", "watchdog") => Some("Hardware Watchdog Timer interface.\n\n**Methods**:\n- `.feed()`: Reset countdown timer to prevent automated system hard-reboot."),
+        ("embedded" | "std.embedded", "flash") => Some("Non-volatile Flash memory storage controller.\n\n**Methods**:\n- `.write(addr, val)`: Store word persistent across reboots.\n- `.read(addr)`: Fetch value at byte offset."),
+        ("embedded" | "std.embedded", "eeprom") => Some("EEPROM byte-level persistent storage driver.\n\n**Methods**:\n- `.write(addr, val)`: Program EEPROM cell."),
+        ("embedded" | "std.embedded", "detect_ports") => Some("Enumerates physical USB hardware microcontrollers and standard COM serial interfaces attached to the system for firmware upload and debugging."),
         _ => None,
     }
 }

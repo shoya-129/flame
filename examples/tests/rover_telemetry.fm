@@ -1,0 +1,71 @@
+struct NavigationTelemetry {
+    obstacle_distance_cm: Int?,
+    battery_percentage: Float?,
+    is_gps_locked: Bool
+}
+
+struct AutonomousRover {
+    identifier: String,
+    current_telemetry: NavigationTelemetry?,
+    target_speed_rpm: Int
+}
+
+impl AutonomousRover {
+    fn new(id: String) -> AutonomousRover {
+        return AutonomousRover {
+            identifier: id,
+            current_telemetry: nil,
+            target_speed_rpm: 0
+        }
+    }
+
+    fn apply_telemetry(&mut self, data: NavigationTelemetry?) {
+        self.current_telemetry = data
+    }
+
+    fn compute_next_action(&mut self) -> Bool {
+        // 1. Evaluate critical sensors with resilient fallbacks via ?: and ?.
+        let distance = self.current_telemetry?.obstacle_distance_cm ?: 999
+        let battery = self.current_telemetry?.battery_percentage ?: 100.0
+        let gps_ok = self.current_telemetry?.is_gps_locked ?: false
+
+        // 2. Perform readable keyword logical assertions (and / or)
+        if not gps_ok or distance < 30 {
+            print($"[EMERGENCY STOP] {self.identifier}: Obstacle at {distance} cm or lost GPS lock.")
+            self.target_speed_rpm = 0
+            return false
+        }
+
+        if battery < 15.0 {
+            print($"[CRITICAL] {self.identifier}: Battery low ({battery}%). Entering power preservation mode.")
+            self.target_speed_rpm = 300
+            return true
+        }
+
+        // Normal driving operation
+        self.target_speed_rpm = 2500
+        print($"[NORMAL] {self.identifier}: Cruising at {self.target_speed_rpm} RPM (Obstacle check: {distance} cm clear).")
+        return true
+    }
+}
+
+@Test
+fn test_autonomous_rover_telemetry() {
+    // System Simulation
+    let mut rover = AutonomousRover.new("Rover-Alpha")
+
+    // Phase 1: Boot without telemetry connection
+    let action1 = rover.compute_next_action() // Safety interlock triggers due to fallback GPS lock being false
+    action1.assert_eq(false)
+    rover.target_speed_rpm.assert_eq(0)
+
+    // Phase 2: Valid telemetry streaming
+    rover.apply_telemetry(NavigationTelemetry {
+        obstacle_distance_cm: 180,
+        battery_percentage: 84.5,
+        is_gps_locked: true
+    })
+    let action2 = rover.compute_next_action() // Drives normally at 2500 RPM!
+    action2.assert_eq(true)
+    rover.target_speed_rpm.assert_eq(2500)
+}

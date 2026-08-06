@@ -2032,6 +2032,7 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
         "camera".to_string(),
         "bluetooth".to_string(),
         "serial".to_string(),
+        "embedded".to_string(),
     ]
 }
 

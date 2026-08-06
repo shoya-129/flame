@@ -11,6 +11,7 @@ pub mod hid;
 pub mod serial;
 pub mod bluetooth;
 pub mod camera;
+pub mod embedded;
 
 
 

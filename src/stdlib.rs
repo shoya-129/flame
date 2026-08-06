@@ -107,6 +107,7 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.camera" => Some(crate::native_std::camera::init()),
         "std.bluetooth" => Some(crate::native_std::bluetooth::init()),
         "std.serial" => Some(crate::native_std::serial::init()),
+        "std.embedded" => Some(crate::native_std::embedded::init()),
         _ => None,
     };
 

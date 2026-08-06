@@ -1,6 +1,6 @@
 [package]
 name = "flamelang"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 description = "A statically typed, fast, and modern programming language built in Rust."
 license = "ISC"
@@ -14,6 +14,12 @@ exclude = [
     "scripts/",
     "flame-vscode-extension/"
 ]
+
+[features]
+avr = []
+esp32 = []
+rp2040 = []
+stm32 = []
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -33,6 +39,12 @@ zip = "8.6.0"
 syn = { version = "3.0.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
+embedded-hal = "1.0"
+embedded-io = "0.7.1"
+embedded-storage = "0.3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = "0.22"
 
 [profile.dev]
 opt-level = 0
