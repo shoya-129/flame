@@ -127,6 +127,7 @@ pub fn list_plugins() -> Vec<PluginSpec> {
         .collect()
 }
 
+#[cfg(feature = "cli")]
 pub fn add_package(args: &[String]) {
     if args.is_empty() {
         println!("\x1b[1;31merror:\x1b[0m please specify package name to add.");
@@ -320,6 +321,7 @@ pub fn add_package(args: &[String]) {
     );
 }
 
+#[cfg(feature = "cli")]
 pub fn remove_package(pkg_name: &str) {
     let toml_path = Path::new("flame.toml");
     if toml_path.exists() {
@@ -339,6 +341,7 @@ pub fn remove_package(pkg_name: &str) {
     println!("\x1b[1;32m     Removed\x1b[0m package '{}'", pkg_name);
 }
 
+#[cfg(feature = "cli")]
 pub fn ensure_dependencies_installed(is_release: bool) {
     // Compile std_bridge directly since it uses #[flame_export] now
     let std_bridge_path = Path::new("flame-stdlib").join("native").join("std_bridge");

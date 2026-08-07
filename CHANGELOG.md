@@ -4,6 +4,14 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.1] - 2026-08-07 (Codename: *Second Spark*)
+
+### 🐛 Bug Fixes & AOT Compiler Enhancements
+- **AOT Compiler Reqwest Linking Error (`E0433`)**: Fixed a critical compilation failure where generating an AOT binary (`flame build`) would fail with `use of unresolved module or unlinked crate reqwest`. Because AOT binaries rely on a stripped-down `flamelang` core (`default-features = false`), the compiler was still incorrectly attempting to compile the CLI package manager (`src/package_manager.rs`), which required the `reqwest` HTTP client.
+- **CLI Feature Separation**: Introduced a dedicated `cli` feature flag in `Cargo.toml`. The `package_manager` and `aot_compiler` modules, along with their heavy dependencies (`reqwest`, `zip`), are now strictly isolated behind `#[cfg(feature = "cli")]`. This guarantees that AOT user binaries are incredibly lightweight and never accidentally compile the CLI toolchain internals.
+
+---
+
 ## [0.2.0] - 2026-08-07 (Codename: *Second Spark*)
 
 ### 📦 Native Package Management & Git Resolution

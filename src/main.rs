@@ -1,3 +1,4 @@
+#![cfg(feature = "cli")]
 pub mod aot_compiler;
 mod diagnostics;
 pub mod embedded;
