@@ -8,6 +8,7 @@ pub fn build_aot_project(
     profile: &str,
     native_deps: &[(String, String)],
     force_local: bool,
+    is_pkg: bool,
 ) {
     println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
@@ -15,7 +16,11 @@ pub fn build_aot_project(
     let _ = fs::create_dir_all(&build_cache);
     let src_dir = build_cache.join("src");
     let _ = fs::create_dir_all(&src_dir);
-    let _ = fs::write(src_dir.join("main.rs"), "fn main() {}");
+    if !is_pkg {
+        let _ = fs::write(src_dir.join("main.rs"), "fn main() {}");
+    } else {
+        let _ = fs::write(src_dir.join("lib.rs"), "");
+    }
 
     let current_exe = std::env::current_exe().unwrap();
     let mut is_local_dev = false;
@@ -51,13 +56,53 @@ pub fn build_aot_project(
         flame_source_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     }
 
+    // Feature extraction based on user imports
+    let mut features = std::collections::HashSet::new();
+    let src_scan_dir = std::env::current_dir().unwrap().join("src");
+    
+    fn scan_imports(dir: &Path, features: &mut std::collections::HashSet<String>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    scan_imports(&path, features);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("fm") {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        for line in content.lines() {
+                            let line = line.trim();
+                            if line.starts_with("import std.net.http") {
+                                features.insert("\"http\"".to_string());
+                            }
+                            if line.starts_with("import std.net.ws") {
+                                features.insert("\"ws\"".to_string());
+                            }
+                            if line.starts_with("import std.net.mqtt") {
+                                features.insert("\"mqtt\"".to_string());
+                            }
+                            if line.starts_with("import std.net") {
+                                features.insert("\"net\"".to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    scan_imports(&src_scan_dir, &mut features);
+    let mut feature_list = features.into_iter().collect::<Vec<_>>().join(", ");
+    if !feature_list.is_empty() {
+        feature_list = format!(", features = [{}]", feature_list);
+    }
+
     let flame_dep = if is_local_dev {
         format!(
-            r#"flamelang = {{ path = "{}" }}"#,
-            flame_source_dir.to_string_lossy().replace("\\", "/")
+            r#"flamelang = {{ path = "{}", default-features = false{} }}"#,
+            flame_source_dir.to_string_lossy().replace("\\", "/"),
+            feature_list
         )
     } else {
-        format!(r#"flamelang = "{}""#, env!("CARGO_PKG_VERSION"))
+        format!(r#"flamelang = {{ version = "{}", default-features = false{} }}"#, env!("CARGO_PKG_VERSION"), feature_list)
     };
 
     let mut deps_str = String::new();
@@ -69,11 +114,17 @@ pub fn build_aot_project(
         }
     }
 
+    let lib_section = if is_pkg {
+        format!("\n[lib]\nname = \"{}\"\ncrate-type = [\"rlib\"]\n", pkg_name)
+    } else {
+        String::new()
+    };
+
     let cargo_toml = format!(
         r#"[package]
-name = "{pkg_name}"
+name = "{pkg_name}_aot"
 version = "0.1.0"
-edition = "2021"
+edition = "2021"{lib_section}
 
 [dependencies]
 tokio = {{ version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }}
@@ -92,6 +143,7 @@ codegen-units = 1
 panic = "abort"
 "#,
         pkg_name = pkg_name,
+        lib_section = lib_section,
         flame_dep = flame_dep,
         deps = deps_str
     );
@@ -533,6 +585,7 @@ panic = "abort"
 
     if let Ok(out) = output {
         if out.status.success() {
+            let compiled_exe_name = format!("{}_aot{}", pkg_name, std::env::consts::EXE_SUFFIX);
             let compiled_exe = build_cache
                 .join("target")
                 .join(if profile == "release" {
@@ -540,8 +593,11 @@ panic = "abort"
                 } else {
                     "debug"
                 })
-                .join(&exe_name);
-            let _ = fs::copy(&compiled_exe, &target_exe);
+                .join(&compiled_exe_name);
+            if let Err(e) = fs::copy(&compiled_exe, &target_exe) {
+                eprintln!("\x1b[1;31m     Error\x1b[0m failed to copy native executable: {}", e);
+                std::process::exit(1);
+            }
             println!("\x1b[1;32m     Finished\x1b[0m building native executable!");
         } else {
             eprintln!("\x1b[1;31m     Error\x1b[0m failed to build native executable.");

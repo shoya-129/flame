@@ -2,6 +2,141 @@
 
 pub fn get_std_module_doc(module: &str) -> Option<&'static str> {
     match module {
+        "net" | "std.net" => Some("# Module `net`
+
+The `net` module is a complete toolkit for networking, providing interfaces for TCP, UDP, HTTP, WebSockets, MQTT, DNS, URLs, and Network Interfaces.
+
+## Sub-Modules
+- **`std.net.tcp`**: TCP Sockets and Listeners.
+- **`std.net.udp`**: UDP Sockets.
+- **`std.net.http`**: HTTP Client for making requests.
+- **`std.net.ws`**: WebSocket Client.
+- **`std.net.mqtt`**: MQTT Client for publish/subscribe.
+- **`std.net.dns`**: DNS resolution and reverse lookups.
+- **`std.net.url`**: URL parsing and manipulation.
+- **`std.net.interface`**: Querying host network interfaces.
+
+**Example**:
+```flame
+import std.net.http
+
+let user = http.get(\"https://api.github.com/users/shoya-129\").json()
+```
+"),
+        "net.tcp" | "std.net.tcp" => Some("# Module `net.tcp`
+
+The `tcp` module provides `TcpListener` and `TcpSocket` for raw socket communication.
+
+## Types
+- **`TcpListener`**: A TCP socket server, listening for connections.
+- **`TcpSocket`**: A TCP stream between a local and a remote socket.
+- **`IpAddr`**: Parses an IP address.
+- **`SocketAddr`**: Represents a socket address (IP + Port).
+
+**Example**:
+```flame
+import std.net.tcp
+
+let listener = tcp.TcpListener.bind(\"0.0.0.0:3000\")
+for client in listener {
+    client.write(\"Hello\")
+}
+```
+"),
+        "net.udp" | "std.net.udp" => Some("# Module `net.udp`
+
+The `udp` module provides `UdpSocket` for connectionless UDP communication.
+
+## Types
+- **`UdpSocket`**: A UDP socket.
+
+**Example**:
+```flame
+import std.net.udp
+
+let udp = udp.UdpSocket.bind(\":9000\")
+udp.send(\"Hello\", \"192.168.0.10:9000\")
+let (msg, addr) = udp.recv()
+```
+"),
+        "net.http" | "std.net.http" => Some("# Module `net.http`
+
+The `http` module provides a powerful HTTP client.
+
+## Functions
+- **`get()`**: Performs an HTTP GET request.
+- **`post()`**: Performs an HTTP POST request.
+- **`put()`**: Performs an HTTP PUT request.
+- **`delete()`**: Performs an HTTP DELETE request.
+- **`patch()`**: Performs an HTTP PATCH request.
+- **`download()`**: Downloads a file to the local system.
+- **`upload()`**: Uploads a file.
+
+**Example**:
+```flame
+import std.net.http
+
+let response = http.get(\"https://api.github.com\")
+println(response.status)
+println(response.text())
+```
+"),
+        "net.ws" | "std.net.ws" => Some("# Module `net.ws`
+
+The `ws` module provides a WebSocket client.
+
+## Types
+- **`WebSocket`**: A WebSocket connection to a server.
+
+**Example**:
+```flame
+import std.net.ws
+
+let ws = ws.WebSocket.connect(\"ws://localhost:8080/ws\")
+ws.send(\"Move Forward\")
+let msg = ws.recv()
+```
+"),
+        "net.mqtt" | "std.net.mqtt" => Some("# Module `net.mqtt`
+
+The `mqtt` module provides an MQTT client.
+
+## Types
+- **`Mqtt`**: An MQTT client connection.
+
+**Example**:
+```flame
+import std.net.mqtt
+
+let client = mqtt.Mqtt.connect(\"mqtt://broker.local\")
+client.publish(\"robot/move\", \"forward\")
+client.subscribe(\"sensor/temp\") |msg| {
+    println(msg)
+}
+```
+"),
+        "net.dns" | "std.net.dns" => Some("# Module `net.dns`
+
+The `dns` module provides DNS resolution.
+
+## Functions
+- **`lookup()`**: Looks up an IP address for a hostname.
+- **`reverse()`**: Looks up a hostname for an IP address.
+"),
+        "net.url" | "std.net.url" => Some("# Module `net.url`
+
+The `url` module provides URL parsing.
+
+## Types
+- **`Url`**: Represents a parsed URL.
+"),
+        "net.interface" | "std.net.interface" => Some("# Module `net.interface`
+
+The `interface` module provides access to host network interfaces.
+
+## Functions
+- **`interfaces()`**: Returns a list of active network interfaces.
+"),
         "thread" | "std.thread" => Some("# Module `thread`
 
 The `thread` module allows you to spawn background threads and manage concurrent execution.

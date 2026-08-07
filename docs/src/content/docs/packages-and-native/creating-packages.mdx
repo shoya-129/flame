@@ -1,0 +1,149 @@
+---
+title: Creating Flame Packages
+description: A complete guide on how to create, configure, and test Flame packages, including bundling native Rust plugins and exporting annotations.
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+Creating a package in Flame allows you to bundle reusable Flame scripts, custom annotations, and even native Rust plugins into a single, distributable unit. When you distribute a Flame package (e.g., via GitHub), consumers can easily pull it into their projects and benefit from full IDE support and seamless native interop.
+
+---
+
+## 1. Package Configuration (`flame.toml`)
+
+To declare that your project is a package (rather than an executable application), set the `type` to `"pkg"` in your `flame.toml` file.
+
+```toml
+[project]
+name = "my_package"
+version = "0.1.0"
+type = "pkg"
+
+# Optional: define a local Rust plugin bundled with this package
+[plugins]
+native_core = "./native"
+```
+
+When `type = "pkg"`, running `flame build` will generate a standalone, self-contained package folder inside `target/<profile>/pkg/my_package` that is ready for distribution.
+
+---
+
+## 2. Standard Directory Structure
+
+A complete Flame package typically follows this directory structure:
+
+```text
+my_package/
+├── flame.toml
+├── src/
+│   └── main.fm           # Main entry point for the package
+├── native/               # (Optional) Local Rust plugin directory
+│   ├── Cargo.toml
+│   └── src/
+│       └── lib.rs
+└── test/                 # Test files
+    └── my_test.fm
+```
+
+---
+
+## 3. Exporting Functions and Annotations
+
+For consumers to use your package's features, you must explicitly `export` them in your Flame scripts. You can export functions, structs, enums, and even custom annotations.
+
+```flame
+// src/main.fm
+
+import native_core
+
+// Export a custom annotation
+export annotation MyAnnotation()
+
+// Export a struct
+export struct Config {
+    pub key: String
+}
+
+// Export a function that uses your local native plugin
+export fn process_data(config: Config) -> String {
+    // Calling the native plugin bundled inside your package
+    native_core.process(config.key)
+}
+```
+
+When a user imports your package, only the `export`ed symbols will be available in their environment.
+
+---
+
+## 4. Bundling Local Rust Plugins
+
+Flame makes it incredibly easy to bundle native Rust plugins inside your package. 
+
+<Steps>
+1. **Create the Rust project**: Place a standard Cargo library in a subdirectory (e.g., `./native`).
+2. **Register it**: Add it to `[plugins]` in your `flame.toml` using a local path.
+3. **Use it**: Import it in your Flame scripts using its registered name (e.g., `import native_core`).
+</Steps>
+
+<Aside type="tip">
+**Auto-Resolution & Interfaces**: When you run `flame build`, Flame will automatically compile your local Rust plugin. It also leverages the `flame-macro` crate to generate an Interface File (`.fmi`). This `.fmi` is packaged alongside your Flame scripts, ensuring that anyone who consumes your package gets **instant IDE autocomplete and hover documentation** for your native Rust methods, without needing to compile the Rust code themselves first!
+</Aside>
+
+---
+
+## 5. Configuring and Running Tests
+
+Testing your package ensures its reliability before distribution. Flame includes a built-in testing framework that seamlessly resolves your package's modules.
+
+Write your tests in the `test/` directory. You can easily import your package's source code by importing `main` or specific files from the `src/` directory.
+
+```flame
+// test/my_test.fm
+
+import main
+import assert_eq
+
+@Test
+fn test_process_data() {
+    let conf = main.Config { key: "test_key" }
+    let result = main.process_data(conf)
+    
+    assert_eq(result, "processed_test_key")
+}
+```
+
+Run your tests using the Flame CLI:
+
+```bash
+flame test
+```
+
+Flame's package resolution system is smart enough to resolve `import main` inside the `test/` folder directly to your `src/main.fm` file, providing full IDE autocomplete and diagnostics during test development.
+
+---
+
+## 6. Building and Distributing
+
+When you are ready to distribute your package, simply run:
+
+```bash
+flame build
+```
+
+Because `type = "pkg"`, Flame acts as a package bundler. It will create a directory at `target/dev/pkg/my_package` containing:
+- Your `flame.toml` manifest.
+- Your entire `src/` directory.
+- Generated `.fmi` interface files from your local plugins.
+- Built `.rlib` static archives for native interop.
+
+### Publishing to GitHub
+
+You don't need a centralized package registry to distribute your package! Just push your repository to GitHub. 
+
+Consumers can install your package exactly as it is configured natively:
+
+```bash
+flame add github.com/username/my_package@v1.0.0
+```
+
+Flame will clone the repository natively, parse the exported annotations and functions, and make your bundled Rust plugins instantly available in their projects.

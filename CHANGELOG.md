@@ -4,6 +4,28 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.0] - 2026-08-07 (Codename: *Second Spark*)
+
+### 📦 Native Package Management & Git Resolution
+- **GitHub Module Fetching**: Overhauled `flame add` to natively support remote GitHub repositories. Supplying schemas like `github.com/user/repo@v1.0.0` automatically resolves the remote, extracts the specific version/tag, and utilizes `git clone` to isolate the payload inside the `.flame/pkg/<name>` dependency cache, mirroring modern module systems like Go.
+- **Distributable Package Bundling**: The `flame build` compiler command now acts as a dedicated bundler when detecting `type = "pkg"` inside a project's `flame.toml`. Flame generates a highly optimized distribution bundle in `target/<profile>/pkg/`, automatically mirroring the `src/` tree, `flame.toml` manifests, generated `.fmi` interface bindings, and natively compiled `.rlib` archives into a single, self-contained GitHub-ready payload.
+
+### 🎨 IDE Intellisense & Testing Workflow
+- **Test Directory Module Resolution**: Hardened the internal dependency lookup (`locate_import_file`) to aggressively resolve the active workspace root when the language server executes transient diagnostic checks (e.g., against `flame_check.fm`). This unlocks full IDE support—including native Rust hover docs, autocomplete matrices, and type checks—when utilizing `import main` from a package's `test/` directory.
+- **Documentation**: Added an extensive new Astro documentation guide (`Creating Packages`) detailing Git dependency pulling, native Rust plugin embedding within packages, test configurations, and export directives.
+- **Annotation Syntax Highlighting**: Updated the VS Code `flame-ide` grammar to elegantly distinguish decorators. The `@` symbol now renders cleanly in white, while the annotation name (`@Test`, `@Benchmark`) is color-mapped to match standard language keywords.
+- **Networking Hover Docs**: Injected extensive Markdown hover documentation into `std_docs.rs` for the entire suite of newly scaffolded `std.net` interfaces, providing immediate examples for `http.get`, `WebSocket.connect`, and `Mqtt.publish`.
+
+### 🌐 Network Toolkit Architecture (`std.net`)
+- **Zero-Overhead Feature Gating**: Re-architected the `flamelang` `Cargo.toml` to ensure that heavy networking libraries (`tokio`, `reqwest`, `tungstenite`, `rumqttc`) are strictly optional. `tokio` was stripped down to its essential capabilities, and `reqwest` utilizes lightweight `rustls` instead of `native-tls`. A script that only blinks an LED will never link a TCP stack.
+- **Dynamic AOT Feature Injection**: The AOT compiler (`flame build`) now analyzes user imports during the compilation phase. If it detects `import std.net.http` within the `.fm` source code, it dynamically resolves and injects the `"http"` Cargo feature flag into the generated native binary.
+- **Split Submodule Routing**: Dismantled the monolithic `std.net` namespace. Networking is now routed efficiently through submodules: `std.net.tcp`, `std.net.udp`, `std.net.http`, `std.net.ws`, `std.net.mqtt`, `std.net.dns`, `std.net.url`, and `std.net.interface`.
+
+### ⚙️ Runtime & Lifecycle Management
+- **Graceful Process Shutdowns**: Intercepted the `SIGINT` (`Ctrl+C`) signal via `ctrlc::set_handler()` at the root process level. Terminating background server scripts manually in the terminal now gracefully exits with code `0`, eliminating the aggressive `STATUS_CONTROL_C_EXIT (0xc000013a)` operating system panic.
+
+---
+
 ## [0.1.9] - 2026-08-06 (Codename: *Flame Spark*)
 
 ### ⚡ Embedded Toolchain Enhancements

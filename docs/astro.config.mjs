@@ -83,6 +83,7 @@ export default defineConfig({
 					label: 'Packages & Native Rust',
 					items: [
 						{ label: 'Modules & Imports', slug: 'packages-and-native/modules-and-imports' },
+						{ label: 'Creating Packages', slug: 'packages-and-native/creating-packages' },
 						{ label: 'Using Native Rust Crates', slug: 'packages-and-native/native-rust-crates' },
 						{ label: 'Native Plugins & FFI', slug: 'packages-and-native/native-plugins' },
 						{ label: 'Native Macros (flame-macro)', slug: 'packages-and-native/native-macros' },
@@ -100,6 +101,7 @@ export default defineConfig({
 					label: 'Standard Library',
 					items: [
 						{ label: 'Overview & Status', slug: 'standard-library/overview' },
+						{ label: 'Network Toolkit (std.net)', slug: 'standard-library/net' },
 						{ label: 'File System (std.fs)', slug: 'standard-library/filesystem' },
 						{ label: 'Process & OS (std.process, std.os, std.env)', slug: 'standard-library/process-and-os' },
 						{ label: 'Hardware & Desktop Automation', slug: 'standard-library/hardware-and-automation' },

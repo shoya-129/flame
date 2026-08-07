@@ -38,10 +38,15 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
     let search_roots = [
         "",
         "src",
+        "test",
         "tests"
     ];
 
-    let mut base_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
+    let mut candidates_to_search = Vec::new();
+    let parent_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
+    
+    // Add current_file's parent hierarchy
+    let mut base_dir = parent_dir.to_path_buf();
     for _ in 0..7 {
         for root in &search_roots {
             let root_dir = if root.is_empty() {
@@ -49,32 +54,68 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
             } else {
                 base_dir.join(root)
             };
-            for cand in &candidates {
-                let p = root_dir.join(cand);
-                if p.exists() {
-                    return Some(p);
-                }
-            }
+            candidates_to_search.push(root_dir);
         }
-
-        if let Some(parent) = base_dir.parent() {
-            base_dir = parent;
-        } else {
+        if !base_dir.pop() {
             break;
         }
     }
 
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    for root in &search_roots {
-        let root_dir = if root.is_empty() {
-            cwd.clone()
-        } else {
-            cwd.join(root)
-        };
-        for cand in &candidates {
-            let p = root_dir.join(cand);
-            if p.exists() {
-                return Some(p);
+    // Add current_dir's hierarchy (important for IDE temp files)
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut base_dir = cwd.clone();
+        for _ in 0..7 {
+            for root in &search_roots {
+                let root_dir = if root.is_empty() {
+                    base_dir.to_path_buf()
+                } else {
+                    base_dir.join(root)
+                };
+                candidates_to_search.push(root_dir);
+            }
+            if !base_dir.pop() {
+                break;
+            }
+        }
+        
+        // Check .flame/pkg for package imports
+        let pkg_name = &import_path[0];
+        let mut check_dir = cwd.clone();
+        loop {
+            let pkg_dir = check_dir.join(".flame").join("pkg").join(pkg_name).join("src");
+            if pkg_dir.exists() {
+                if import_path.len() == 1 {
+                    let p = pkg_dir.join("main.fm");
+                    if p.exists() {
+                        return Some(p);
+                    }
+                    let p = pkg_dir.join("main.flame");
+                    if p.exists() {
+                        return Some(p);
+                    }
+                } else {
+                    let sub_path = import_path[1..].join("/");
+                    let p = pkg_dir.join(format!("{}.fm", sub_path));
+                    if p.exists() {
+                        return Some(p);
+                    }
+                    let p = pkg_dir.join(format!("{}.flame", sub_path));
+                    if p.exists() {
+                        return Some(p);
+                    }
+                }
+            }
+            if !check_dir.pop() {
+                break;
+            }
+        }
+    }
+
+    for root_dir in candidates_to_search {
+        for candidate in &candidates {
+            let full_path = root_dir.join(candidate);
+            if full_path.exists() {
+                return Some(full_path);
             }
         }
     }
@@ -96,8 +137,38 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.thread" => Some(crate::native_std::thread::init()),
         "std.process" => Some(crate::native_std::process::init()),
         "std.fs" => Some(crate::native_std::fs::init()),
-        // "std.net" => Some(crate::native_std::net::init()),
-        "std.math" => Some(crate::native_std::math::init()),
+        #[cfg(feature = "net")]
+        "std.net" => {
+            let mut map = std::collections::HashMap::new();
+            map.extend(crate::native_std::net::init("tcp"));
+            map.extend(crate::native_std::net::init("udp"));
+            #[cfg(feature = "http")]
+            map.extend(crate::native_std::net::init("http"));
+            #[cfg(feature = "ws")]
+            map.extend(crate::native_std::net::init("ws"));
+            #[cfg(feature = "mqtt")]
+            map.extend(crate::native_std::net::init("mqtt"));
+            map.extend(crate::native_std::net::init("dns"));
+            map.extend(crate::native_std::net::init("url"));
+            map.extend(crate::native_std::net::init("interface"));
+            Some(map)
+        },
+        #[cfg(feature = "net")]
+        "std.net.tcp" => Some(crate::native_std::net::init("tcp")),
+        #[cfg(feature = "net")]
+        "std.net.udp" => Some(crate::native_std::net::init("udp")),
+        #[cfg(all(feature = "net", feature = "http"))]
+        "std.net.http" => Some(crate::native_std::net::init("http")),
+        #[cfg(all(feature = "net", feature = "ws"))]
+        "std.net.ws" => Some(crate::native_std::net::init("ws")),
+        #[cfg(all(feature = "net", feature = "mqtt"))]
+        "std.net.mqtt" => Some(crate::native_std::net::init("mqtt")),
+        #[cfg(feature = "net")]
+        "std.net.dns" => Some(crate::native_std::net::init("dns")),
+        #[cfg(feature = "net")]
+        "std.net.url" => Some(crate::native_std::net::init("url")),
+        #[cfg(feature = "net")]
+        "std.net.interface" => Some(crate::native_std::net::init("interface")),
         "std.time" => Some(crate::native_std::time::init()),
         "std.os" => Some(crate::native_std::os::init()),
         "std.hardware" => Some(crate::native_std::hardware::init()),

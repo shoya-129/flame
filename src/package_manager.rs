@@ -253,6 +253,39 @@ pub fn add_package(args: &[String]) {
             let _ = fs::write(toml_path, content);
         }
     }
+    
+    // Perform git cloning for github.com URLs
+    if !is_plugin && manifest_value.starts_with("github.com/") {
+        let mut parts = manifest_value.split('@');
+        let repo_url = format!("https://{}", parts.next().unwrap());
+        let version = parts.next();
+        
+        let pkg_dir = Path::new(".flame").join("pkg").join(&manifest_key);
+        if pkg_dir.exists() {
+            println!("\x1b[1;33m   Warning:\x1b[0m package '{}' is already downloaded. To update, remove it first.", manifest_key);
+        } else {
+            println!("\x1b[1;36m   Fetching\x1b[0m {} from {}...", manifest_key, repo_url);
+            let _ = fs::create_dir_all(".flame/pkg");
+            
+            let mut cmd = std::process::Command::new("git");
+            cmd.arg("clone").arg(&repo_url).arg(&pkg_dir);
+            if let Some(tag) = version {
+                cmd.arg("--branch").arg(tag);
+            }
+            
+            let result = cmd.output();
+            if let Ok(output) = result {
+                if !output.status.success() {
+                    println!("\x1b[1;31merror:\x1b[0m failed to clone repository. Make sure git is installed and the repository exists.");
+                    if let Ok(err_str) = String::from_utf8(output.stderr) {
+                        println!("{}", err_str);
+                    }
+                }
+            } else {
+                println!("\x1b[1;31merror:\x1b[0m failed to execute git clone command.");
+            }
+        }
+    }
 
     if is_plugin {
         let local_plugin = Path::new(&manifest_value);

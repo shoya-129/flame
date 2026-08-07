@@ -81,3 +81,33 @@ struct User {
     name: String
 }
 ```
+
+---
+
+## The Package Ecosystem (`type = "pkg"`)
+
+Flame allows you to publish modules as reusable packages that can be imported by other projects. 
+
+### Creating a Package
+To create a standalone Flame package, update your `flame.toml` to specify `type = "pkg"` (or `type = "lib"`). Packages do not require a `main.fm` entry point, they simply act as a collection of exported components inside their `src/` directory.
+
+```toml
+[package]
+name = "flamer"
+version = "0.1.0"
+type = "pkg"
+```
+
+### Consuming Remote Dependencies
+You can depend on external Flame packages by adding them to the `[dependencies]` block of your `flame.toml`. 
+
+```toml
+[dependencies]
+flamer = "https://github.com/shoya-129/flamer"
+```
+
+When you run `flame build`, the compiler natively merges all abstract syntax trees (ASTs) from your pure Flame dependencies. This allows your local project's language server, typechecker, and AOT compiler to seamlessly compile the imported code exactly as if it was written locally!
+
+<Aside type="tip" title="Zero-History Git Resolution">
+When fetching dependencies (e.g., from GitHub), Flame's package manager **does not clone the full Git repository history**. Instead, it uses a lightweight archive resolution engine to download and extract a raw `.zip` snapshot of the target branch or tag, providing lightning-fast dependency resolution comparable to Go modules.
+</Aside>

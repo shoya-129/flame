@@ -24,6 +24,10 @@ use std::process::Command;
 use typechecker::TypeChecker;
 
 fn main() {
+    ctrlc::set_handler(move || {
+        std::process::exit(0);
+    }).unwrap_or_else(|_| ());
+
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         if Path::new("src/main.fm").exists() {
@@ -363,6 +367,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             target = Some(args[i + 1].clone());
         }
     }
+    let mut is_pkg = false;
     if let Ok(toml_str) = fs::read_to_string("flame.toml") {
         for line in toml_str.lines() {
             let t = line.trim();
@@ -374,6 +379,13 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                 if let Some(val) = t.split('=').nth(1) {
                     if target.is_none() {
                         target = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                    }
+                }
+            } else if t.starts_with("type =") {
+                if let Some(val) = t.split('=').nth(1) {
+                    let parsed_type = val.trim().trim_matches('"').trim_matches('\'').to_lowercase();
+                    if parsed_type == "pkg" || parsed_type == "lib" {
+                        is_pkg = true;
                     }
                 }
             }
@@ -398,13 +410,43 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     println!("\x1b[1;36m   Compiling\x1b[0m std standard library (Flame interfaces)...");
     println!("\x1b[1;36m   Compiling\x1b[0m standard library Rust bridges (std_bridge)...");
 
-    // Check main.fm if exists
-    let main_path = Path::new("src/main.fm");
-    if main_path.exists() {
-        println!("\x1b[1;36m   Compiling\x1b[0m targets (src/main.fm)...");
+    let src_dir = Path::new("src");
+    let has_source_files = if src_dir.exists() {
+        fs::read_dir(src_dir)
+            .map(|mut it| it.any(|e| e.map(|entry| entry.path().extension().map_or(false, |ext| ext == "fm")).unwrap_or(false)))
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    if has_source_files {
+        println!("\x1b[1;36m   Compiling\x1b[0m targets (src/)...");
 
         let mut all_stmts = Vec::new();
-        // Parse all files in src/ to ensure full build-time diagnostics
+        // Parse dependencies first
+        if let Ok(entries) = fs::read_dir(".flame/pkg") {
+            for entry in entries.flatten() {
+                let pkg_path = entry.path();
+                if pkg_path.is_dir() {
+                    let pkg_src = pkg_path.join("src");
+                    if pkg_src.exists() {
+                        if let Ok(pkg_files) = fs::read_dir(&pkg_src) {
+                            for pkg_file in pkg_files.flatten() {
+                                let fpath = pkg_file.path();
+                                if fpath.is_file() && fpath.extension().map_or(false, |e| e == "fm") {
+                                    let content = fs::read_to_string(&fpath).unwrap_or_default();
+                                    if let Ok(stmts) = parse_file_stmts(&fpath, &content) {
+                                        all_stmts.extend(stmts);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Parse local project files
         if let Ok(entries) = fs::read_dir("src") {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -455,8 +497,46 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
         let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
-        let native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
-        let plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
+        let mut native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
+        let mut plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
+
+        if let Ok(entries) = fs::read_dir(".flame/pkg") {
+            for entry in entries.flatten() {
+                let pkg_path = entry.path();
+                if pkg_path.is_dir() {
+                    let toml_path = pkg_path.join("flame.toml");
+                    if toml_path.exists() {
+                        let dep_manifest = fs::read_to_string(&toml_path).unwrap_or_default();
+                        for (name, mut path) in parse_manifest_section(&dep_manifest, "[native-dependencies]") {
+                            if path.starts_with('"') && path.ends_with('"') {
+                                path = path[1..path.len()-1].to_string();
+                            }
+                            if path.starts_with('.') || path.starts_with('/') {
+                                let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                                crate::package_manager::inspect_native_plugin(&name, &abs);
+                                path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
+                            } else {
+                                path = format!("\"{}\"", path);
+                            }
+                            native_deps_raw.push((name, path));
+                        }
+                        for (name, mut path) in parse_manifest_section(&dep_manifest, "[plugins]") {
+                            if path.starts_with('"') && path.ends_with('"') {
+                                path = path[1..path.len()-1].to_string();
+                            }
+                            if path.starts_with('.') || path.starts_with('/') {
+                                let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                                crate::package_manager::inspect_native_plugin(&name, &abs);
+                                path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
+                            } else {
+                                path = format!("\"{}\"", path);
+                            }
+                            plugins_raw.push((name, path));
+                        }
+                    }
+                }
+            }
+        }
 
         let mut processed_native_deps = Vec::new();
 
@@ -465,7 +545,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             if path_str.starts_with('"') && path_str.ends_with('"') {
                 path_str = path_str[1..path_str.len() - 1].to_string();
             }
-            if path_str.starts_with('.') || path_str.starts_with('/') {
+            if path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute() {
                 let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
                     .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&path_str));
                 let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
@@ -485,7 +565,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                 path_str = path_str[1..path_str.len() - 1].to_string();
             }
 
-            let is_local = path_str.starts_with('.') || path_str.starts_with('/');
+            let is_local = path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute();
             let actual_path = if is_local {
                 path_str
             } else {
@@ -512,21 +592,79 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             profile,
             &processed_native_deps,
             force_local,
+            is_pkg,
         );
 
-        let exe_name = format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX);
+        let ext = if is_pkg { ".rlib" } else { std::env::consts::EXE_SUFFIX };
+        let exe_name = format!("{}{}", if is_pkg { format!("lib{}_aot", pkg_name) } else { pkg_name.clone() }, ext);
         let out_rel = format!("target/{}/{}", profile, exe_name);
         println!(
             "\x1b[1;32m    Finished\x1b[0m {} target(s) -> {} in 0.12s",
             mode_str, out_rel
         );
+
+        if is_pkg {
+            let pkg_out_dir = Path::new("target").join(profile).join("pkg").join(&pkg_name);
+            let _ = fs::create_dir_all(&pkg_out_dir);
+            
+            // Copy flame.toml
+            if Path::new("flame.toml").exists() {
+                let _ = fs::copy("flame.toml", pkg_out_dir.join("flame.toml"));
+            }
+            
+            // Copy src/ directory
+            if Path::new("src").exists() {
+                let _ = copy_dir_all("src", pkg_out_dir.join("src"));
+            }
+            
+            // Copy .fmi files
+            if let Ok(entries) = fs::read_dir(".") {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("fmi") {
+                        let _ = fs::copy(&path, pkg_out_dir.join(path.file_name().unwrap()));
+                    }
+                }
+            }
+            
+            // Copy built .rlib (from aot build)
+            let cache_rlib = Path::new(".flame").join("build-cache").join("target").join(profile).join(format!("lib{}_aot.rlib", pkg_name));
+            if cache_rlib.exists() {
+                let _ = fs::copy(&cache_rlib, pkg_out_dir.join(format!("lib{}_aot.rlib", pkg_name)));
+            } else {
+                // If it's a native plugin built natively, we copy it from its own target dir
+                let native_rlib = Path::new("target").join(profile).join(format!("lib{}.rlib", pkg_name));
+                if native_rlib.exists() {
+                    let _ = fs::copy(&native_rlib, pkg_out_dir.join(format!("lib{}.rlib", pkg_name)));
+                }
+            }
+            
+            println!(
+                "\x1b[1;32m   Generated\x1b[0m package output directory -> target/{}/pkg/{}",
+                profile, pkg_name
+            );
+        }
         return Some(PathBuf::from(out_rel));
     } else {
         println!(
-            "\x1b[1;32m    Finished\x1b[0m compilation: no executable source file (src/main.fm)"
+            "\x1b[1;32m    Finished\x1b[0m compilation: no source files found in src/"
         );
         return None;
     }
+}
+
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }
 
 fn flash_project(args: &[String]) {
@@ -671,7 +809,13 @@ fn collect_fm_files(dir: &Path, list: &mut Vec<PathBuf>) {
 
 fn has_test_annotations(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|stmt| {
-        if let Stmt::FuncDecl { annotations, .. } = stmt {
+        let check_stmt = if let Stmt::ExportDecl(inner, _) = stmt {
+            inner.as_ref()
+        } else {
+            stmt
+        };
+
+        if let Stmt::FuncDecl { annotations, .. } = check_stmt {
             annotations.iter().any(|anno| {
                 matches!(
                     anno.name.as_str(),
@@ -1826,6 +1970,94 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
             let mut provided_completions = false;
 
+            // If it's a native module directly (e.g. `flamer.`)
+            if var_type.is_none() && native_modules.contains(&namespace) {
+                if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
+                    for function in &meta.functions {
+                        if member_prefix
+                            .as_deref()
+                            .map(|p| function.flame_name.starts_with(p))
+                            .unwrap_or(true)
+                        {
+                            let params_str = function
+                                .params
+                                .iter()
+                                .map(|p| format!("{}: {}", p.name, p.type_name))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let sig = format!(
+                                "fn {}({}) -> {}",
+                                function.flame_name,
+                                params_str,
+                                function.return_type
+                            );
+                            
+                            completions.push(JsonCompletion {
+                                label: function.flame_name.clone(),
+                                kind: "function".to_string(),
+                                detail: format!("{} (from {})", function.flame_name, namespace),
+                                documentation: Some(function.docs.clone().unwrap_or(sig.clone())),
+                            });
+                            provided_completions = true;
+                        }
+
+                        if !word_under_cursor.is_empty()
+                            && function.flame_name == word_under_cursor
+                        {
+                            let params_str = function
+                                .params
+                                .iter()
+                                .map(|p| format!("{}: {}", p.name, p.type_name))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let sig = format!(
+                                "fn {}({}) -> {}",
+                                function.flame_name,
+                                params_str,
+                                function.return_type
+                            );
+                            let doc = function.docs.clone().unwrap_or_else(|| "".to_string());
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}()", namespace, function.flame_name),
+                                documentation: Some(format!(
+                                    "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
+                                    sig, doc, function.return_type
+                                )),
+                            });
+                        }
+                    }
+                    
+                    for struct_meta in &meta.structs {
+                        if member_prefix
+                            .as_deref()
+                            .map(|p| struct_meta.name.starts_with(p))
+                            .unwrap_or(true)
+                        {
+                            completions.push(JsonCompletion {
+                                label: struct_meta.name.clone(),
+                                kind: "class".to_string(),
+                                detail: format!("struct (from {})", namespace),
+                                documentation: struct_meta.docs.clone(),
+                            });
+                            provided_completions = true;
+                        }
+                        
+                        if !word_under_cursor.is_empty()
+                            && struct_meta.name == word_under_cursor
+                        {
+                            let doc = struct_meta.docs.clone().unwrap_or_else(|| "".to_string());
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}", namespace, struct_meta.name),
+                                documentation: Some(format!(
+                                    "```flame\nstruct {}\n```\n{}",
+                                    struct_meta.name, doc
+                                )),
+                            });
+                        }
+                    }
+                }
+            }
+
             if let Some(t) = var_type {
                 // If it's a known struct, suggest its fields and methods
                 if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
@@ -2100,6 +2332,35 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             hover = Some(kw_hover);
         } else if let Some(hf) = hover_found {
             hover = Some(hf);
+        } else if !word_under_cursor.is_empty() {
+            // Check if the bare word is a function/annotation from any native module
+            for mod_name in &native_modules {
+                if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+                    if let Some(function) = meta.functions.iter().find(|f| f.flame_name == word_under_cursor) {
+                        let params_str = function
+                            .params
+                            .iter()
+                            .map(|p| format!("{}: {}", p.name, p.type_name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let sig = format!(
+                            "fn {}({}) -> {}",
+                            function.flame_name,
+                            params_str,
+                            function.return_type
+                        );
+                        let doc = function.docs.clone().unwrap_or_else(|| "".to_string());
+                        hover = Some(JsonHover {
+                            label: format!("{}::{}()", mod_name, function.flame_name),
+                            documentation: Some(format!(
+                                "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
+                                sig, doc, function.return_type
+                            )),
+                        });
+                        break;
+                    }
+                }
+            }
         }
     };
 

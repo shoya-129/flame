@@ -1,0 +1,115 @@
+---
+title: Network (net)
+description: A complete networking toolkit for Flame.
+---
+
+The `net` module in Flame provides a full-featured, lightweight networking toolkit. It is modular, meaning you can import only the specific networking components you need, minimizing compilation overhead for embedded or lightweight projects.
+
+## Core Networking
+
+### TCP Sockets (`std.net.tcp`)
+
+The `tcp` module provides `TcpListener` and `TcpSocket` for raw socket communication.
+
+```flame
+import std.net.tcp
+
+let ip = tcp.IpAddr.parse("192.168.1.20")
+let addr = tcp.SocketAddr(ip, 8080)
+
+let listener = tcp.TcpListener.bind("0.0.0.0:3000")
+for client in listener {
+    client.write("Hello from Flame!")
+}
+
+let socket = tcp.TcpSocket.connect("example.com:80")
+socket.write("GET / HTTP/1.1\r\n\r\n")
+let data = socket.read()
+```
+
+### UDP Sockets (`std.net.udp`)
+
+The `udp` module provides connectionless datagram sockets.
+
+```flame
+import std.net.udp
+
+let udp = udp.UdpSocket.bind(":9000")
+udp.send("Hello", "192.168.0.10:9000")
+
+let (msg, addr) = udp.recv()
+```
+
+## Application Protocols
+
+### HTTP Client (`std.net.http`)
+
+The `http` module is a powerful HTTP client supporting GET, POST, PUT, DELETE, PATCH, downloading, and uploading.
+
+```flame
+import std.net.http
+
+let response = http.get("https://api.github.com/users/shoya-129")
+println(response.status)
+println(response.text())
+
+// Parsing JSON directly
+let user = http.get("https://api.github.com").json()
+```
+
+### WebSockets (`std.net.ws`)
+
+The `ws` module provides a WebSocket client for real-time bi-directional communication.
+
+```flame
+import std.net.ws
+
+let ws = ws.WebSocket.connect("ws://localhost:8080/ws")
+ws.send("Move Forward")
+let msg = ws.recv()
+```
+
+### MQTT Client (`std.net.mqtt`)
+
+The `mqtt` module provides an MQTT client, useful for IoT and automation.
+
+```flame
+import std.net.mqtt
+
+let client = mqtt.Mqtt.connect("mqtt://broker.local")
+client.publish("robot/move", "forward")
+client.subscribe("sensor/temp") |msg| {
+    println(msg)
+}
+```
+
+## Utilities
+
+### DNS (`std.net.dns`)
+
+```flame
+import std.net.dns
+
+let ip = dns.lookup("google.com")
+let hostname = dns.reverse(ip)
+```
+
+### Network Interfaces (`std.net.interface`)
+
+```flame
+import std.net.interface
+
+for iface in interface.interfaces() {
+    println(iface.name)
+}
+```
+
+### URL Parsing (`std.net.url`)
+
+```flame
+import std.net.url
+
+let u = url.Url.parse("https://github.com/shoya-129/flame?branch=main")
+println(u.host)
+println(u.query)
+```

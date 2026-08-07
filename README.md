@@ -94,10 +94,10 @@ flame check automation/src/main.fm --json --line 47 --col 18
 
 ## Documentation
 Dive into the `docs` folder for detailed guides on language syntax, multithreaded ownership models, native crate integration, and plugin design:
-- [Multithreaded Architecture & Safety](./docs/threads.md)
-- [Asynchronous Concurrency & Network I/O](./docs/async.md)
-- [Developing Local Plugins & FFI](./docs/plugins.md)
-- [Using Native Rust Crates](./docs/native_crates.md)
+- [Multithreaded Architecture & Safety](https://flamelang.vercel.app/concurrency/threads-and-channels/)
+- [Asynchronous Concurrency & Network I/O](https://flamelang.vercel.app/concurrency/async-await/)
+- [Developing Local Plugins & FFI](https://flamelang.vercel.app/packages-and-native/native-plugins/)
+- [Using Native Rust Crates](https://flamelang.vercel.app/packages-and-native/native-rust-crates/)
 - [Changelog & Version Codenames](./CHANGELOG.md)
 
 ## License

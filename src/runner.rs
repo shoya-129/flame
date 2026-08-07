@@ -235,10 +235,15 @@ impl Runner {
                                     }
                                 }
                             }
-                            if let Ok(anno_res) = self.invoke_callback_value(&anno_func, anno_args) {
-                                child_env.lock().unwrap().define(anno.name.clone(), anno_res.clone(), true);
-                                child_env.lock().unwrap().define(anno.name.to_lowercase(), anno_res.clone(), true);
-                                child_env.lock().unwrap().define(format!("__{}_data__", anno.name), anno_res, true);
+                            match self.invoke_callback_value(&anno_func, anno_args) {
+                                Ok(anno_res) => {
+                                    child_env.lock().unwrap().define(anno.name.clone(), anno_res.clone(), true);
+                                    child_env.lock().unwrap().define(anno.name.to_lowercase(), anno_res.clone(), true);
+                                    child_env.lock().unwrap().define(format!("__{}_data__", anno.name), anno_res, true);
+                                }
+                                Err(e) => {
+                                    return Err(format!("Annotation '{}' failed: {}", anno.name, e));
+                                }
                             }
                         }
                     }
@@ -512,6 +517,7 @@ impl Runner {
                         crate::stdlib::register_global_builtins(mod_env.clone());
                         let mut runner = Runner::new(file_path.clone());
                         runner.env = mod_env.clone();
+                        runner.native_methods = self.native_methods.clone();
                         for s in &parsed_stmts {
                             runner.execute_statement(s, mod_env.clone())?;
                         }
@@ -537,7 +543,7 @@ impl Runner {
                         self.modules.insert(mod_name, mod_env);
                     }
                 } else if mod_name.starts_with("native.")
-                    || Path::new(&format!(".flame/pkg/{}", path.last().unwrap())).exists()
+                    || (Path::new(&format!(".flame/pkg/{}", path.last().unwrap())).exists() && !Path::new(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap())).exists())
                 {
                     let mod_env = Arc::new(Mutex::new(Env::new()));
                     let raw_mod_name = path.last().unwrap();
@@ -573,6 +579,11 @@ impl Runner {
                                     );
                                     for fn_meta in &meta.functions {
                                         mod_env.lock().unwrap().define(
+                                            format!("__{}_return_type__", fn_meta.flame_name),
+                                            Value::String(fn_meta.return_type.clone()),
+                                            false,
+                                        );
+                                        mod_env.lock().unwrap().define(
                                             fn_meta.flame_name.clone(),
                                             Value::Function {
                                                 params: fn_meta
@@ -604,6 +615,10 @@ impl Runner {
                                             Value::String(struct_meta.name.clone()),
                                         );
                                         for method in &struct_meta.methods {
+                                            struct_map.insert(
+                                                format!("__{}_{}_return_type__", struct_meta.name, method.flame_name),
+                                                Value::String(method.return_type.clone()),
+                                            );
                                             struct_map.insert(
                                                 method.flame_name.clone(),
                                                 Value::Function {
@@ -688,7 +703,14 @@ impl Runner {
                     self.modules.insert(mod_name, mod_env);
                 } else {
                     let local_file = crate::stdlib::locate_import_file(&self.filepath, path)
-                        .unwrap_or_else(|| self.resolve_path(&format!("{}.fm", path.join("/"))));
+                        .unwrap_or_else(|| {
+                            let pkg_main = self.resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
+                            if pkg_main.exists() {
+                                pkg_main
+                            } else {
+                                self.resolve_path(&format!("{}.fm", path.join("/")))
+                            }
+                        });
                     if local_file.exists() {
                         let content = fs::read_to_string(&local_file).map_err(|e| e.to_string())?;
                         let mut lexer = Lexer::new(&content);
@@ -709,6 +731,7 @@ impl Runner {
                         crate::stdlib::register_global_builtins(mod_env.clone());
                         let mut runner = Runner::new(local_file.clone());
                         runner.env = mod_env.clone();
+                        runner.native_methods = self.native_methods.clone();
                         for s in &parsed_stmts {
                             runner.execute_statement(s, mod_env.clone())?;
                             if let Stmt::ExportDecl(inner, _) = s {
@@ -2335,7 +2358,13 @@ impl Runner {
                                         }
                                     }
                                 }
-                                return Ok(Value::unpack(res, crate_name, type_name));
+                                let mut ret_type = type_name.clone();
+                                if let Some(mod_env) = self.modules.get(crate_name) {
+                                    if let Some(Value::String(rt)) = mod_env.lock().unwrap().get(&format!("__{}_{}_return_type__", type_name, member)) {
+                                        ret_type = rt.clone();
+                                    }
+                                }
+                                return Ok(Value::unpack(res, crate_name, &ret_type));
                             }
 
                             return Err(format!(
@@ -2683,7 +2712,10 @@ impl Runner {
                                             }
                                         }
 
-                                        let t_name = parent_type.unwrap_or_else(|| member.clone());
+                                        let mut t_name = parent_type.unwrap_or_else(|| member.clone());
+                                        if let Some(Value::String(rt)) = map.get(&format!("__{}_return_type__", member)) {
+                                            t_name = rt.clone();
+                                        }
                                         return Ok(Value::unpack(res, raw_ns, &t_name));
                                     }
                                 }
@@ -3091,10 +3123,15 @@ impl Runner {
                                             }
                                         }
                                     }
-                                    if let Ok(anno_res) = self.invoke_callback_value(&anno_func, anno_args) {
-                                        child_env.lock().unwrap().define(anno.name.clone(), anno_res.clone(), true);
-                                        child_env.lock().unwrap().define(anno.name.to_lowercase(), anno_res.clone(), true);
-                                        child_env.lock().unwrap().define(format!("__{}_data__", anno.name), anno_res, true);
+                                    match self.invoke_callback_value(&anno_func, anno_args) {
+                                        Ok(anno_res) => {
+                                            child_env.lock().unwrap().define(anno.name.clone(), anno_res.clone(), true);
+                                            child_env.lock().unwrap().define(anno.name.to_lowercase(), anno_res.clone(), true);
+                                            child_env.lock().unwrap().define(format!("__{}_data__", anno.name), anno_res, true);
+                                        }
+                                        Err(e) => {
+                                            return Err(format!("Annotation '{}' evaluation failed: {}", anno.name, e));
+                                        }
                                     }
                                 }
                             }

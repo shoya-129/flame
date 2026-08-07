@@ -12,6 +12,8 @@ pub mod serial;
 pub mod bluetooth;
 pub mod camera;
 pub mod embedded;
+#[cfg(feature = "net")]
+pub mod net;
 
 
 
