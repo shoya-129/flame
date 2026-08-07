@@ -54,7 +54,7 @@ For consumers to use your package's features, you must explicitly `export` them 
 ```flame
 // src/main.fm
 
-import native_core
+import native.core
 
 // Export a custom annotation
 export annotation MyAnnotation()
@@ -67,7 +67,7 @@ export struct Config {
 // Export a function that uses your local native plugin
 export fn process_data(config: Config) -> String {
     // Calling the native plugin bundled inside your package
-    native_core.process(config.key)
+    core.process(config.key)
 }
 ```
 
@@ -80,9 +80,9 @@ When a user imports your package, only the `export`ed symbols will be available 
 Flame makes it incredibly easy to bundle native Rust plugins inside your package. 
 
 <Steps>
-1. **Create the Rust project**: Place a standard Cargo library in a subdirectory (e.g., `./native`).
-2. **Register it**: Add it to `[plugins]` in your `flame.toml` using a local path.
-3. **Use it**: Import it in your Flame scripts using its registered name (e.g., `import native_core`).
+1. **Create the Rust Plugin**: Run `flame native init <plugin-name>` to create a new Rust plugin in the `native` directory.
+2. **Register it**: Run `flame add --plugin <path_to_plugin_folder(e.g., ./native)>` to add it to your package as a plugin, it will add the plugin in `flame.toml` under `[plugins]`.
+3. **Use it**: Import it in your Flame scripts using `native.` prefix and its registered name (e.g., `import native.core`).
 </Steps>
 
 <Aside type="tip">
@@ -101,7 +101,6 @@ Write your tests in the `test/` directory. You can easily import your package's 
 // test/my_test.fm
 
 import main
-import assert_eq
 
 @Test
 fn test_process_data() {
