@@ -4,6 +4,20 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.2] - 2026-08-08 (Codename: *Second Spark*)
+
+### 🌐 Network Toolkit & Standard Library (`std.net`, `std.json`)
+- **Native Async Iteration**: Upgraded the `TcpListener` to natively support asynchronous loop evaluation. Developers can now utilize `for client in listener` to blockingly stream incoming clients through Tokio without requiring manual loop abstractions.
+- **HTTP Post & Auto-JSON Serialization**: Implemented `http.post(url, body)`. Dramatically improved standard library ergonomics by automatically serializing Flame `formula { ... }` blocks and structured `Object`s into optimized JSON strings when passed as payloads to HTTP APIs.
+
+### 🎨 IDE Intellisense & Developer Experience
+- **`await` Type Inference (`Promise`)**: Overhauled the internal typechecker resolution engine. The IDE language server now intelligently intercepts `await` assignment expressions and correctly resolves the intermediate type as a `Promise` in hover tooltips instead of incorrectly mapping it to the `await` token keyword.
+- **Verbose Log Silencing**: Cleaned up standard output during network testing by silencing the internal `[DEBUG Expr::Call NativeCallback]` VM logs.
+
+### 📚 Documentation & Ecosystem Tooling
+- **Starlight Docs Overhaul**: Completely updated the Astro Starlight documentation (`docs/`). Added dedicated index cards for `Network & Web (std.net, std.json)`, fixed async bindings in standard library examples, and documented the new `http.post` and `formula` JSON pipeline.
+- **Example Hardening**: Stabilized the `flame-macro` dependency paths in `examples/ex/native` plugins to reference canonical registry versions (`0.1.0`) instead of local monorepo paths, streamlining developer testing workflows.
+
 ## [0.2.1] - 2026-08-07 (Codename: *Second Spark*)
 
 ### 🐛 Bug Fixes & AOT Compiler Enhancements

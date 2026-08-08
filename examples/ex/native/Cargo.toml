@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
 axum = "0.8.9"
-flame-macro = { path = "../../flame-macro" }
+flame-macro = "0.1.0"
 
 [profile.dev]
 split-debuginfo = "unpacked"

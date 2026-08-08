@@ -1,0 +1,167 @@
+---
+title: Application Entry Point
+description: Using the @Application annotation to define entry points and configure compiler features.
+---
+
+Flame executes scripts from top to bottom by default, just like standard scripting languages. However, as your projects grow in complexity—especially when building servers, IoT devices, or networking tools—you may want a dedicated entry point and explicit control over compiler features.
+
+This is exactly what `@Application` provides.
+
+# `@Application`
+
+`@Application` declares an optional application entry point and runtime configuration for a Flame program.
+
+When present, the annotated function becomes the application's entry point and is automatically invoked by the runtime. If omitted, Flame behaves exactly as it does today—executing `main.fm` from top to bottom.
+
+The annotation also serves as the central place for configuring application-wide features and compiler/runtime options, ensuring that AOT binaries remain extremely lightweight by only pulling in what you explicitly request.
+
+## Syntax
+
+```flame
+@Application()
+fn start() {
+    println("Hello from Flame!")
+}
+```
+
+or for asynchronous networking applications:
+
+```flame
+import std.net.http
+
+@Application(
+    features = ["http", "tcp"]
+)
+async fn app() {
+    let res = await http.get("https://example.com")
+    println(await res.text())
+}
+```
+
+---
+
+# Execution Behavior
+
+## Without `@Application`
+
+```flame
+println("Hello")
+println("World")
+```
+
+Execution order:
+```
+Hello
+World
+```
+This is the standard execution model for quick scripting.
+
+## With `@Application`
+
+```flame
+println("Before")
+
+@Application()
+fn start() {
+    println("Inside")
+}
+
+println("After")
+```
+
+Execution order:
+```
+Inside
+```
+
+The annotated function becomes the absolute application entry point. Top-level statements outside the entry function (such as `println("Before")`) are **not** executed automatically. This allows you to safely declare global variables (`let x = 5`), structures, annotations, and helper functions globally and use them flawlessly from within the entry point, while preventing unintended side-effects upon module import.
+
+---
+
+# Entry Point Rules
+
+* **Only one** `@Application` function may exist per application.
+* The function is **automatically invoked**.
+* The function may have **any valid identifier** (`main`, `start`, `server`, etc).
+* The function may be **synchronous or asynchronous**.
+
+### Valid Usage
+
+```flame
+@Application()
+fn server() {}
+```
+
+```flame
+@Application()
+async fn app() {}
+```
+
+### Invalid Usage
+
+```flame
+@Application()
+fn a() {}
+
+@Application()
+fn b() {} // Compiler error: Only one @Application entry point is allowed.
+```
+
+---
+
+# Standard Library Features
+
+Features enable optional standard library modules (like `std.net`). 
+
+```flame
+@Application(
+    features = [
+        "http",
+        "tcp",
+        "udp",
+        "ws",
+        "mqtt"
+    ]
+)
+```
+
+Flame is designed for embedded systems and ultra-fast compilation. Only enabled features are included in the generated project.
+
+If you compile this:
+```flame
+@Application(
+    features = ["http"]
+)
+async fn start() {
+    let response = await http.get("https://example.com")
+}
+```
+
+The AOT compiler (`flame build`) will automatically include `tokio` and `reqwest`, but it will definitively exclude unused modules like `tungstenite` or `rumqttc`. This keeps your binaries minimal and compile times fast.
+
+## Feature Visibility
+
+Features are application-wide. Once enabled inside `@Application`, they may be used from **any function** in your project, without needing further annotations.
+
+```flame
+import std.net.http
+
+@Application(
+    features = ["http"]
+)
+async fn start() {
+    await fetch()
+}
+
+async fn fetch() {
+    let res = await http.get("https://api.github.com")
+}
+```
+
+---
+
+# The Async Runtime
+
+If your entry point is marked as `async`, the Flame runtime and compiler will automatically wrap your program in an asynchronous event loop (such as Tokio). 
+
+You never have to manually spin up threads, manage runtimes, or write `#[tokio::main]` like in native Rust. Flame handles the heavy lifting, giving you a seamless `await` experience while maintaining native performance.

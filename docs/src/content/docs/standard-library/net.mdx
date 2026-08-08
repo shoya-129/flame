@@ -3,7 +3,15 @@ title: Network (net)
 description: A complete networking toolkit for Flame.
 ---
 
-The `net` module in Flame provides a full-featured, lightweight networking toolkit. It is modular, meaning you can import only the specific networking components you need, minimizing compilation overhead for embedded or lightweight projects.
+import { Aside } from '@astrojs/starlight/components';
+
+The `net` module in Flame provides a full-featured, asynchronous networking toolkit. It is modular, meaning you can import only the specific networking components you need, minimizing compilation overhead for embedded or lightweight projects.
+
+<Aside type="danger" title="Important Requirement">
+Because the networking toolkit is completely asynchronous and uses standard Rust runtimes like Tokio behind the scenes, you **must** use the `@Application` annotation if you wish to run asynchronous network code in a compiled AOT application. See the [Application Entry Point](/language-basics/application) documentation.
+
+All network I/O functions require the `await` keyword.
+</Aside>
 
 ## Core Networking
 
@@ -14,17 +22,17 @@ The `tcp` module provides `TcpListener` and `TcpSocket` for raw socket communica
 ```flame
 import std.net.tcp
 
-let ip = tcp.IpAddr.parse("192.168.1.20")
-let addr = tcp.SocketAddr(ip, 8080)
+@Application(features=["tcp"])
+async fn start() {
+    let listener = tcp.TcpListener.bind("0.0.0.0:3000")
+    for client in listener {
+        await client.write("Hello from Flame!")
+    }
 
-let listener = tcp.TcpListener.bind("0.0.0.0:3000")
-for client in listener {
-    client.write("Hello from Flame!")
+    let socket = tcp.TcpSocket.connect("example.com:80")
+    socket.write("GET / HTTP/1.1\r\n\r\n")
+    let data = socket.read()
 }
-
-let socket = tcp.TcpSocket.connect("example.com:80")
-socket.write("GET / HTTP/1.1\r\n\r\n")
-let data = socket.read()
 ```
 
 ### UDP Sockets (`std.net.udp`)
@@ -34,10 +42,13 @@ The `udp` module provides connectionless datagram sockets.
 ```flame
 import std.net.udp
 
-let udp = udp.UdpSocket.bind(":9000")
-udp.send("Hello", "192.168.0.10:9000")
+@Application(features=["udp"])
+async fn start() {
+    let udp = udp.UdpSocket.bind(":9000")
+    udp.send("Hello", "192.168.0.10:9000")
 
-let (msg, addr) = udp.recv()
+    let (msg, addr) = udp.recv()
+}
 ```
 
 ## Application Protocols
@@ -49,12 +60,21 @@ The `http` module is a powerful HTTP client supporting GET, POST, PUT, DELETE, P
 ```flame
 import std.net.http
 
-let response = http.get("https://api.github.com/users/shoya-129")
-println(response.status)
-println(response.text())
+@Application(features=["http"])
+async fn app() {
+    let response = await http.get("https://api.github.com/users/shoya-129")
+    println(response.status)
+    println(await response.text())
 
-// Parsing JSON directly
-let user = http.get("https://api.github.com").json()
+    // Parsing JSON directly from GET
+    let response2 = await http.get("https://api.github.com")
+    let user = await response2.json()
+
+    // Making a POST request with an auto-stringified JSON payload
+    let postData = formula { title: "foo", body: "bar", userId: 1 }
+    let post_res = await http.post("https://httpbin.org/post", postData)
+    println(await post_res.text())
+}
 ```
 
 ### WebSockets (`std.net.ws`)
@@ -64,9 +84,12 @@ The `ws` module provides a WebSocket client for real-time bi-directional communi
 ```flame
 import std.net.ws
 
-let ws = ws.WebSocket.connect("ws://localhost:8080/ws")
-ws.send("Move Forward")
-let msg = ws.recv()
+@Application(features=["ws"])
+async fn start() {
+    let ws = await ws.WebSocket.connect("ws://localhost:8080/ws")
+    await ws.send("Move Forward")
+    let msg = await ws.recv()
+}
 ```
 
 ### MQTT Client (`std.net.mqtt`)
@@ -76,10 +99,13 @@ The `mqtt` module provides an MQTT client, useful for IoT and automation.
 ```flame
 import std.net.mqtt
 
-let client = mqtt.Mqtt.connect("mqtt://broker.local")
-client.publish("robot/move", "forward")
-client.subscribe("sensor/temp") |msg| {
-    println(msg)
+@Application(features=["mqtt"])
+async fn start() {
+    let client = await mqtt.Mqtt.connect("mqtt://broker.local")
+    await client.publish("robot/move", "forward")
+    await client.subscribe("sensor/temp") |msg| {
+        println(msg)
+    }
 }
 ```
 
@@ -90,8 +116,10 @@ client.subscribe("sensor/temp") |msg| {
 ```flame
 import std.net.dns
 
-let ip = dns.lookup("google.com")
-let hostname = dns.reverse(ip)
+@Application(features=["dns"])
+async fn start() {
+    let ip = await dns.lookup("google.com")
+}
 ```
 
 ### Network Interfaces (`std.net.interface`)
@@ -99,8 +127,11 @@ let hostname = dns.reverse(ip)
 ```flame
 import std.net.interface
 
-for iface in interface.interfaces() {
-    println(iface.name)
+@Application(features=["net"])
+async fn start() {
+    for iface in await interface.interfaces() {
+        println(iface.name)
+    }
 }
 ```
 
@@ -109,7 +140,7 @@ for iface in interface.interfaces() {
 ```flame
 import std.net.url
 
-let u = url.Url.parse("https://github.com/shoya-129/flame?branch=main")
+let u = await url.Url.parse("https://github.com/shoya-129/flame?branch=main")
 println(u.host)
 println(u.query)
 ```

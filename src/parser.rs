@@ -1444,6 +1444,17 @@ impl Parser {
             };
             return Ok(Expr::Unary(UnaryOp::Neg, Box::new(expr), span));
         }
+        if self.check(TokenKind::Await) {
+            let tok = self.advance();
+            let expr = self.parse_unary()?;
+            let span = Span {
+                start: tok.span.start,
+                end: expr.span().end,
+                line: tok.span.line,
+                col: tok.span.col,
+            };
+            return Ok(Expr::Await(Box::new(expr), span));
+        }
         if self.check(TokenKind::Exclamation) {
             let tok = self.advance();
             let expr = self.parse_unary()?;

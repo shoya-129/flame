@@ -179,6 +179,7 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.bluetooth" => Some(crate::native_std::bluetooth::init()),
         "std.serial" => Some(crate::native_std::serial::init()),
         "std.embedded" => Some(crate::native_std::embedded::init()),
+        "std.json" => Some(crate::native_std::json::init()),
         _ => None,
     };
 

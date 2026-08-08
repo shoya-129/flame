@@ -605,7 +605,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         );
 
         if is_pkg {
-            let pkg_out_dir = Path::new("target").join(profile).join("pkg").join(&pkg_name);
+            let pkg_out_dir = Path::new("pkg").join(&pkg_name);
             let _ = fs::create_dir_all(&pkg_out_dir);
             
             // Copy flame.toml

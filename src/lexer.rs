@@ -491,6 +491,24 @@ impl<'a> Lexer<'a> {
                 let mut content = String::new();
 
                 while let Some(next) = self.peek() {
+                    if next == '\\' {
+                        self.advance();
+                        if let Some(escaped) = self.peek() {
+                            match escaped {
+                                'n' => content.push('\n'),
+                                'r' => content.push('\r'),
+                                't' => content.push('\t'),
+                                '\\' => content.push('\\'),
+                                '"' => content.push('"'),
+                                _ => {
+                                    content.push('\\');
+                                    content.push(escaped);
+                                }
+                            }
+                            self.advance();
+                        }
+                        continue;
+                    }
                     if next == '"' {
                         self.advance();
                         break;
@@ -514,6 +532,24 @@ impl<'a> Lexer<'a> {
                 let mut content = String::new();
 
                 while let Some(next) = self.peek() {
+                    if next == '\\' {
+                        self.advance();
+                        if let Some(escaped) = self.peek() {
+                            match escaped {
+                                'n' => content.push('\n'),
+                                'r' => content.push('\r'),
+                                't' => content.push('\t'),
+                                '\\' => content.push('\\'),
+                                '\'' => content.push('\''),
+                                _ => {
+                                    content.push('\\');
+                                    content.push(escaped);
+                                }
+                            }
+                            self.advance();
+                        }
+                        continue;
+                    }
                     if next == '\'' {
                         self.advance();
                         break;

@@ -38,6 +38,14 @@ In Flame, `await` is a **prefix operator** (e.g., `let res = await task`), place
 2. **Worker Hand-off**: The underlying Tokio worker immediately handles other concurrent requests.
 3. **Reactive Wakeup**: When incoming I/O packets arrive, the OS interrupt reactively wakes the task and resumes execution right past the `await` boundary.
 
+### The `Promise` Type
+In Flame, whenever you call an `async fn` or an asynchronous network module (like `http.get`), it does not immediately return the result. Instead, it returns a **`Promise`**.
+
+A `Promise` (often known as a *Future* in Rust) is a lightweight handle representing a value that will become available later once the background non-blocking task completes.
+
+- You **cannot** access data properties directly from a `Promise`.
+- The **only** way to extract the concrete inner value from a `Promise` is by prefixing it with the `await` keyword.
+
 ---
 
 ## Common Pitfalls: The Missing `await`

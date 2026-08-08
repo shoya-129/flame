@@ -54,6 +54,7 @@ export default defineConfig({
 						{ label: 'Type Conversions', slug: 'language-basics/type-conversions' },
 						{ label: 'Control Flow', slug: 'language-basics/control-flow' },
 						{ label: 'Functions & Closures', slug: 'language-basics/functions' },
+						{ label: 'Application Entry Point', slug: 'language-basics/application' },
 					],
 				},
 				{

@@ -198,6 +198,14 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Declares a static map/dictionary structure. Example: `formula { key: \"value\" }`",
     ),
     (
+        "@Application",
+        "**Application Entry Point**\n\nMarks this function as the application's entry point. The function is invoked automatically when the program starts. Configuration options such as `features` enable optional standard library modules and control application-wide compiler/runtime behavior.",
+    ),
+    (
+        "features",
+        "**features: String[]**\n\nEnables optional standard library capabilities for the application. Enabled features are available throughout the program and only the required runtime dependencies are included in AOT builds.",
+    ),
+    (
         "Formula",
         "Built-in Type: A map-like literal data structure.",
     ),
@@ -586,10 +594,16 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
 
     // Scan for variables: `let x = StructName.new(...)`, `let x: StructName = ...`, `let x = StructName { ... }`
     let var_re =
-        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)(?:\s*:\s*([a-zA-Z_]\w*))?(?:\s*=\s*([a-zA-Z_]\w*)(?:\.new|\s*\{|\s*\()?)?").unwrap();
+        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)(?:\s*:\s*([a-zA-Z_]\w*))?(?:\s*=\s*(?:(await)\s+)?([a-zA-Z_]\w*)(?:\.new|\s*\{|\s*\()?)?").unwrap();
     for cap in var_re.captures_iter(content) {
         let name = cap[1].to_string();
-        let typ = cap.get(2).or_else(|| cap.get(3)).map(|m| m.as_str().to_string());
+        let typ = cap.get(2).map(|m| m.as_str().to_string()).or_else(|| {
+            if cap.get(3).is_some() {
+                Some("Promise".to_string())
+            } else {
+                cap.get(4).map(|m| m.as_str().to_string())
+            }
+        });
         vars.push(ScannedVar { name, typ });
     }
 

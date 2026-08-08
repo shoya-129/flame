@@ -49,6 +49,7 @@ pub enum Value {
     Object(HashMap<String, Value>),
     NativeFunction(fn(*const CValue, usize) -> CValue),
     NativeCallback(fn(Vec<Value>) -> Result<Value, String>),
+    NativeClosure(NativeClosureType),
     Range(i64, i64),
     EnumMeta(String, Vec<crate::parser::EnumVariant>),
     EnumValue(String, String, EnumData),
@@ -104,6 +105,16 @@ static RUNTIME_QUEUE: OnceLock<(
 )> = OnceLock::new();
 static CALLBACK_REGISTRY: OnceLock<Mutex<HashMap<u64, Value>>> = OnceLock::new();
 static EVENT_LOOP_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+use std::fmt::Display;
+
+#[derive(Clone)]
+pub struct NativeClosureType(pub std::sync::Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>);
+
+impl std::fmt::Debug for NativeClosureType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NativeClosure")
+    }
+}
 
 pub fn set_event_loop_active(active: bool) {
     EVENT_LOOP_ACTIVE.store(active, std::sync::atomic::Ordering::SeqCst);
@@ -239,6 +250,7 @@ impl fmt::Display for Value {
             Value::Return(val) => write!(f, "<return {}>", val),
             Value::NativeFunction(_) => write!(f, "<native function>"),
             Value::NativeCallback(_) => write!(f, "<native callback>"),
+            Value::NativeClosure(_) => write!(f, "<native closure>"),
             Value::EnumMeta(name, _) => write!(f, "<enum {}>", name),
             Value::EnumValue(enum_name, variant_name, data) => match data {
                 EnumData::Unit => {
@@ -357,7 +369,7 @@ impl Value {
                 obj_ptr: *ptr as *mut std::ffi::c_void,
             },
             Value::Return(inner) => inner.pack(),
-            Value::Function { .. } | Value::NativeCallback(_) => {
+            Value::Function { .. } | Value::NativeCallback(_) | Value::NativeClosure(_) => {
                 let fn_id = register_callback_value(self.clone());
                 CValue {
                     tag: CValueTag::Function,

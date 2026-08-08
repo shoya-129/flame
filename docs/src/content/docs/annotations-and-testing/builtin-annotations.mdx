@@ -13,6 +13,7 @@ Flame features a comprehensive suite of **built-in PascalCase annotations** that
 
 | Annotation | Category | Syntax / Parameters | Description |
 | :--- | :--- | :--- | :--- |
+| **`@Application`**| **Execution** | `@Application(features: Vector = [])` | Marks an async function as the main entry point, bootstrapping the Tokio runtime and event loop for non-blocking I/O operations. |
 | **`@Cli`** | **CLI Builder** | `@Cli(name: String, version: String, description: String)` | Marks an entry function as a CLI application root and passes parsed arguments as `cli: Cli`. |
 | **`@Command`** | **CLI Builder** | `@Command(name: String, about: String)` | Marks a function as an executable CLI subcommand handler with auto-mapped flag parameters. |
 | **`@Embedded`**| **Embedded** | `@Embedded(target: String = "arduino-uno", baud: Int = 115200)` | Defines the infinite hardware loop (`void loop()`) for zero-cost bare-metal firmware compilation. |

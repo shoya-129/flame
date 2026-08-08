@@ -214,28 +214,42 @@ impl TypeChecker {
         self.functions.insert(
             "assert_eq".to_string(),
             FunctionSig {
-                params: vec![],
+                params: vec![
+                    ParamInfo { name: "actual".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
+                    ParamInfo { name: "expected".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
+                    ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
+                ],
                 return_type: Type::Nil,
             },
         );
         self.functions.insert(
             "assert_ne".to_string(),
             FunctionSig {
-                params: vec![],
+                params: vec![
+                    ParamInfo { name: "actual".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
+                    ParamInfo { name: "expected".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
+                    ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
+                ],
                 return_type: Type::Nil,
             },
         );
         self.functions.insert(
             "assert_true".to_string(),
             FunctionSig {
-                params: vec![],
+                params: vec![
+                    ParamInfo { name: "cond".to_string(), ty: Type::Bool, is_ref: false, is_mut: false },
+                    ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
+                ],
                 return_type: Type::Nil,
             },
         );
         self.functions.insert(
             "assert_false".to_string(),
             FunctionSig {
-                params: vec![],
+                params: vec![
+                    ParamInfo { name: "cond".to_string(), ty: Type::Bool, is_ref: false, is_mut: false },
+                    ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
+                ],
                 return_type: Type::Nil,
             },
         );
@@ -580,6 +594,42 @@ impl TypeChecker {
                             is_mut: *is_mut,
                         },
                     );
+                } else {
+                    // It's a destructuring assignment, e.g. "(tx, rx)"
+                    let inner_names = name
+                        .trim_start_matches('(')
+                        .trim_end_matches(')')
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .collect::<Vec<_>>();
+                    
+                    if let Type::Tuple(types) = &value_ty {
+                        for (i, v_name) in inner_names.iter().enumerate() {
+                            if v_name != "_" {
+                                let v_ty = types.get(i).cloned().unwrap_or(Type::Unknown);
+                                self.define_var(
+                                    v_name.clone(),
+                                    VarInfo {
+                                        ty: v_ty,
+                                        is_mut: *is_mut,
+                                    },
+                                );
+                            }
+                        }
+                    } else {
+                        // Fallback: If it's an unknown type or not a tuple, just define all as Unknown
+                        for v_name in inner_names {
+                            if v_name != "_" {
+                                self.define_var(
+                                    v_name.clone(),
+                                    VarInfo {
+                                        ty: Type::Unknown,
+                                        is_mut: *is_mut,
+                                    },
+                                );
+                            }
+                        }
+                    }
                 }
             }
             Stmt::FuncDecl {

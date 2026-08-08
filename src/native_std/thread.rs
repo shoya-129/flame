@@ -16,7 +16,7 @@ pub fn init() -> HashMap<String, Value> {
                 thread::sleep(Duration::from_millis(ms as u64));
                 Ok(Value::Nil)
             } else {
-                Err("thread.sleep argument must be an Int".to_string())
+                Err(format!("thread.sleep argument must be an Int, got {:?}", args.get(0)))
             }
         }),
     );

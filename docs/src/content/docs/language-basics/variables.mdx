@@ -71,6 +71,33 @@ const TIMEOUT_SECONDS: Float = 30.0
 
 ---
 
+## Destructuring Assignment
+
+Flame supports powerful destructuring assignment, allowing you to extract multiple values from Formulas, JSON, Objects, or Tuples (Arrays) directly into distinct variables. This is particularly useful for returning multiple values from a function or handling channels.
+
+```flame
+// 1. Destructuring a Tuple (e.g. from thread.channel())
+import std.thread
+let (tx, rx) = thread.channel()
+
+// 2. Destructuring an Object or Formula
+let user = formula { name: "Alice", age: 30 }
+let { name, age } = user
+print($"Name: {name}, Age: {age}")
+
+// 3. Destructuring JSON
+import std.json
+let parsed = json.parse("{\"status\": 200, \"data\": \"ok\"}")
+let { status, data } = parsed
+print($"Status: {status}")
+```
+
+<Aside type="tip">
+When destructuring Tuples/Arrays, use parentheses `let (a, b) = ...`. When destructuring Formulas or Objects by their key names, use curly braces `let { key1, key2 } = ...`.
+</Aside>
+
+---
+
 ## Variable Scoping & Shadowing
 
 Variables are lexically scoped to the `{ ... }` block in which they are declared:

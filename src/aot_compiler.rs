@@ -56,7 +56,7 @@ pub fn build_aot_project(
         flame_source_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     }
 
-    // Feature extraction based on user imports
+    // Feature extraction based on user imports and @Application
     let mut features = std::collections::HashSet::new();
     let src_scan_dir = std::env::current_dir().unwrap().join("src");
     
@@ -68,6 +68,7 @@ pub fn build_aot_project(
                     scan_imports(&path, features);
                 } else if path.extension().and_then(|s| s.to_str()) == Some("fm") {
                     if let Ok(content) = fs::read_to_string(&path) {
+                        // Scan for basic imports as a fallback
                         for line in content.lines() {
                             let line = line.trim();
                             if line.starts_with("import std.net.http") {
@@ -90,6 +91,58 @@ pub fn build_aot_project(
     }
     
     scan_imports(&src_scan_dir, &mut features);
+
+    // Also properly parse main.fm to extract @Application features
+    let main_fm = std::env::current_dir().unwrap().join("src").join("main.fm");
+    if let Ok(content) = fs::read_to_string(&main_fm) {
+        let mut lexer = crate::lexer::Lexer::new(&content);
+        let mut tokens = Vec::new();
+        loop {
+            let tok = lexer.next_token();
+            let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+            tokens.push(tok);
+            if is_eof { break; }
+        }
+        let mut parser = crate::parser::Parser::new(tokens, "src/main.fm".to_string());
+        if let Ok(stmts) = parser.parse() {
+            for stmt in stmts {
+                if let crate::parser::Stmt::FuncDecl { annotations, .. } = stmt {
+                    for ann in annotations {
+                        if ann.name == "Application" {
+                            // Extract features from @Application(features=["http", "tcp"])
+                            // The arguments to annotations are strings in the AST right now?
+                            // Wait, parser.rs says `pub args: Vec<String>` for Annotation!
+                            // The args are joined strings from the AST tokens.
+                            // Let's just do a simple string match on the raw args string since we know it's something like `features=["http", "tcp"]`
+                            for arg in &ann.args {
+                                if arg.contains("features") && arg.contains("[") {
+                                    if let Some(start) = arg.find('[') {
+                                        if let Some(end) = arg.find(']') {
+                                            let feats = &arg[start + 1..end];
+                                            for f in feats.split(',') {
+                                                let clean = f.trim().trim_matches('"').trim_matches('\'');
+                                                if !clean.is_empty() {
+                                                    let cargo_feature = match clean {
+                                                        "http" => "http",
+                                                        "ws" => "ws",
+                                                        "mqtt" => "mqtt",
+                                                        "tcp" | "udp" | "dns" | "url" | "net" => "net",
+                                                        _ => clean,
+                                                    };
+                                                    features.insert(format!("\"{}\"", cargo_feature));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let mut feature_list = features.into_iter().collect::<Vec<_>>().join(", ");
     if !feature_list.is_empty() {
         feature_list = format!(", features = [{}]", feature_list);

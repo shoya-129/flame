@@ -20,7 +20,26 @@ The `net` module is a complete toolkit for networking, providing interfaces for 
 ```flame
 import std.net.http
 
-let user = http.get(\"https://api.github.com/users/shoya-129\").json()
+let response = await http.get(\"https://api.github.com/users/shoya-129\")
+let user = await response.json()
+```
+"),
+        "json" | "std.json" => Some("# Module `json`
+
+The `json` module provides utilities for parsing and stringifying JSON data.
+
+## Functions
+- **`parse(string)`**: Parses a JSON string into a Flame object, array, string, number, boolean, or nil.
+- **`stringify(value)`**: Serializes a Flame value into a JSON string.
+
+**Example**:
+```flame
+import std.json
+
+let data = json.parse(\"{\\\"key\\\": \\\"value\\\"}\")
+println(data.key)
+
+let str = json.stringify(data)
 ```
 "),
         "net.tcp" | "std.net.tcp" => Some("# Module `net.tcp`
@@ -37,9 +56,9 @@ The `tcp` module provides `TcpListener` and `TcpSocket` for raw socket communica
 ```flame
 import std.net.tcp
 
-let listener = tcp.TcpListener.bind(\"0.0.0.0:3000\")
+let listener = await tcp.TcpListener.bind(\"0.0.0.0:3000\")
 for client in listener {
-    client.write(\"Hello\")
+    await client.write(\"Hello\")
 }
 ```
 "),
@@ -54,9 +73,9 @@ The `udp` module provides `UdpSocket` for connectionless UDP communication.
 ```flame
 import std.net.udp
 
-let udp = udp.UdpSocket.bind(\":9000\")
-udp.send(\"Hello\", \"192.168.0.10:9000\")
-let (msg, addr) = udp.recv()
+let udp = await udp.UdpSocket.bind(\":9000\")
+await udp.send(\"Hello\", \"192.168.0.10:9000\")
+let (msg, addr) = await udp.recv()
 ```
 "),
         "net.http" | "std.net.http" => Some("# Module `net.http`
@@ -76,9 +95,9 @@ The `http` module provides a powerful HTTP client.
 ```flame
 import std.net.http
 
-let response = http.get(\"https://api.github.com\")
+let response = await http.get(\"https://api.github.com\")
 println(response.status)
-println(response.text())
+println(await response.text())
 ```
 "),
         "net.ws" | "std.net.ws" => Some("# Module `net.ws`
@@ -92,9 +111,9 @@ The `ws` module provides a WebSocket client.
 ```flame
 import std.net.ws
 
-let ws = ws.WebSocket.connect(\"ws://localhost:8080/ws\")
-ws.send(\"Move Forward\")
-let msg = ws.recv()
+let ws = await ws.WebSocket.connect(\"ws://localhost:8080/ws\")
+await ws.send(\"Move Forward\")
+let msg = await ws.recv()
 ```
 "),
         "net.mqtt" | "std.net.mqtt" => Some("# Module `net.mqtt`
@@ -108,9 +127,9 @@ The `mqtt` module provides an MQTT client.
 ```flame
 import std.net.mqtt
 
-let client = mqtt.Mqtt.connect(\"mqtt://broker.local\")
-client.publish(\"robot/move\", \"forward\")
-client.subscribe(\"sensor/temp\") |msg| {
+let client = await mqtt.Mqtt.connect(\"mqtt://broker.local\")
+await client.publish(\"robot/move\", \"forward\")
+await client.subscribe(\"sensor/temp\") |msg| {
     println(msg)
 }
 ```
@@ -128,6 +147,7 @@ The `dns` module provides DNS resolution.
 The `url` module provides URL parsing.
 
 ## Types
+- **`Url`**: Represents a parsed URL.
 - **`Url`**: Represents a parsed URL.
 "),
         "net.interface" | "std.net.interface" => Some("# Module `net.interface`
@@ -561,6 +581,12 @@ let port = serial.open(\"COM3\", 9600)
         ("embedded" | "std.embedded", "flash") => Some("Non-volatile Flash memory storage controller.\n\n**Methods**:\n- `.write(addr, val)`: Store word persistent across reboots.\n- `.read(addr)`: Fetch value at byte offset."),
         ("embedded" | "std.embedded", "eeprom") => Some("EEPROM byte-level persistent storage driver.\n\n**Methods**:\n- `.write(addr, val)`: Program EEPROM cell."),
         ("embedded" | "std.embedded", "detect_ports") => Some("Enumerates physical USB hardware microcontrollers and standard COM serial interfaces attached to the system for firmware upload and debugging."),
+        ("json" | "std.json", "parse") => Some(
+            "Parses a JSON string into a Flame object or array.\n\n**Example**:\n```flame\nlet obj = json.parse(\"{\\\"name\\\": \\\"Flame\\\"}\")\n```",
+        ),
+        ("json" | "std.json", "stringify") => Some(
+            "Converts a Flame object or value into a JSON string.\n\n**Example**:\n```flame\nlet str = json.stringify(formula { key: \"value\" })\n```",
+        ),
         _ => None,
     }
 }
