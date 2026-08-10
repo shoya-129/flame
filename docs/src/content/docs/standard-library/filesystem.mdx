@@ -75,7 +75,7 @@ You can also interact with files dynamically using the `fs.open` method, which r
 ```flame
 import std.fs
 
-let file = fs.open("data.txt")
+let file = await fs.open("data.txt")
 
 // Write and append string data
 file.write("First Line\n")

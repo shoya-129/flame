@@ -23,6 +23,28 @@ println($"Current Seconds: {secs}")
 // Get current high-resolution UNIX timestamp in milliseconds
 let now_ms = time.now()
 println($"Timestamp in Milliseconds: {now_ms}")
+
+// Parse an RFC3339 or RFC2822 date string into a UNIX timestamp (milliseconds)
+let parsed_ms = time.parse("2026-08-10T08:00:00Z")
+println($"Parsed Timestamp: {parsed_ms}")
+```
+
+### Timestamp Manipulation
+Since timestamps are stored as `Int` types (milliseconds), Flame provides native methods directly on integers to manipulate and extract date components intuitively.
+
+```flame
+import std.time
+
+let now = time.now()
+
+// Extract date components
+println($"Year: {now.year()}")
+println($"Month: {now.month()}")
+println($"Day: {now.day()}")
+
+// Date arithmetic 
+let future_days = now.addDays(5)
+let future_hours = now.addHours(2)
 ```
 
 
@@ -62,6 +84,19 @@ println($"Received: {received}")
 | :--- | :--- | :--- | :--- |
 | `time.now` | *None* | `Int` | Returns the current UNIX epoch timestamp in milliseconds. |
 | `time.timestamp` | *None* | `Int` | Returns the current UNIX epoch timestamp in seconds. |
+| `time.parse` | `date: String` | `Int` | Parses an RFC3339 or RFC2822 date string into a UNIX timestamp in milliseconds. |
+
+### Timestamp Methods (`Int`)
+
+Because timestamps are returned as milliseconds since epoch, Flame exposes native date methods on all integer primitives:
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `.year()` | *None* | `Int` | Extracts the year from a valid UNIX millisecond timestamp. |
+| `.month()` | *None* | `Int` | Extracts the month (1-12) from the timestamp. |
+| `.day()` | *None* | `Int` | Extracts the day of the month (1-31) from the timestamp. |
+| `.addDays()` | `days: Int` | `Int` | Adds the specified number of days to the timestamp and returns the new value. |
+| `.addHours()` | `hours: Int` | `Int` | Adds the specified number of hours to the timestamp and returns the new value. |
 
 
 
