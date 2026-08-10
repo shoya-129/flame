@@ -1,42 +1,57 @@
 import exports
 import native.server
 
+
+
 @Logger(prefix: "flame-cli")
 @Cli(name: "flame_cli", version: "1.0.0", description: "Flame toolchain & server")
 fn main(cli: Cli) {
     match cli {
-        build { release, target } => build(release, target)
-        serve { port } => serve(port)
+        build {
+            release, target
+        } => build(release, target)
+
+        serve {
+            port
+        } => serve(port)
+
         help => print("help")
+
         _ => print("Unknown command")
+
     }
+
 }
-
-
 
 @Command(name: "build", about: "Compile the current project")
 fn build(release: Bool = false, target: String = "debug") {
     print($"Building target '{target}', release mode: {release}")
+
 }
 
 @Command(name: "serve", about: "Run the server")
 fn serve(port: Int = 3000) {
     print($"Starting web server on port {port}...")
+
     let app = await server.init()
-
-    app.get("/", () {
-        "Welcome to Flame Multithreaded Web Server & CLI Tool!"
-    })
-
-    app.get("/about", () {
-        "Built on top of Rust, Axum, and Tokio!"
-    })
-
+    app.get(
+        "/", 
+        () {
+            "Welcome to Flame Multithreaded Web Server & CLI Tool!"
+        }
+    )
+    app.get(
+        "/about", 
+        () {
+            "Built on top of Rust, Axum, and Tokio!"
+        }
+    )
     fn create_user(body: String) -> String {
         print($"Received incoming POST data: {body}")
+
         $"Successfully created record for payload: {body}"
     }
-    app.post("/users", create_user)
 
+    app.post("/users", create_user)
     await app.listen(port)
 }

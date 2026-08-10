@@ -13,7 +13,7 @@ exclude = [
     "docs/",
     "bin/",
     "scripts/",
-    "flame-vscode-extension/"
+    "flame-ide/"
 ]
 
 [features]

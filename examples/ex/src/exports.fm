@@ -4,5 +4,6 @@ export fn sayhello(&user: Formula) -> String {
 
 export annotation Logger(prefix: String) -> String {
     print($"[LOGGER INIT] Prefix configured: {prefix}")
+
     prefix
 }

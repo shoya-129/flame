@@ -21,7 +21,7 @@ function findCompilerBinary(startPath) {
         if (configPath && typeof configPath === 'string' && configPath.trim() !== '') {
             if (existsSync(configPath)) return configPath;
         }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Check workspace directories and parents
     let curr = startPath;
@@ -131,7 +131,7 @@ function findCompilerBinary(startPath) {
                     newestTime = mtime;
                     newest = cand;
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
         return newest;
     }
@@ -192,7 +192,7 @@ async function runCheck(document, position) {
         if (existsSync(tempFilePath)) {
             unlinkSync(tempFilePath);
         }
-    } catch (e) {}
+    } catch (e) { }
 
     return result;
 }
@@ -208,7 +208,7 @@ function toCompletionItem(entry) {
             kind = vscode.CompletionItemKind.Keyword;
             break;
         case 'annotation':
-            kind = vscode.CompletionItemKind.Function;
+            kind = vscode.CompletionItemKind.Keyword;
             break;
         case 'struct':
             kind = vscode.CompletionItemKind.Struct;
@@ -235,12 +235,12 @@ function toCompletionItem(entry) {
     if (entry.sortText) {
         item.sortText = entry.sortText;
     }
-    
+
     // Fix annotation @@ issue by stripping @ from insertText
     if (entry.kind === 'annotation' && entry.label.startsWith('@')) {
         item.insertText = entry.label.substring(1);
     }
-    
+
     return item;
 }
 
@@ -302,218 +302,736 @@ function activate(context) {
         return isIdentStart(ch) || (ch >= '0' && ch <= '9');
     }
 
-    context.subscriptions.push(vscode.languages.registerDocumentSemanticTokensProvider(['flame'], {
-        provideDocumentSemanticTokens(document) {
-            const tokensBuilder = new vscode.SemanticTokensBuilder(legend);
-            const text = document.getText();
-            const len = text.length;
-            let i = 0;
+    context.subscriptions.push(
+        vscode.languages.registerDocumentSemanticTokensProvider(['flame'], {
+            provideDocumentSemanticTokens(document) {
+                const tokensBuilder = new vscode.SemanticTokensBuilder(legend);
 
-            const pushTokenRange = (startIdx, endIdx, typeIdx) => {
-                let curr = startIdx;
-                while (curr < endIdx) {
-                    let nextLine = text.indexOf('\n', curr);
-                    if (nextLine === -1 || nextLine >= endIdx) {
-                        let lineLen = endIdx - curr;
-                        if (lineLen > 0 && text[curr + lineLen - 1] === '\r') lineLen--;
-                        if (lineLen > 0) {
-                            const pos = document.positionAt(curr);
-                            tokensBuilder.push(pos.line, pos.character, lineLen, typeIdx, 0);
+                const text = document.getText();
+                const len = text.length;
+
+                let i = 0;
+
+                /*
+                 * Semantic token types:
+                 *
+                 * 0 = keyword
+                 * 1 = function
+                 * 2 = annotation
+                 * 3 = comment
+                 * 4 = string
+                 */
+
+                const KEYWORD = 0;
+                const FUNCTION = 1;
+                const COMMENT = 3;
+                const STRING = 4;
+
+                const keywords = new Set([
+                    'or',
+                    'and',
+                    'not',
+
+                    'if',
+                    'else',
+                    'match',
+                    'for',
+                    'in',
+                    'while',
+                    'loop',
+
+                    'break',
+                    'continue',
+                    'defer',
+                    'return',
+                    'yield',
+
+                    'await',
+                    'async',
+                    'thread',
+
+                    'let',
+                    'const',
+                    'var',
+
+                    'fn',
+                    'struct',
+                    'enum',
+                    'trait',
+                    'impl',
+
+                    'export',
+                    'import',
+
+                    'mut',
+                    'as',
+                    'type',
+                    'where',
+
+                    'formula',
+
+                    'self',
+                    'Self',
+
+                    'true',
+                    'false',
+                    'nil',
+
+                    'annotation'
+                ]);
+
+                function isIdentStart(ch) {
+                    return (
+                        (ch >= 'a' && ch <= 'z') ||
+                        (ch >= 'A' && ch <= 'Z') ||
+                        ch === '_'
+                    );
+                }
+
+                function isIdentPart(ch) {
+                    return (
+                        isIdentStart(ch) ||
+                        (ch >= '0' && ch <= '9')
+                    );
+                }
+
+                function pushTokenRange(startIdx, endIdx, typeIdx) {
+                    let curr = startIdx;
+
+                    while (curr < endIdx) {
+                        const nextLine = text.indexOf('\n', curr);
+
+                        if (
+                            nextLine === -1 ||
+                            nextLine >= endIdx
+                        ) {
+                            let lineLen = endIdx - curr;
+
+                            if (
+                                lineLen > 0 &&
+                                text[curr + lineLen - 1] === '\r'
+                            ) {
+                                lineLen--;
+                            }
+
+                            if (lineLen > 0) {
+                                const pos = document.positionAt(curr);
+
+                                tokensBuilder.push(
+                                    pos.line,
+                                    pos.character,
+                                    lineLen,
+                                    typeIdx,
+                                    0
+                                );
+                            }
+
+                            break;
                         }
-                        break;
-                    } else {
+
                         let lineLen = nextLine - curr;
-                        if (lineLen > 0 && text[curr + lineLen - 1] === '\r') lineLen--;
+
+                        if (
+                            lineLen > 0 &&
+                            text[curr + lineLen - 1] === '\r'
+                        ) {
+                            lineLen--;
+                        }
+
                         if (lineLen > 0) {
                             const pos = document.positionAt(curr);
-                            tokensBuilder.push(pos.line, pos.character, lineLen, typeIdx, 0);
+
+                            tokensBuilder.push(
+                                pos.line,
+                                pos.character,
+                                lineLen,
+                                typeIdx,
+                                0
+                            );
                         }
+
                         curr = nextLine + 1;
                     }
                 }
-            };
 
-            while (i < len) {
-                const ch = text[i];
-                const next = i + 1 < len ? text[i + 1] : '';
-
-                // 1. Single-line comments (// ...) - marked entirely as comment semantic token so nothing inside gets syntax highlighted!
-                if (ch === '/' && next === '/') {
-                    const start = i;
-                    i += 2;
-                    while (i < len && text[i] !== '\n' && text[i] !== '\r') {
-                        i++;
+                /*
+                 * Skip whitespace and return the next non-whitespace
+                 * character.
+                 */
+                function skipWhitespace(pos) {
+                    while (
+                        pos < len &&
+                        (
+                            text[pos] === ' ' ||
+                            text[pos] === '\t' ||
+                            text[pos] === '\r' ||
+                            text[pos] === '\n'
+                        )
+                    ) {
+                        pos++;
                     }
-                    const pos = document.positionAt(start);
-                    tokensBuilder.push(pos.line, pos.character, i - start, 3, 0); // 3 = comment
-                    continue;
+
+                    return pos;
                 }
 
-                // 2. Multi-line comments (/* ... */) - marked entirely as comment semantic token!
-                if (ch === '/' && next === '*') {
-                    const start = i;
-                    i += 2;
-                    while (i < len) {
-                        if (text[i] === '*' && i + 1 < len && text[i + 1] === '/') {
-                            i += 2;
-                            break;
-                        }
-                        i++;
+                /*
+                 * Reads an identifier starting at `start`.
+                 */
+                function readIdentifier(start) {
+                    let end = start;
+
+                    while (
+                        end < len &&
+                        isIdentPart(text[end])
+                    ) {
+                        end++;
                     }
-                    pushTokenRange(start, i, 3); // 3 = comment
-                    continue;
+
+                    return end;
                 }
 
-                // 3. Interpolated strings ($"...") - emit string tokens ONLY outside {...} braces!
-                if (ch === '$' && next === '"') {
-                    let segStart = i;
-                    i += 2; // skip $"
-                    while (i < len) {
-                        if (text[i] === '\\') { i += 2; continue; }
-                        if (text[i] === '"') {
+                /*
+                 * ---------------------------------------------------------
+                 * Main scanner
+                 * ---------------------------------------------------------
+                 */
+
+                while (i < len) {
+                    const ch = text[i];
+                    const next = i + 1 < len
+                        ? text[i + 1]
+                        : '';
+
+                    /*
+                     * -----------------------------------------------------
+                     * 1. Single-line comments
+                     * -----------------------------------------------------
+                     */
+
+                    if (ch === '/' && next === '/') {
+                        const start = i;
+
+                        i += 2;
+
+                        while (
+                            i < len &&
+                            text[i] !== '\n' &&
+                            text[i] !== '\r'
+                        ) {
                             i++;
-                            if (i > segStart) pushTokenRange(segStart, i, 4); // 4 = string
-                            break;
                         }
-                        if (text[i] === '{') {
-                            if (i > segStart) pushTokenRange(segStart, i, 4);
-                            i++; // skip '{' so it remains white code punctuation
-                            let braceDepth = 1;
-                            while (i < len && braceDepth > 0) {
-                                if (text[i] === '{') braceDepth++;
-                                else if (text[i] === '}') {
-                                    braceDepth--;
-                                    if (braceDepth === 0) {
-                                        i++; // skip '}' so it remains white code punctuation
-                                        segStart = i; // resume string segment after '}'
-                                        break;
-                                    }
-                                }
-                                if (isIdentStart(text[i])) {
-                                    const startId = i;
-                                    while (i < len && isIdentPart(text[i])) i++;
-                                    const word = text.slice(startId, i);
-                                    const keywords = ['or', 'and', 'not', 'if', 'else', 'match', 'for', 'in', 'while', 'loop', 'break', 'continue', 'defer', 'return', 'yield', 'await', 'async', 'thread', 'let', 'const', 'var', 'fn', 'struct', 'enum', 'trait', 'impl', 'export', 'import', 'mut', 'as', 'type', 'where', 'formula', 'self', 'Self', 'true', 'false', 'nil'];
-                                    if (keywords.includes(word)) {
-                                        const kwPos = document.positionAt(startId);
-                                        tokensBuilder.push(kwPos.line, kwPos.character, i - startId, 0, 0);
-                                    }
-                                    continue;
-                                }
-                                i++;
+
+                        pushTokenRange(
+                            start,
+                            i,
+                            COMMENT
+                        );
+
+                        continue;
+                    }
+
+                    /*
+                     * -----------------------------------------------------
+                     * 2. Multi-line comments
+                     * -----------------------------------------------------
+                     */
+
+                    if (ch === '/' && next === '*') {
+                        const start = i;
+
+                        i += 2;
+
+                        while (i < len) {
+                            if (
+                                text[i] === '*' &&
+                                i + 1 < len &&
+                                text[i + 1] === '/'
+                            ) {
+                                i += 2;
+                                break;
                             }
+
+                            i++;
+                        }
+
+                        pushTokenRange(
+                            start,
+                            i,
+                            COMMENT
+                        );
+
+                        continue;
+                    }
+
+                    /*
+                     * -----------------------------------------------------
+                     * 3. Interpolated strings
+                     * -----------------------------------------------------
+                     */
+
+                    if (
+                        ch === '$' &&
+                        next === '"'
+                    ) {
+                        const start = i;
+
+                        i += 2;
+
+                        let segmentStart = start;
+
+                        while (i < len) {
+                            /*
+                             * Escaped character.
+                             */
+                            if (text[i] === '\\') {
+                                i += 2;
+                                continue;
+                            }
+
+                            /*
+                             * End of interpolated string.
+                             */
+                            if (text[i] === '"') {
+                                i++;
+
+                                pushTokenRange(
+                                    segmentStart,
+                                    i,
+                                    STRING
+                                );
+
+                                break;
+                            }
+
+                            /*
+                             * Template expression:
+                             *
+                             * ${ ... }
+                             */
+                            if (text[i] === '{') {
+                                if (i > segmentStart) {
+                                    pushTokenRange(
+                                        segmentStart,
+                                        i,
+                                        STRING
+                                    );
+                                }
+
+                                i++;
+
+                                let braceDepth = 1;
+
+                                while (
+                                    i < len &&
+                                    braceDepth > 0
+                                ) {
+                                    if (text[i] === '{') {
+                                        braceDepth++;
+                                        i++;
+                                        continue;
+                                    }
+
+                                    if (text[i] === '}') {
+                                        braceDepth--;
+
+                                        if (braceDepth === 0) {
+                                            i++;
+                                            segmentStart = i;
+                                            break;
+                                        }
+
+                                        i++;
+                                        continue;
+                                    }
+
+                                    /*
+                                     * Highlight keywords inside
+                                     * interpolation expressions.
+                                     */
+                                    if (isIdentStart(text[i])) {
+                                        const wordStart = i;
+                                        const wordEnd =
+                                            readIdentifier(i);
+
+                                        const word =
+                                            text.slice(
+                                                wordStart,
+                                                wordEnd
+                                            );
+
+                                        if (
+                                            keywords.has(word)
+                                        ) {
+                                            const pos =
+                                                document.positionAt(
+                                                    wordStart
+                                                );
+
+                                            tokensBuilder.push(
+                                                pos.line,
+                                                pos.character,
+                                                wordEnd - wordStart,
+                                                KEYWORD,
+                                                0
+                                            );
+                                        }
+
+                                        i = wordEnd;
+                                        continue;
+                                    }
+
+                                    i++;
+                                }
+
+                                continue;
+                            }
+
+                            i++;
+                        }
+
+                        continue;
+                    }
+
+                    /*
+                     * -----------------------------------------------------
+                     * 4. Double quoted strings
+                     * -----------------------------------------------------
+                     */
+
+                    if (ch === '"') {
+                        const start = i;
+
+                        i++;
+
+                        while (i < len) {
+                            if (text[i] === '\\') {
+                                i += 2;
+                                continue;
+                            }
+
+                            if (
+                                text[i] === '"' ||
+                                text[i] === '\n' ||
+                                text[i] === '\r'
+                            ) {
+                                if (text[i] === '"') {
+                                    i++;
+                                }
+
+                                break;
+                            }
+
+                            i++;
+                        }
+
+                        pushTokenRange(
+                            start,
+                            i,
+                            STRING
+                        );
+
+                        continue;
+                    }
+
+                    /*
+                     * -----------------------------------------------------
+                     * 5. Single quoted strings
+                     * -----------------------------------------------------
+                     */
+
+                    if (ch === '\'') {
+                        const start = i;
+
+                        i++;
+
+                        while (i < len) {
+                            if (text[i] === '\\') {
+                                i += 2;
+                                continue;
+                            }
+
+                            if (
+                                text[i] === '\'' ||
+                                text[i] === '\n' ||
+                                text[i] === '\r'
+                            ) {
+                                if (text[i] === '\'') {
+                                    i++;
+                                }
+
+                                break;
+                            }
+
+                            i++;
+                        }
+
+                        pushTokenRange(
+                            start,
+                            i,
+                            STRING
+                        );
+
+                        continue;
+                    }
+
+                    /*
+                     * -----------------------------------------------------
+                     * 6. @ annotations
+                     *
+                     * @native
+                     * @native.test
+                     * @std.test.foo
+                     *
+                     * Annotation names are KEYWORDS.
+                     * They are NOT functions.
+                     * -----------------------------------------------------
+                     */
+
+                    if (ch === '@') {
+                        let cursor = i + 1;
+
+                        /*
+                         * @ must be followed by an identifier.
+                         */
+                        if (
+                            cursor < len &&
+                            isIdentStart(text[cursor])
+                        ) {
+                            /*
+                             * First annotation component.
+                             */
+                            const firstStart = cursor;
+
+                            cursor = readIdentifier(cursor);
+
+                            const firstPos =
+                                document.positionAt(
+                                    firstStart
+                                );
+
+                            tokensBuilder.push(
+                                firstPos.line,
+                                firstPos.character,
+                                cursor - firstStart,
+                                KEYWORD,
+                                0
+                            );
+
+                            /*
+                             * Additional components:
+                             *
+                             * @native.test.foo
+                             */
+                            while (
+                                cursor < len &&
+                                text[cursor] === '.' &&
+                                cursor + 1 < len &&
+                                isIdentStart(text[cursor + 1])
+                            ) {
+                                cursor++;
+
+                                const segmentStart =
+                                    cursor;
+
+                                cursor =
+                                    readIdentifier(
+                                        cursor
+                                    );
+
+                                const segmentPos =
+                                    document.positionAt(
+                                        segmentStart
+                                    );
+
+                                tokensBuilder.push(
+                                    segmentPos.line,
+                                    segmentPos.character,
+                                    cursor - segmentStart,
+                                    KEYWORD,
+                                    0
+                                );
+                            }
+
+                            i = cursor;
+
                             continue;
                         }
-                        i++;
-                    }
-                    continue;
-                }
 
-                // 4. Double quoted strings ("...") - marked entirely as string semantic token!
-                if (ch === '"') {
-                    const start = i;
-                    i++;
-                    while (i < len) {
-                        if (text[i] === '\\') { i += 2; continue; }
-                        if (text[i] === '"' || text[i] === '\n' || text[i] === '\r') {
-                            if (text[i] === '"') i++;
-                            break;
-                        }
+                        /*
+                         * A standalone @.
+                         */
                         i++;
-                    }
-                    pushTokenRange(start, i, 4); // 4 = string
-                    continue;
-                }
 
-                // 5. Single quoted strings ('...') - marked entirely as string semantic token!
-                if (ch === '\'') {
-                    const start = i;
-                    i++;
-                    while (i < len) {
-                        if (text[i] === '\\') { i += 2; continue; }
-                        if (text[i] === '\'' || text[i] === '\n' || text[i] === '\r') {
-                            if (text[i] === '\'') i++;
-                            break;
-                        }
-                        i++;
-                    }
-                    pushTokenRange(start, i, 4); // 4 = string
-                    continue;
-                }
-
-                // 6. Annotation: @identifier (e.g. @test, @std.test)
-                if (ch === '@') {
-                    if (i + 1 < len && isIdentStart(text[i + 1])) {
-                        let curr = i + 1;
-                        while (curr < len && isIdentPart(text[curr])) {
-                            curr++;
-                        }
-                        const pos = document.positionAt(i + 1);
-                        tokensBuilder.push(pos.line, pos.character, curr - (i + 1), 2, 0);
-                        i = curr;
-                        while (i < len && text[i] === '.' && i + 1 < len && isIdentStart(text[i + 1])) {
-                            const segStart = i + 1;
-                            curr = segStart;
-                            while (curr < len && isIdentPart(text[curr])) {
-                                curr++;
-                            }
-                            const segPos = document.positionAt(segStart);
-                            tokensBuilder.push(segPos.line, segPos.character, curr - segStart, 2, 0);
-                            i = curr;
-                        }
                         continue;
                     }
-                    i++;
-                    continue;
-                }
 
-                // 7. Keyword "annotation" declaration: annotation <name>
-                if (text.startsWith('annotation', i)) {
-                    const prevChar = i > 0 ? text[i - 1] : ' ';
-                    const nextChar = i + 10 < len ? text[i + 10] : ' ';
-                    if (!isIdentPart(prevChar) && !isIdentPart(nextChar)) {
-                        const kwPos = document.positionAt(i);
-                        tokensBuilder.push(kwPos.line, kwPos.character, 10, 0, 0);
-                        i += 10;
-                        let look = i;
-                        while (look < len && (text[look] === ' ' || text[look] === '\t')) {
-                            look++;
-                        }
-                        if (look < len && isIdentStart(text[look])) {
-                            const nameStart = look;
-                            while (look < len && isIdentPart(text[look])) {
-                                look++;
+                    /*
+                     * -----------------------------------------------------
+                     * 7. Identifier handling
+                     * -----------------------------------------------------
+                     */
+
+                    if (isIdentStart(ch)) {
+                        const start = i;
+                        const end = readIdentifier(i);
+
+                        const word = text.slice(
+                            start,
+                            end
+                        );
+
+                        /*
+                         * -------------------------------------------------
+                         * KEYWORDS
+                         * -------------------------------------------------
+                         */
+
+                        if (keywords.has(word)) {
+                            const pos =
+                                document.positionAt(start);
+
+                            tokensBuilder.push(
+                                pos.line,
+                                pos.character,
+                                end - start,
+                                KEYWORD,
+                                0
+                            );
+
+                            /*
+                             * -------------------------------------------------
+                             * FUNCTION DECLARATION
+                             * -------------------------------------------------
+                             *
+                             * Only:
+                             *
+                             *     fn name
+                             *
+                             * makes `name` a function.
+                             *
+                             * This is intentionally NOT:
+                             *
+                             *     identifier(
+                             *
+                             * because that would incorrectly color
+                             * arbitrary identifiers/function calls.
+                             */
+                            if (word === 'fn') {
+                                let cursor =
+                                    skipWhitespace(end);
+
+                                /*
+                                 * Function name.
+                                 */
+                                if (
+                                    cursor < len &&
+                                    isIdentStart(text[cursor])
+                                ) {
+                                    const functionStart =
+                                        cursor;
+
+                                    cursor =
+                                        readIdentifier(
+                                            cursor
+                                        );
+
+                                    const functionPos =
+                                        document.positionAt(
+                                            functionStart
+                                        );
+
+                                    tokensBuilder.push(
+                                        functionPos.line,
+                                        functionPos.character,
+                                        cursor - functionStart,
+                                        FUNCTION,
+                                        0
+                                    );
+
+                                    i = cursor;
+
+                                    continue;
+                                }
                             }
-                            const namePos = document.positionAt(nameStart);
-                            tokensBuilder.push(namePos.line, namePos.character, look - nameStart, 1, 0);
-                            i = look;
+
+                            /*
+                             * -------------------------------------------------
+                             * ANNOTATION DECLARATION
+                             * -------------------------------------------------
+                             *
+                             * annotation native
+                             *
+                             * `native` stays KEYWORD.
+                             *
+                             * It is NEVER FUNCTION.
+                             */
+                            if (word === 'annotation') {
+                                let cursor =
+                                    skipWhitespace(end);
+
+                                if (
+                                    cursor < len &&
+                                    isIdentStart(text[cursor])
+                                ) {
+                                    const annotationStart =
+                                        cursor;
+
+                                    cursor =
+                                        readIdentifier(
+                                            cursor
+                                        );
+
+                                    const annotationPos =
+                                        document.positionAt(
+                                            annotationStart
+                                        );
+
+                                    tokensBuilder.push(
+                                        annotationPos.line,
+                                        annotationPos.character,
+                                        cursor - annotationStart,
+                                        KEYWORD,
+                                        0
+                                    );
+
+                                    i = cursor;
+
+                                    continue;
+                                }
+                            }
+
+                            i = end;
+
+                            continue;
                         }
+
+                        /*
+                         * -------------------------------------------------
+                         * NORMAL IDENTIFIER
+                         * -------------------------------------------------
+                         *
+                         * Do NOT mark it as a function just because
+                         * it is followed by `(`.
+                         *
+                         * This is the critical part preventing things
+                         * such as annotation names from becoming
+                         * function-colored.
+                         */
+                        i = end;
+
                         continue;
                     }
+
+                    /*
+                     * Everything else.
+                     */
+                    i++;
                 }
 
-                // 8. Keywords (including 'or', 'and', 'not', etc.)
-                if (isIdentStart(ch)) {
-                    const start = i;
-                    let curr = i;
-                    while (curr < len && isIdentPart(text[curr])) {
-                        curr++;
-                    }
-                    const word = text.slice(start, curr);
-                    const keywords = ['or', 'and', 'not', 'if', 'else', 'match', 'for', 'in', 'while', 'loop', 'break', 'continue', 'defer', 'return', 'yield', 'await', 'async', 'thread', 'let', 'const', 'var', 'fn', 'struct', 'enum', 'trait', 'impl', 'export', 'import', 'mut', 'as', 'type', 'where', 'formula', 'self', 'Self', 'true', 'false', 'nil', 'annotation'];
-                    if (keywords.includes(word)) {
-                        const kwPos = document.positionAt(start);
-                        tokensBuilder.push(kwPos.line, kwPos.character, curr - start, 0, 0); // 0 = keyword
-                    }
-                    i = curr;
-                    continue;
-                }
-
-                i++;
+                return tokensBuilder.build();
             }
-            return tokensBuilder.build();
-        }
-    }, legend));
+        }, legend)
+    );
 
     context.subscriptions.push(vscode.languages.registerHoverProvider(['flame'], {
         async provideHover(document, position) {
@@ -556,7 +1074,7 @@ function activate(context) {
                         if (existsSync(tempFilePath)) {
                             unlinkSync(tempFilePath);
                         }
-                    } catch (e) {}
+                    } catch (e) { }
 
                     if (error) {
                         resolve([]);
@@ -578,7 +1096,7 @@ function activate(context) {
     }));
 }
 
-function deactivate() {}
+function deactivate() { }
 
 module.exports = {
     activate,
