@@ -4024,9 +4024,11 @@ impl Runner {
                 let id = *counter;
 
                 let handle = thread::spawn(move || {
-                    runner
-                        .eval_expr(&expr_clone, thread_env)
-                        .unwrap_or(Value::Nil)
+                    let mut res = runner.eval_expr(&expr_clone, thread_env).unwrap_or(Value::Nil);
+                    if let Value::Return(ret_val) = res {
+                        res = *ret_val;
+                    }
+                    res
                 });
 
                 get_threads().lock().unwrap().insert(id, handle);
@@ -4060,7 +4062,11 @@ impl Runner {
                 let child_env = Arc::new(Mutex::new(Env::new_child(env)));
                 let mut last_val = Value::Nil;
                 for stmt in statements {
-                    last_val = self.execute_statement(stmt, child_env.clone())?;
+                    let res = self.execute_statement(stmt, child_env.clone())?;
+                    if matches!(res, Value::Return(_)) || matches!(res, Value::Break) {
+                        return Ok(res);
+                    }
+                    last_val = res;
                 }
                 Ok(last_val)
             }

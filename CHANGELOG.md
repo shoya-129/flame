@@ -4,6 +4,18 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.4] - 2026-08-10 (Codename: *Second Spark*)
+
+### 🐛 Bug Fixes & VM Enhancements
+- **Thread Return Payload Unwrapping**: Fixed a critical AST propagation bug in `Expr::ThreadSpawn` where a `return` statement evaluated inside a `thread { ... }` block would yield a `Value::Return` wrapper instead of the underlying payload. Doing `await handle` now correctly strips the internal wrapper so properties (like `Battery.percent`) are directly accessible on structured objects.
+- **Block Statement Halting**: Overhauled `Expr::Block` resolution to guarantee that `return` and `break` statements properly halt block-level loop execution and bubble the value all the way out of the evaluation chain.
+
+### 📚 Documentation & Ecosystem Tooling
+- **Timestamp Extensions (`std.time`)**: Documented Flame's native integer-based timestamp capabilities in `threading-and-time.mdx`. Exposed detailed API descriptions for `.year()`, `.month()`, `.day()`, `.addDays(days)`, and `.addHours(hours)`.
+- **Sidebar Configurations**: Fixed Astro Starlight sidebar configurations to explicitly render `std.math` inside the primary left-hand navigation pane for easier standard library discoverability.
+
+---
+
 ## [0.2.3] - 2026-08-10 (Codename: *Second Spark*)
 
 ### 🐛 Bug Fixes & AOT Enhancements
