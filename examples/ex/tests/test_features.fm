@@ -1,0 +1,80 @@
+import std.math
+import std.time
+import std.fs
+
+
+
+@Test
+fn test_math() {
+    let x = - 5
+    x.abs().assert_eq(5)
+    x.min(0).assert_eq( - 5)
+    x.max(10).assert_eq(10)
+    x.clamp(0, 100).assert_eq(0)
+    let y = 5.5
+    y.floor().assert_eq(5.0)
+    y.ceil().assert_eq(6.0)
+    y.round().assert_eq(6.0)
+}
+
+@Test
+fn test_type_conv() {
+    let s = "123"
+    s.toInt().assert_eq(123)
+    s.type ().assert_eq("String")
+    let b = s.toBytes()
+    b.type ().assert_eq("Bytes")
+    b.toHex().assert_eq("313233")
+    // toBase64 gives "MTIz" for "123"
+    b.toBase64().assert_eq("MTIz")
+    let b2 = "456".toBytes()
+    b.concat(b2).type ().assert_eq("Bytes")
+}
+
+@Test
+fn test_time() {
+    let now = time.now()
+    now.type ().assert_eq("Int")
+    let year = now.year()
+    let is_future = year>2020
+    is_future.assert_eq(true)
+    let later = now.addDays(5)
+    let is_later = later>now
+    is_later.assert_eq(true)
+}
+
+@Test
+fn test_json() {
+    let obj = {
+        name: "flame",
+        version: 1
+    }
+
+    let json = obj.toJson()
+    let dummy = {
+    }
+
+    let parsed = dummy.fromJson(json)
+    parsed.name.assert_eq("flame")
+    parsed.version.assert_eq(1)
+}
+
+@Test
+fn test_fs() {
+    let file = await fs.open("test_fs_data.txt")
+    file.write("Hello File")
+    file.exists().assert_eq(true)
+    file.size().assert_eq(10)
+    file.read().assert_eq("Hello File")
+    file.append("!")
+    file.read().assert_eq("Hello File!")
+    file.delete()
+    file.exists().assert_eq(false)
+}
+
+@Test
+fn test_tuple_index() {
+    let t = (10, 20, 30)
+    let (b: 1) = t
+    b.assert_eq(20)
+}

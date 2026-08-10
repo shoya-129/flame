@@ -18,7 +18,7 @@ The annotation also serves as the central place for configuring application-wide
 ## Syntax
 
 ```flame
-@Application()
+@Application
 fn start() {
     println("Hello from Flame!")
 }
@@ -61,7 +61,7 @@ This is the standard execution model for quick scripting.
 ```flame
 println("Before")
 
-@Application()
+@Application
 fn start() {
     println("Inside")
 }
@@ -88,22 +88,22 @@ The annotated function becomes the absolute application entry point. Top-level s
 ### Valid Usage
 
 ```flame
-@Application()
+@Application
 fn server() {}
 ```
 
 ```flame
-@Application()
+@Application
 async fn app() {}
 ```
 
 ### Invalid Usage
 
 ```flame
-@Application()
+@Application
 fn a() {}
 
-@Application()
+@Application
 fn b() {} // Compiler error: Only one @Application entry point is allowed.
 ```
 

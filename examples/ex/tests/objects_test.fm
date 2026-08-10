@@ -1,0 +1,93 @@
+import std.json
+import std.thread
+
+
+struct Duration {
+    h: Int
+    min: Int
+    sec: Int
+}
+
+impl Duration {
+    fn totalSeconds(self) -> Int {
+        return self.h * 3600 + self.min * 60 + self.sec
+    }
+
+}
+
+struct Battery {
+    percent: Int
+    remaining: Duration
+}
+
+@Test
+fn test_object_destructuring() {
+    await thread {
+        let obj = {
+            status: 200
+            data: "ok"
+        }
+
+        let {
+            status, data
+        } = obj
+
+        assert_eq(status, 200)
+        assert_eq(data, "ok")
+    }
+}
+
+@Test
+fn test_nested_objects() {
+    await thread {
+        let user = {
+            name: "Soham"
+            stats: {
+                age: 17
+            }
+
+        }
+
+        assert_eq(user.name, "Soham")
+        assert_eq(user.stats.age, 17)
+    }
+}
+
+@Test
+fn test_struct_instance_and_methods() {
+    await thread {
+        let battery = Battery {
+            percent: 26
+            remaining: Duration {
+                h: 1
+                min: 22
+                sec: 49
+            }
+
+        }
+
+        assert_eq(battery.percent, 26)
+        assert_eq(battery.remaining.h, 1)
+        assert_eq(battery.remaining.totalSeconds(), 1 * 3600 + 22 * 60 + 49)
+        let {
+            percent, remaining
+        } = battery
+
+        assert_eq(percent, 26)
+        assert_eq(remaining.min, 22)
+    }
+}
+
+@Test
+fn test_formula_destructuring() {
+    await thread {
+        let parsed = json.parse("{\"code\": 404, \"msg\": \"not found\"}")
+        let {
+            code, msg
+        } = parsed
+
+        assert_eq(code, 404)
+        assert_eq(msg, "not found")
+    }
+}
+

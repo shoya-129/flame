@@ -54,6 +54,8 @@ embedded-hal = "1.0"
 embedded-io = "0.7.1"
 embedded-storage = "0.3"
 ctrlc = "3.5.2"
+chrono = "0.4.45"
+base64 = "0.23.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rppal = "0.22"

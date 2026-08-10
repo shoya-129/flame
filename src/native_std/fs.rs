@@ -120,5 +120,71 @@ pub fn init() -> HashMap<String, Value> {
         }),
     );
 
+    m.insert(
+        "open".to_string(),
+        Value::NativeCallback(|args| {
+            if args.is_empty() { return Err("File.open expects 1 argument (path)".to_string()); }
+            let path_str = args[0].to_string().trim_matches('"').to_string();
+            
+            let mut file_instance = std::collections::HashMap::new();
+            file_instance.insert("path".to_string(), Value::String(path_str.clone()));
+            
+            let p1 = path_str.clone();
+            file_instance.insert("read".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| {
+                match fs::read_to_string(resolve_path(&p1)) {
+                    Ok(c) => Ok(Value::String(c)),
+                    Err(e) => Err(format!("fs.read error: {}", e)),
+                }
+            }))));
+            
+            let p2 = path_str.clone();
+            file_instance.insert("write".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |args2| {
+                if args2.len() < 2 { return Err("write expects 1 argument".to_string()); }
+                let c = match &args2[1] { Value::String(s) => s.clone(), v => v.to_string() };
+                match fs::write(resolve_path(&p2), c) {
+                    Ok(_) => Ok(Value::Nil),
+                    Err(e) => Err(format!("fs.write error: {}", e)),
+                }
+            }))));
+            
+            let p3 = path_str.clone();
+            file_instance.insert("append".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |args3| {
+                if args3.len() < 2 { return Err("append expects 1 argument".to_string()); }
+                let c = match &args3[1] { Value::String(s) => s.clone(), v => v.to_string() };
+                use std::io::Write;
+                match fs::OpenOptions::new().append(true).create(true).open(resolve_path(&p3)) {
+                    Ok(mut f) => match f.write_all(c.as_bytes()) {
+                        Ok(_) => Ok(Value::Nil),
+                        Err(e) => Err(format!("fs.append error: {}", e)),
+                    },
+                    Err(e) => Err(format!("fs.append error: {}", e)),
+                }
+            }))));
+            
+            let p4 = path_str.clone();
+            file_instance.insert("exists".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| {
+                Ok(Value::Bool(resolve_path(&p4).exists()))
+            }))));
+            
+            let p5 = path_str.clone();
+            file_instance.insert("size".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| {
+                match fs::metadata(resolve_path(&p5)) {
+                    Ok(m) => Ok(Value::Int(m.len() as i64)),
+                    Err(_) => Ok(Value::Int(0)),
+                }
+            }))));
+            
+            let p6 = path_str.clone();
+            file_instance.insert("delete".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| {
+                match fs::remove_file(resolve_path(&p6)) {
+                    Ok(_) => Ok(Value::Nil),
+                    Err(e) => Err(format!("fs.delete error: {}", e)),
+                }
+            }))));
+            
+            Ok(Value::Object(file_instance))
+        })
+    );
+
     m
 }

@@ -69,39 +69,49 @@ let port = record.1
 
 ---
 
-## Formula Literals (Structured Maps)
+## Object vs Formula Literals
 
-The **`formula`** literal is a flexible, map-like data structure ideal for JSON-style payloads, configuration objects, and dynamic key-value collections.
+Flame provides two dynamic, map-like data structures: **Objects** and **Formulas**. While they share similar runtime semantics, they have distinct use cases and syntax.
+
+### Objects (`{ ... }`)
+Objects use standard curly braces and are the preferred syntax for general-purpose dynamic records, data destructuring, and JSON payloads.
+
+```flame
+let user: Object = {
+    name: "Soham",
+    stats: {
+        age: 17
+    }
+}
+
+// Object destructuring is fully supported
+let { name, stats } = user
+print($"User {name} is {stats.age} years old.")
+```
+
+### Formulas (`formula { ... }`)
+The **`formula`** literal is a specialized keyword-prefixed structure. It behaves identically to Objects but is intended for use in places where explicit disambiguation is required, such as within annotation payloads.
 
 <Aside type="tip">
-In `formula` objects, duplicate keys are automatically overwritten with the latest value without requiring `mut`!
+In both `Object` and `formula` literals, duplicate keys are automatically overwritten with the latest value without requiring `mut`.
 </Aside>
 
 ```flame
 let config = formula {
     host: "127.0.0.1",
     port: 3000,
-    tags: ["prod", "web"],
-    options: {
-        ssl: true,
-        timeout: 5000
-    },
     // Duplicate keys overwrite seamlessly:
     port: 8080,
-    // Formulas can also store closures/anonymous functions:
+    // They can store closures/anonymous functions:
     on_connect: () {
-        print("Connected to server!")
+        print("Connected!")
     }
 }
-
-print(config.host) // "127.0.0.1"
-print(config.port) // 8080
-config.on_connect()
 ```
 
 ### Formulas with Annotations
 
-Formulas are also commonly used as metadata payloads for custom annotations:
+Formulas are primarily used as metadata payloads for custom annotations where `{ ... }` might conflict with block syntax:
 
 ```flame
 @Entity(formula { table: "users", cache_ttl: 3600 })

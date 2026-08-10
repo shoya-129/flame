@@ -65,10 +65,10 @@
           "match": "(@)([a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*)",
           "captures": {
             "1": {
-              "name": "punctuation.definition.annotation.flame"
+              "name": "keyword.declaration.flame"
             },
             "2": {
-              "name": "entity.name.function.flame"
+              "name": "keyword.declaration.flame"
             }
           }
         },
@@ -264,7 +264,7 @@
       "patterns": [
         {
           "name": "entity.name.function.flame",
-          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
+          "match": "(?<!@)\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\s*\\()"
         },
         {
           "name": "variable.other.property.flame",

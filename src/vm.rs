@@ -30,6 +30,10 @@ pub enum Value {
         name: String,
         fields: Vec<(String, String)>,
     },
+    StructInstance {
+        name: String,
+        fields: HashMap<String, Value>,
+    },
     Function {
         params: Vec<Param>,
         body: Vec<Stmt>,
@@ -245,6 +249,10 @@ impl fmt::Display for Value {
             }
             Value::RustServer { port } => write!(f, "RustServer(127.0.0.1:{})", port),
             Value::StructConstructor { name, .. } => write!(f, "<struct constructor: {}>", name),
+            Value::StructInstance { name, fields } => {
+                let s: Vec<String> = fields.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                write!(f, "{} {{ {} }}", name, s.join(", "))
+            }
             Value::Function { .. } => write!(f, "<function>"),
             Value::Break => write!(f, "<break>"),
             Value::Return(val) => write!(f, "<return {}>", val),
@@ -308,6 +316,25 @@ impl Value {
             _ => true,
         }
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Nil => "Nil",
+            Value::Int(_) => "Int",
+            Value::Float(_) => "Float",
+            Value::Bool(_) => "Bool",
+            Value::String(_) => "String",
+            Value::Tuple(_) => "Tuple",
+            Value::Bytes(_) => "Bytes",
+            Value::Object(_) => "Object",
+            Value::Formula(_) => "Formula",
+            Value::Ref(_) | Value::RefPath(_, _) => "Ref",
+            Value::StructInstance { .. } => "StructInstance", // Will map to actual name downstream if needed
+            _ => "Unknown",
+        }
+    }
+
+
 
     pub fn pack(&self) -> CValue {
         match self {

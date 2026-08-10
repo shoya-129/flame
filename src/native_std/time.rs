@@ -25,5 +25,25 @@ pub fn init() -> HashMap<String, Value> {
         }),
     );
 
+    m.insert(
+        "parse".to_string(),
+        Value::NativeCallback(|args| {
+            if args.is_empty() {
+                return Err("time.parse requires 1 argument (date string)".to_string());
+            }
+            if let Value::String(s) = &args[0] {
+                // Try parsing standard formats
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                    return Ok(Value::Int(dt.timestamp_millis()));
+                }
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc2822(s) {
+                    return Ok(Value::Int(dt.timestamp_millis()));
+                }
+                return Err(format!("Could not parse time string: {}", s));
+            }
+            Err("time.parse requires a string".to_string())
+        }),
+    );
+
     m
 }

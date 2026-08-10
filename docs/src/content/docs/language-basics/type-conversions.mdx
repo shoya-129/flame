@@ -50,10 +50,29 @@ let flag = "0".toBool()       // false
 
 ### UTF-8 Bytes: `.toBytes()`
 
-Converts a string into a dynamic array of UTF-8 byte values (`Vec<Int>`):
+Converts a string into a dynamic array of UTF-8 byte values (`Value::Bytes`):
 
 ```flame
-let bytes = "Flame".toBytes() // [70, 108, 97, 109, 101]
+let bytes = "Flame".toBytes() // <Bytes>
+```
+
+---
+
+## Byte Manipulations
+
+For `Bytes` arrays (such as those returned by `.toBytes()`), Flame provides built-in utilities:
+
+- **`.toHex()`**: Converts a byte array into a continuous hexadecimal string.
+- **`.toBase64()`**: Encodes the byte array using standard Base64 encoding.
+- **`.concat(other)`**: Appends another byte array, returning a new `Bytes` array.
+
+```flame
+let b1 = "hello".toBytes()
+let b2 = " world".toBytes()
+
+let combined = b1.concat(b2)
+println(combined.toHex())    // "68656C6C6F20776F726C64"
+println(combined.toBase64()) // "aGVsbG8gd29ybGQ="
 ```
 
 ---
@@ -71,6 +90,18 @@ let list_str = [1, 2, 3].toString()  // "[1, 2, 3]"
 let pi_str = 3.14159265.toString(2)  // "3.14"
 ```
 
+### `.type()`
+
+Returns a string representing the underlying type name of the variable.
+
+```flame
+let number = 100
+println(number.type()) // "Int"
+
+let text = "Flame"
+println(text.type())   // "String"
+```
+
 ---
 
 ## Quick Reference Table
@@ -83,5 +114,9 @@ let pi_str = 3.14159265.toString(2)  // "3.14"
 | `.tryFloat()` | `String` | `Float \| Nil` | No (`Nil`) |
 | `.toBool()` | `String` | `Bool` | Yes |
 | `.tryBool()` | `String` | `Bool \| Nil` | No (`Nil`) |
-| `.toBytes()` | `String` | `Vec<Int>` | No |
+| `.toBytes()` | `String` | `Bytes` | No |
+| `.toHex()` | `Bytes` | `String` | No |
+| `.toBase64()` | `Bytes` | `String` | No |
+| `.concat(Bytes)` | `Bytes` | `Bytes` | No |
+| `.type()` | `Any` | `String` | No |
 | `.toString(precision?)` | `Any` | `String` | No |

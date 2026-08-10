@@ -202,6 +202,22 @@ const KEYWORDS: &[(&str, &str)] = &[
         "**Application Entry Point**\n\nMarks this function as the application's entry point. The function is invoked automatically when the program starts. Configuration options such as `features` enable optional standard library modules and control application-wide compiler/runtime behavior.",
     ),
     (
+        "@Test",
+        "**Unit Test**\n\nMarks this function as a test case. The compiler will aggregate all `@Test` functions and execute them in a secure test harness when you run `flame test`.\n\n**Parameters:**\n- `timeout: Int`: Timeout in milliseconds. Test fails if execution exceeds this.\n- `skip: Bool`: If true, skips executing this test.",
+    ),
+    (
+        "@Embedded",
+        "**Embedded Target Definition**\n\nDirects the compiler to emit machine code tailored for a specific microcontroller architecture, such as `arduino-uno` or `rp2040`.\n\n**Parameters:**\n- `target: String`: The hardware architecture target name.",
+    ),
+    (
+        "@Cli",
+        "**CLI Application**\n\nMarks the application as a Command Line Interface tool, enabling automatic parsing of command line arguments into structures.",
+    ),
+    (
+        "@Command",
+        "**CLI Command**\n\nRegisters a function as an executable command within a `@Cli` application. Associates the function with a specific command-line keyword.",
+    ),
+    (
         "features",
         "**features: String[]**\n\nEnables optional standard library capabilities for the application. Enabled features are available throughout the program and only the required runtime dependencies are included in AOT builds.",
     ),
@@ -414,7 +430,7 @@ pub fn get_literal_completions(prefix: &str) -> Vec<JsonCompletion> {
     EMBEDDED_LITERALS
         .iter()
         .filter(|(val, _, _)| val.starts_with(clean) || clean.is_empty())
-        .map(|(val, kind, doc)| JsonCompletion {
+        .map(|(val, kind, doc)| JsonCompletion { sort_text: None,
             label: format!("\"{}\"", val),
             kind: "value".to_string(),
             detail: kind.to_string(),
@@ -423,18 +439,73 @@ pub fn get_literal_completions(prefix: &str) -> Vec<JsonCompletion> {
         .collect()
 }
 
-pub fn get_keyword_completions(prefix: &str) -> Vec<JsonCompletion> {
-    let mut comps: Vec<JsonCompletion> = KEYWORDS
+pub fn get_keyword_completions(current_line: &str, raw_word: &str, prefix: &str) -> Vec<JsonCompletion> {
+    let mut comps = Vec::new();
+
+    if raw_word.starts_with('@') {
+        let annotations = ["@Application", "@Test", "@Embedded", "@Cli", "@Command"];
+        for ann in annotations {
+            if ann.starts_with(raw_word) {
+                let label = ann.to_string();
+                let clean_prefix = prefix.trim_start_matches('@');
+                let clean_label = ann.trim_start_matches('@');
+                if clean_label.starts_with(clean_prefix) || clean_prefix.is_empty() {
+                    comps.push(JsonCompletion { sort_text: Some("1_".to_string()),
+                        label,
+                        kind: "annotation".to_string(),
+                        detail: "built-in annotation".to_string(),
+                        documentation: None,
+                    });
+                }
+            }
+        }
+        return comps;
+    }
+
+    if current_line.contains("features") && current_line.contains('[') {
+        let features = ["\"http\"", "\"tcp\"", "\"udp\"", "\"ws\"", "\"mqtt\"", "\"url\""];
+        for feat in features {
+            if feat.starts_with(prefix) || prefix.is_empty() || feat.contains(prefix) {
+                // If prefix already has a quote, we don't want to insert double quotes.
+                let label = if prefix.starts_with('"') {
+                    feat.trim_start_matches('"').to_string()
+                } else {
+                    feat.to_string()
+                };
+                comps.push(JsonCompletion { sort_text: None,
+                    label,
+                    kind: "value".to_string(),
+                    detail: "feature module".to_string(),
+                    documentation: None,
+                });
+            }
+        }
+        return comps;
+    }
+
+    comps.extend(KEYWORDS
         .iter()
-        .filter(|(kw, _)| kw.starts_with(prefix) || prefix.is_empty())
-        .map(|(kw, doc)| JsonCompletion {
+        .filter(|(kw, _)| {
+            let is_alphabetic = kw.chars().all(|c| c.is_alphabetic() || c == '_');
+            is_alphabetic && (kw.starts_with(prefix) || prefix.is_empty())
+        })
+        .map(|(kw, doc)| JsonCompletion { sort_text: None,
             label: kw.to_string(),
             kind: "keyword".to_string(),
             detail: "keyword".to_string(),
             documentation: Some(doc.to_string()),
-        })
-        .collect();
-    comps.extend(get_literal_completions(prefix));
+        }));
+
+    if current_line.contains("target:") || current_line.contains("@Embedded") {
+        let lits = get_literal_completions(prefix);
+        for mut lit in lits {
+            if prefix.starts_with('"') {
+                lit.label = lit.label.trim_start_matches('"').to_string();
+            }
+            comps.push(lit);
+        }
+    }
+
     comps
 }
 
@@ -498,7 +569,7 @@ pub struct ScannedVar {
 #[derive(Debug)]
 pub struct ScannedStruct {
     pub name: String,
-    pub fields: Vec<String>,
+    pub fields: Vec<(String, String)>,
     pub methods: Vec<String>,
 }
 
@@ -550,7 +621,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
 
     // Scan for structs: `struct Name { field: type, ... }`
     let struct_header_re = Regex::new(r"struct\s+([a-zA-Z_]\w*)\s*\{").unwrap();
-    let field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:").unwrap();
+    let field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:\s*([a-zA-Z_]\w*)").unwrap();
     for cap in struct_header_re.captures_iter(content) {
         let name = cap[1].to_string();
         let match_obj = cap.get(0).unwrap();
@@ -558,7 +629,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         let mut fields = Vec::new();
         if let Some(body) = extract_balanced_block(content, open_brace_pos) {
             for field_cap in field_re.captures_iter(body) {
-                fields.push(field_cap[1].to_string());
+                fields.push((field_cap[1].to_string(), field_cap[2].to_string()));
             }
         }
         structs.push(ScannedStruct {
@@ -616,8 +687,9 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         let open_brace_pos = match_obj.end() - 1;
         if let Some(body) = extract_balanced_block(content, open_brace_pos) {
             let mut fields = Vec::new();
-            for field_cap in field_re.captures_iter(body) {
-                fields.push(field_cap[1].to_string());
+            let formula_field_re = Regex::new(r"([a-zA-Z_]\w*)\s*:").unwrap();
+            for field_cap in formula_field_re.captures_iter(body) {
+                fields.push((field_cap[1].to_string(), "Unknown".to_string()));
             }
             let synthetic_type = format!("__formula_{}", name);
             structs.push(ScannedStruct {
@@ -689,6 +761,8 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "thread" => Some(crate::native_std::thread::init()),
         "process" => Some(crate::native_std::process::init()),
         "fs" => Some(crate::native_std::fs::init()),
+        "net" => Some(crate::native_std::net::init(&parts.next()?)),
+        "json" => Some(crate::native_std::json::init()),
         "math" => Some(crate::native_std::math::init()),
         "time" => Some(crate::native_std::time::init()),
         "os" => Some(crate::native_std::os::init()),

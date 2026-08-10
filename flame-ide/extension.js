@@ -232,6 +232,15 @@ function toCompletionItem(entry) {
     if (entry.documentation) {
         item.documentation = new vscode.MarkdownString(entry.documentation);
     }
+    if (entry.sortText) {
+        item.sortText = entry.sortText;
+    }
+    
+    // Fix annotation @@ issue by stripping @ from insertText
+    if (entry.kind === 'annotation' && entry.label.startsWith('@')) {
+        item.insertText = entry.label.substring(1);
+    }
+    
     return item;
 }
 

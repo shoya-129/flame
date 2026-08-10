@@ -1,11 +1,11 @@
 ---
-title: Threading, Math & Time (std.thread, std.math, std.time)
-description: Multi-threading concurrency primitives, mathematical utilities, and timestamp tracking in Flame.
+title: Threading & Time (std.thread, std.time)
+description: Multi-threading concurrency primitives and timestamp tracking in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Core standard library modules for concurrent execution, mathematical computing, and timestamp tracking. In Flame, code executes at the top level without needing a wrapper main function.
+Core standard library modules for concurrent execution and timestamp tracking. In Flame, code executes at the top level without needing a wrapper main function.
 
 ---
 
@@ -25,29 +25,7 @@ let now_ms = time.now()
 println($"Timestamp in Milliseconds: {now_ms}")
 ```
 
----
 
-## Math Routines (`std.math`)
-
-Access mathematical constants and foundational numeric functions:
-
-```flame
-import std.math
-
-// Mathematical constants are accessed via function calls
-println($"PI: {math.pi()}")
-println($"E: {math.e()}")
-
-// Numeric and trigonometric calculations
-let square_root = math.sqrt(144.0) // 12.0
-let absolute_val = math.abs(-42)   // 42
-let sine = math.sin(math.pi() / 2.0)  // 1.0
-let cosine = math.cos(0.0)            // 1.0
-
-println($"sqrt(144) = {square_root}, abs(-42) = {absolute_val}")
-```
-
----
 
 ## Concurrency & Channels (`std.thread`)
 
@@ -85,16 +63,7 @@ println($"Received: {received}")
 | `time.now` | *None* | `Int` | Returns the current UNIX epoch timestamp in milliseconds. |
 | `time.timestamp` | *None* | `Int` | Returns the current UNIX epoch timestamp in seconds. |
 
-### Math (`std.math`)
 
-| Method | Arguments | Returns | Description |
-| :--- | :--- | :--- | :--- |
-| `math.pi` | *None* | `Float` | Returns the mathematical constant $\pi$. |
-| `math.e` | *None* | `Float` | Returns Euler's constant $e$. |
-| `math.abs` | `val: Int \| Float` | `Int \| Float` | Returns the absolute positive value of a number. |
-| `math.sqrt` | `val: Int \| Float` | `Float` | Returns the square root of a number. |
-| `math.sin` | `val: Int \| Float` | `Float` | Returns the sine of an angle given in radians. |
-| `math.cos` | `val: Int \| Float` | `Float` | Returns the cosine of an angle given in radians. |
 
 ### Threading (`std.thread`)
 

@@ -12,40 +12,46 @@ fn clean_state() {
 
 @Test
 fn test_type_conversions() {
-    let num_str = "42"
-    let val = num_str.toInt()
-    if val != 42 {
-        panic("Expected 42")
+    await thread {
+        let num_str = "42"
+        let val = num_str.toInt()
+        if val != 42 {
+            panic("Expected 42")
+        }
     }
 }
 
 @Test(timeout: 2000)
 fn test_imports() {
-    let user: Formula = formula {
-        name: "soham",
-        id: 89,
-        isAdmin: true,
-        numbers: [9, 9],
-        status: (a: String) {
-            print(a)
+    await thread {
+        let user: Formula = formula {
+            name: "soham",
+            id: 89,
+            isAdmin: true,
+            numbers: [9, 9],
+            status: (a: String) {
+                print(a)
+            }
         }
-    }
 
-    exports.sayhello(&user).assert_eq("hello soham-89")
+        exports.sayhello(&user).assert_eq("hello soham-89")
+    }
 }
 
 @Test
 @Logger(prefix: "AUTH_SERVICE")
 fn test_custom_annotation_return() {
-    // 1. Verify that 'logger' / 'Logger' is automatically injected from @Logger
-    if logger != "AUTH_SERVICE" {
-        panic($"Expected logger to be 'AUTH_SERVICE', got: {logger}")
-    }
+    await thread {
+        // 1. Verify that 'logger' / 'Logger' is automatically injected from @Logger
+        if logger != "AUTH_SERVICE" {
+            panic($"Expected logger to be 'AUTH_SERVICE', got: {logger}")
+        }
 
-    // 2. Verify mutability of injected annotation value
-    logger = logger + ":SECURE"
-    if logger != "AUTH_SERVICE:SECURE" {
-        panic($"Expected mutated logger to be 'AUTH_SERVICE:SECURE', got: {logger}")
+        // 2. Verify mutability of injected annotation value
+        logger = logger + ":SECURE"
+        if logger != "AUTH_SERVICE:SECURE" {
+            panic($"Expected mutated logger to be 'AUTH_SERVICE:SECURE', got: {logger}")
+        }
     }
 }
 
@@ -61,105 +67,111 @@ struct Robot {
 
 @Test
 fn test_nil_safety_and_operators() {
-    // 1. Safe member access and nil coalescing
-    let bot_with_nil: Robot = Robot {
-        name: "Rover-1",
-        motor: nil
-    }
+    await thread {
+        // 1. Safe member access and nil coalescing
+        let bot_with_nil: Robot = Robot {
+            name: "Rover-1",
+            motor: nil
+        }
 
-    let nil_speed = bot_with_nil.motor?.speed ?: 0
-    if nil_speed != 0 {
-        panic("Expected 0 fallback for nil motor")
-    }
+        let nil_speed = bot_with_nil.motor?.speed ?: 0
+        if nil_speed != 0 {
+            panic("Expected 0 fallback for nil motor")
+        }
 
-    // 2. Non-nil access and non-null assertion
-    let active_motor: Motor = Motor {
-        speed: 1500,
-        enabled: true
-    }
+        // 2. Non-nil access and non-null assertion
+        let active_motor: Motor = Motor {
+            speed: 1500,
+            enabled: true
+        }
 
-    let active_bot: Robot = Robot {
-        name: "Rover-2",
-        motor: active_motor
-    }
+        let active_bot: Robot = Robot {
+            name: "Rover-2",
+            motor: active_motor
+        }
 
-    let speed = active_bot.motor?.speed ?: 0
-    if speed != 1500 {
-        panic("Expected 1500 speed for active motor")
-    }
+        let speed = active_bot.motor?.speed ?: 0
+        if speed != 1500 {
+            panic("Expected 1500 speed for active motor")
+        }
 
-    let unwrapped_motor = active_bot.motor!
-    if unwrapped_motor.speed != 1500 {
-        panic("Expected 1500 from unwrapped motor")
-    }
+        let unwrapped_motor = active_bot.motor!
+        if unwrapped_motor.speed != 1500 {
+            panic("Expected 1500 from unwrapped motor")
+        }
 
-    if bot_with_nil.motor != nil {
-        panic("Expected bot_with_nil.motor to be nil")
+        if bot_with_nil.motor != nil {
+            panic("Expected bot_with_nil.motor to be nil")
+        }
     }
 }
 
 @Test
 fn test_logical_and_bitwise_operators() {
-    // 1. Keyword logical operators
-    let is_online = true
-    let is_faulted = false
+    await thread {
+        // 1. Keyword logical operators
+        let is_online = true
+        let is_faulted = false
 
-    if not is_online {
-        panic("Expected is_online to be true")
-    }
+        if not is_online {
+            panic("Expected is_online to be true")
+        }
 
-    if is_online and is_faulted {
-        panic("Expected and to be false")
-    }
+        if is_online and is_faulted {
+            panic("Expected and to be false")
+        }
 
-    if not (is_online or is_faulted) {
-        panic("Expected or to be true")
-    }
+        if not (is_online or is_faulted) {
+            panic("Expected or to be true")
+        }
 
-    // 2. Bitwise operators
-    let reg: Int = 0x01
-    let masked = reg | 0x02
-    if masked != 3 {
-        panic("Expected bitwise OR result 3")
-    }
+        // 2. Bitwise operators
+        let reg: Int = 0x01
+        let masked = reg | 0x02
+        if masked != 3 {
+            panic("Expected bitwise OR result 3")
+        }
 
-    let shifted = 1 << 3
-    if shifted != 8 {
-        panic("Expected bitwise left shift 8")
+        let shifted = 1 << 3
+        if shifted != 8 {
+            panic("Expected bitwise left shift 8")
+        }
     }
 }
 
 @Test
 fn test_increment_decrement_and_compound_assign() {
-    let mut val = 10
-    val += 5
-    if val != 15 {
-        panic($"Expected val to be 15, got {val}")
-    }
+    await thread {
+        let mut val = 10
+        val += 5
+        if val != 15 {
+            panic($"Expected val to be 15, got {val}")
+        }
 
-    val -= 3
-    if val != 12 {
-        panic($"Expected val to be 12, got {val}")
-    }
+        val -= 3
+        if val != 12 {
+            panic($"Expected val to be 12, got {val}")
+        }
 
-    let pre_inc = ++val
-    if pre_inc != 13 or val != 13 {
-        panic($"Expected 13 after pre-increment, got pre_inc={pre_inc}, val={val}")
-    }
+        let pre_inc = ++val
+        if pre_inc != 13 or val != 13 {
+            panic($"Expected 13 after pre-increment, got pre_inc={pre_inc}, val={val}")
+        }
 
-    let post_inc = val++
-    if post_inc != 13 or val != 14 {
-        panic($"Expected post_inc=13 and val=14 after post-increment, got post_inc={post_inc}, val={val}")
-    }
+        let post_inc = val++
+        if post_inc != 13 or val != 14 {
+            panic($"Expected post_inc=13 and val=14 after post-increment, got post_inc={post_inc}, val={val}")
+        }
 
-    let pre_dec = --val
-    if pre_dec != 13 or val != 13 {
-        panic($"Expected 13 after pre-decrement, got pre_dec={pre_dec}, val={val}")
-    }
+        let pre_dec = --val
+        if pre_dec != 13 or val != 13 {
+            panic($"Expected 13 after pre-decrement, got pre_dec={pre_dec}, val={val}")
+        }
 
-    let post_dec = val--
-    if post_dec != 13 or val != 12 {
-        panic($"Expected post_dec=13 and val=12 after post-decrement, got post_dec={post_dec}, val={val}")
+        let post_dec = val--
+        if post_dec != 13 or val != 12 {
+            panic($"Expected post_dec=13 and val=12 after post-decrement, got post_dec={post_dec}, val={val}")
+        }
     }
 }
 

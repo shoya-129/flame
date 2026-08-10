@@ -594,19 +594,55 @@ impl TypeChecker {
                             is_mut: *is_mut,
                         },
                     );
-                } else {
-                    // It's a destructuring assignment, e.g. "(tx, rx)"
+                } else if name.starts_with('(') && name.ends_with(')') {
+                    // It's a tuple destructuring assignment, e.g. "(tx, rx)" or "(b: 1, c: 2)"
+                    let inner_names = name[1..name.len() - 1].split(',').map(|s| s.trim()).collect::<Vec<_>>();
+                    
+                    if let Type::Tuple(types) = &value_ty {
+                        for (i, inner_name) in inner_names.iter().enumerate() {
+                            if inner_name.is_empty() || *inner_name == "_" {
+                                continue;
+                            }
+                            // Handle "(b: 1)" style destructuring
+                            let actual_name = inner_name.split(':').next().unwrap().trim();
+                            let _v_ty = types.get(i).cloned().unwrap_or(Type::Unknown);
+                            self.define_var(
+                                actual_name.to_string(),
+                                VarInfo {
+                                    ty: value_ty.clone(), // Provide whole tuple type for hover
+                                    is_mut: *is_mut,
+                                },
+                            );
+                        }
+                    } else {
+                        // Fallback: If it's an unknown type or not a tuple
+                        for inner_name in inner_names {
+                            if inner_name.is_empty() || inner_name == "_" {
+                                continue;
+                            }
+                            let actual_name = inner_name.split(':').next().unwrap().trim();
+                            self.define_var(
+                                actual_name.to_string(),
+                                VarInfo {
+                                    ty: value_ty.clone(),
+                                    is_mut: *is_mut,
+                                },
+                            );
+                        }
+                    }
+                } else if name.starts_with('{') && name.ends_with('}') {
+                    // It's an object destructuring assignment, e.g. "{status, data}"
                     let inner_names = name
-                        .trim_start_matches('(')
-                        .trim_end_matches(')')
+                        .trim_start_matches('{')
+                        .trim_end_matches('}')
                         .split(',')
                         .map(|s| s.trim().to_string())
                         .collect::<Vec<_>>();
-                    
-                    if let Type::Tuple(types) = &value_ty {
-                        for (i, v_name) in inner_names.iter().enumerate() {
+
+                    if let Type::Formula(map) = &value_ty {
+                        for v_name in inner_names {
                             if v_name != "_" {
-                                let v_ty = types.get(i).cloned().unwrap_or(Type::Unknown);
+                                let v_ty = map.get(&v_name).cloned().unwrap_or(Type::Unknown);
                                 self.define_var(
                                     v_name.clone(),
                                     VarInfo {
@@ -616,8 +652,26 @@ impl TypeChecker {
                                 );
                             }
                         }
+                    } else if let Type::Struct(struct_name) = &value_ty {
+                        for v_name in inner_names {
+                            if v_name != "_" {
+                                let mut field_ty = Type::Unknown;
+                                if let Some(info) = self.structs.get(struct_name) {
+                                    if let Some((_, ty)) = info.fields.iter().find(|(n, _)| n == &v_name) {
+                                        field_ty = ty.clone();
+                                    }
+                                }
+                                self.define_var(
+                                    v_name.clone(),
+                                    VarInfo {
+                                        ty: field_ty,
+                                        is_mut: *is_mut,
+                                    },
+                                );
+                            }
+                        }
                     } else {
-                        // Fallback: If it's an unknown type or not a tuple, just define all as Unknown
+                        // Fallback
                         for v_name in inner_names {
                             if v_name != "_" {
                                 self.define_var(
@@ -1046,9 +1100,18 @@ impl TypeChecker {
             Expr::Formula(pairs, _) => {
                 let mut map = HashMap::new();
                 for (k, v) in pairs {
-                    map.insert(k.clone(), self.infer_expr_type(v));
+                    let ty = self.infer_expr_type(v);
+                    map.insert(k.clone(), ty);
                 }
                 Type::Formula(map)
+            }
+            Expr::Object(pairs, _) => {
+                let mut map = HashMap::new();
+                for (k, v) in pairs {
+                    let ty = self.infer_expr_type(v);
+                    map.insert(k.clone(), ty);
+                }
+                Type::Formula(map) // We treat Object and Formula as structurally equivalent in types for now, or we can use a new Type::Object. Let's use Type::Formula since it's a dynamic map
             }
             Expr::InterpolatedString(segments, span) => {
                 for segment in segments {
@@ -1442,7 +1505,9 @@ impl TypeChecker {
                 Type::Unknown
             }
             Type::Formula(ref fmap) => fmap.get(member).cloned().unwrap_or(Type::Unknown),
-            Type::Vector(_) | Type::String => Type::Named("Function".into()),
+            Type::Vector(_) | Type::String | Type::Int | Type::Float | Type::Bool | Type::Tuple(_) => {
+                Type::Named("Function".into())
+            }
             Type::Unknown | Type::Named(_) => Type::Unknown,
             other => {
                 self.error(
@@ -1680,6 +1745,9 @@ impl TypeChecker {
                                 return Type::Vector(ret);
                             }
                         }
+                        return Type::Unknown;
+                    }
+                    "type" | "toHex" | "toBase64" | "concat" | "assert_eq" => {
                         return Type::Unknown;
                     }
                     _ => {

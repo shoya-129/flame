@@ -462,16 +462,54 @@ impl Runner {
                 if name.starts_with('(') && name.ends_with(')') {
                     let trimmed = &name[1..name.len() - 1];
                     let vars: Vec<&str> = trimmed.split(',').map(|s| s.trim()).collect();
-                    if let Value::Tuple(items) = val {
+                    let items_opt = match val {
+                        Value::Tuple(items) => Some(items.clone()),
+                        _ => None,
+                    };
+                    if let Some(items) = items_opt {
                         for (i, var) in vars.iter().enumerate() {
-                            if i < items.len() {
+                            let mut var_name = *var;
+                            let mut extract_index = i;
+                            
+                            if var.contains(':') {
+                                let parts: Vec<&str> = var.split(':').collect();
+                                var_name = parts[0].trim();
+                                if let Ok(idx) = parts[1].trim().parse::<usize>() {
+                                    extract_index = idx;
+                                }
+                            }
+                            
+                            if extract_index < items.len() {
                                 env.lock().unwrap().define(
-                                    var.to_string(),
-                                    items[i].clone(),
+                                    var_name.to_string(),
+                                    items[extract_index].clone(),
                                     *is_mut,
                                 );
+                            } else {
+                                return Err(format!("index {} out of bounds for tuple/vector destructuring", extract_index));
                             }
                         }
+                    } else {
+                        return Err(format!("cannot destructure a non-tuple/vector value"));
+                    }
+                } else if name.starts_with('{') && name.ends_with('}') {
+                    let trimmed = &name[1..name.len() - 1];
+                    let vars: Vec<&str> = trimmed.split(',').map(|s| s.trim()).collect();
+                    match val {
+                        Value::Formula(map) | Value::Object(map) | Value::StructInstance { fields: map, .. } => {
+                            for var in vars {
+                                if let Some(field_val) = map.get(var) {
+                                    env.lock().unwrap().define(
+                                        var.to_string(),
+                                        field_val.clone(),
+                                        *is_mut,
+                                    );
+                                } else {
+                                    return Err(format!("field '{}' not found in object destructuring", var));
+                                }
+                            }
+                        }
+                        _ => return Err(format!("cannot destructure a non-object value")),
                     }
                 } else {
                     env.lock().unwrap().define(name.clone(), val, *is_mut);
@@ -1249,8 +1287,7 @@ impl Runner {
             },
             "toBytes" | "to_bytes" => match val {
                 Value::String(s) => {
-                    let ints = s.as_bytes().iter().map(|b| Value::Int(*b as i64)).collect();
-                    Some(Ok(Value::Tuple(ints)))
+                    Some(Ok(Value::Bytes(s.clone().into_bytes())))
                 }
                 Value::Bytes(b) => {
                     let ints = b.iter().map(|v| Value::Int(*v as i64)).collect();
@@ -1504,6 +1541,17 @@ impl Runner {
                 }
                 match left {
                     Value::StructConstructor { name, .. } => {
+                        if let Some(impl_env) = self.modules.get(&format!("impl_{}", name)) {
+                            if let Some(method) = impl_env.lock().unwrap().get(member) {
+                                return Ok(method);
+                            }
+                        }
+                        Ok(Value::Nil)
+                    }
+                    Value::StructInstance { name, fields } => {
+                        if let Some(val) = fields.get(member) {
+                            return Ok(val.clone());
+                        }
                         if let Some(impl_env) = self.modules.get(&format!("impl_{}", name)) {
                             if let Some(method) = impl_env.lock().unwrap().get(member) {
                                 return Ok(method);
@@ -1769,12 +1817,7 @@ impl Runner {
                             let val = self.eval_expr(field_expr, env.clone())?;
                             map.insert(field_name.clone(), val);
                         }
-                        if let Some(impl_env) = self.modules.get(&format!("impl_{}", name)) {
-                            for (m_name, m_val) in &impl_env.lock().unwrap().variables {
-                                map.insert(m_name.clone(), m_val.value.clone());
-                            }
-                        }
-                        Ok(Value::Formula(map))
+                        Ok(Value::StructInstance { name: name.clone(), fields: map })
                     }
                     Value::VariantConstructor(enum_name, var) => {
                         if let crate::parser::EnumVariant::Struct(n, _) = var {
@@ -1814,6 +1857,20 @@ impl Runner {
                         }
                         Err(format!(
                             "associated function or member '{}' not found for struct '{}'",
+                            member, name
+                        ))
+                    }
+                    Value::StructInstance { name, fields } => {
+                        if let Some(val) = fields.get(member) {
+                            return Ok(val.clone());
+                        }
+                        if let Some(impl_env) = self.modules.get(&format!("impl_{}", name)) {
+                            if let Some(method) = impl_env.lock().unwrap().get(member) {
+                                return Ok(method);
+                            }
+                        }
+                        Err(format!(
+                            "member or method '{}' not found on struct '{}'",
                             member, name
                         ))
                     }
@@ -2144,7 +2201,7 @@ impl Runner {
                     {
                         return res;
                     }
-                    if let Value::StructConstructor { name, .. } = &inner_val {
+                    if let Value::StructConstructor { name, .. } | Value::StructInstance { name, .. } = &inner_val {
                         let func_val_opt = self
                             .modules
                             .get(&format!("impl_{}", name))
@@ -2159,11 +2216,48 @@ impl Runner {
                                 } => {
                                     let child_env =
                                         Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
+                                        
+                                    let is_self_method = params.first().map_or(false, |p| {
+                                        p.name == "self" || p.name == "mut self" || p.name == "self_obj"
+                                    });
+                                    let mut arg_offset = 0;
+                                    
+                                    if is_self_method {
+                                        let first_param = &params[0];
+                                        let mut self_val = inner_val.clone();
+                                        if first_param.is_mut || first_param.name.contains("mut") {
+                                            if let Expr::Identifier(var_name, _) = &**inner_expr {
+                                                self_val = Value::RefPath(
+                                                    crate::vm::RefPath::Var(
+                                                        var_name.clone(),
+                                                        env.clone(),
+                                                    ),
+                                                    true,
+                                                );
+                                            } else if let Expr::Dot(owner_expr, field_name, _) = &**inner_expr {
+                                                if let Expr::Identifier(owner_name, _) = &**owner_expr {
+                                                    self_val = Value::RefPath(
+                                                        crate::vm::RefPath::Field {
+                                                            owner: owner_name.clone(),
+                                                            member: field_name.clone(),
+                                                            env: env.clone(),
+                                                        },
+                                                        true,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        self.bind_param(child_env.clone(), first_param, self_val);
+                                        arg_offset = 1;
+                                    }
+                                    
                                     for (i, p) in params.iter().enumerate() {
-                                        if i < args.len() {
+                                        if i == 0 && is_self_method { continue; }
+                                        let src_idx = i - arg_offset;
+                                        if src_idx < args.len() {
                                             let arg_val =
-                                                self.eval_expr(&args[i].1, env.clone())?;
-                                            if let Expr::Identifier(src_name, _) = &args[i].1 {
+                                                self.eval_expr(&args[src_idx].1, env.clone())?;
+                                            if let Expr::Identifier(src_name, _) = &args[src_idx].1 {
                                                 env.lock().unwrap().move_var(src_name);
                                             }
                                             self.bind_param(child_env.clone(), p, arg_val);
@@ -3136,6 +3230,384 @@ impl Runner {
                             return Ok(Value::Nil);
                         }
                         return Err(msg);
+                    } else if member == "type" {
+                        let type_name = if let Value::StructInstance { name, .. } = &receiver_val {
+                            name.clone()
+                        } else {
+                            receiver_val.type_name().to_string()
+                        };
+                        return Ok(Value::String(type_name));
+                    } else if member == "toString" {
+                        return Ok(Value::String(receiver_val.to_string()));
+                    } else if member == "toInt" {
+                        if let Ok(i) = receiver_val.as_int() {
+                            return Ok(Value::Int(i));
+                        } else if let Value::String(s) = &receiver_val {
+                            if let Ok(i) = s.parse::<i64>() {
+                                return Ok(Value::Int(i));
+                            }
+                        } else if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Int(f as i64));
+                        }
+                        return Err(format!("Cannot convert {} to Int", receiver_val.type_name()));
+                    } else if member == "tryInt" {
+                        if let Ok(i) = receiver_val.as_int() {
+                            return Ok(Value::Int(i));
+                        } else if let Value::String(s) = &receiver_val {
+                            if let Ok(i) = s.parse::<i64>() {
+                                return Ok(Value::Int(i));
+                            }
+                        } else if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Int(f as i64));
+                        }
+                        return Ok(Value::Nil);
+                    } else if member == "toFloat" {
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Float(i as f64));
+                        } else if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f));
+                        } else if let Value::String(s) = &receiver_val {
+                            if let Ok(f) = s.parse::<f64>() {
+                                return Ok(Value::Float(f));
+                            }
+                        }
+                        return Err(format!("Cannot convert {} to Float", receiver_val.type_name()));
+                    } else if member == "tryFloat" {
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Float(i as f64));
+                        } else if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f));
+                        } else if let Value::String(s) = &receiver_val {
+                            if let Ok(f) = s.parse::<f64>() {
+                                return Ok(Value::Float(f));
+                            }
+                        }
+                        return Ok(Value::Nil);
+                    } else if member == "toBool" {
+                        return Ok(Value::Bool(receiver_val.is_truthy()));
+                    } else if member == "tryBool" {
+                        return Ok(Value::Bool(receiver_val.is_truthy()));
+                    } else if member == "toBytes" {
+                        let bytes_vec = receiver_val.to_string().into_bytes();
+                        return Ok(Value::Bytes(bytes_vec));
+                    } else if member == "toHex" {
+                        if let Value::Bytes(b) = receiver_val {
+                            let hex = b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>();
+                            return Ok(Value::String(hex));
+                        }
+                        return Err(format!("toHex is only supported on Bytes, found {}", receiver_val.type_name()));
+                    } else if member == "toBase64" {
+                        if let Value::Bytes(b) = receiver_val {
+                            use base64::{Engine as _, engine::general_purpose};
+                            return Ok(Value::String(general_purpose::STANDARD.encode(&b)));
+                        }
+                        return Err(format!("toBase64 is only supported on Bytes, found {}", receiver_val.type_name()));
+                    } else if member == "concat" {
+                        if args.is_empty() { return Err("concat expects 1 argument".to_string()); }
+                        let other = self.eval_expr(&args[0].1, env.clone())?;
+                        if let Value::Bytes(b1) = receiver_val {
+                            if let Value::Bytes(b2) = other {
+                                let mut res = b1.clone();
+                                res.extend(b2);
+                                return Ok(Value::Bytes(res));
+                            }
+                            return Err(format!("concat on Bytes expects Bytes argument, found {}", other.type_name()));
+                        } else if let Value::String(s1) = receiver_val {
+                            let s2 = other.to_string();
+                            return Ok(Value::String(format!("{}{}", s1, s2)));
+                        } else if let Value::Tuple(t1) = receiver_val {
+                            if let Value::Tuple(t2) = other {
+                                let mut res = t1.clone();
+                                res.extend(t2);
+                                return Ok(Value::Tuple(res));
+                            }
+                            return Err(format!("concat on Tuple expects Tuple argument, found {}", other.type_name()));
+                        }
+                        return Err(format!("concat is not supported on {}", receiver_val.type_name()));
+                    } else if member == "index" {
+                        if args.len() < 1 {
+                            return Err("index requires at least 1 argument (key)".to_string());
+                        }
+                        let key_val = self.eval_expr(&args[0].1, env.clone())?;
+                        match receiver_val {
+                            Value::Tuple(items) => {
+                                if let Value::Int(i) = key_val {
+                                    if i >= 0 && (i as usize) < items.len() {
+                                        return Ok(items[i as usize].clone());
+                                    }
+                                }
+                                return Ok(Value::Nil);
+                            }
+                            Value::Bytes(items) => {
+                                if let Value::Int(i) = key_val {
+                                    if i >= 0 && (i as usize) < items.len() {
+                                        return Ok(Value::Int(items[i as usize] as i64));
+                                    }
+                                }
+                                return Ok(Value::Nil);
+                            }
+                            Value::Object(map) | Value::Formula(map) | Value::StructInstance { fields: map, .. } => {
+                                let key_str = key_val.to_string();
+                                if let Some(v) = map.get(&key_str) {
+                                    return Ok(v.clone());
+                                }
+                                return Ok(Value::Nil);
+                            }
+                            _ => return Err(format!("cannot index on {}", receiver_val.type_name())),
+                        }
+                    } else if member == "abs" {
+                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i.abs())); }
+                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.abs())); }
+                        return Err("abs requires a number".to_string());
+                    } else if member == "floor" {
+                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i)); }
+                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.floor())); }
+                        return Err("floor requires a number".to_string());
+                    } else if member == "ceil" {
+                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i)); }
+                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.ceil())); }
+                        return Err("ceil requires a number".to_string());
+                    } else if member == "round" {
+                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i)); }
+                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.round())); }
+                        return Err("round requires a number".to_string());
+                    } else if member == "sqrt" {
+                        if let Value::Int(i) = receiver_val { return Ok(Value::Float((i as f64).sqrt())); }
+                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.sqrt())); }
+                        return Err("sqrt requires a number".to_string());
+                    } else if member == "pow" {
+                        if args.len() < 1 { return Err("pow requires 1 argument (exponent)".to_string()); }
+                        let exp_val = self.eval_expr(&args[0].1, env.clone())?;
+                        let exp_f = if let Value::Float(f) = exp_val { f } else if let Ok(i) = exp_val.as_int() { i as f64 } else { 0.0 };
+                        if let Value::Int(i) = receiver_val { return Ok(Value::Float((i as f64).powf(exp_f))); }
+                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.powf(exp_f))); }
+                        return Err("pow requires a number".to_string());
+                    } else if member == "min" {
+                        if args.len() < 1 { return Err("min requires 1 argument".to_string()); }
+                        let other = self.eval_expr(&args[0].1, env.clone())?;
+                        if let (Value::Int(a), Value::Int(b)) = (&receiver_val, &other) { return Ok(Value::Int(*a.min(b))); }
+                        let a_f = if let Value::Float(f) = receiver_val { f } else { receiver_val.as_int().unwrap_or(0) as f64 };
+                        let b_f = if let Value::Float(f) = other { f } else { other.as_int().unwrap_or(0) as f64 };
+                        return Ok(Value::Float(a_f.min(b_f)));
+                    } else if member == "max" {
+                        if args.len() < 1 { return Err("max requires 1 argument".to_string()); }
+                        let other = self.eval_expr(&args[0].1, env.clone())?;
+                        if let (Value::Int(a), Value::Int(b)) = (&receiver_val, &other) { return Ok(Value::Int(*a.max(b))); }
+                        let a_f = if let Value::Float(f) = receiver_val { f } else { receiver_val.as_int().unwrap_or(0) as f64 };
+                        let b_f = if let Value::Float(f) = other { f } else { other.as_int().unwrap_or(0) as f64 };
+                        return Ok(Value::Float(a_f.max(b_f)));
+                    } else if member == "clamp" {
+                        if args.len() < 2 { return Err("clamp requires 2 arguments (min, max)".to_string()); }
+                        let min_val = self.eval_expr(&args[0].1, env.clone())?;
+                        let max_val = self.eval_expr(&args[1].1, env.clone())?;
+                        if let (Value::Int(v), Value::Int(min), Value::Int(max)) = (&receiver_val, &min_val, &max_val) {
+                            return Ok(Value::Int(*v.max(min).min(max)));
+                        }
+                        let v_f = if let Value::Float(f) = receiver_val { f } else { receiver_val.as_int().unwrap_or(0) as f64 };
+                        let min_f = if let Value::Float(f) = min_val { f } else { min_val.as_int().unwrap_or(0) as f64 };
+                        let max_f = if let Value::Float(f) = max_val { f } else { max_val.as_int().unwrap_or(0) as f64 };
+                        return Ok(Value::Float(v_f.max(min_f).min(max_f)));
+                    } else if member == "toHex" {
+                    } else if member == "toHex" {
+                        if let Value::Bytes(items) = &receiver_val {
+                            let mut hex = String::new();
+                            for item in items.iter() {
+                                hex.push_str(&format!("{:02x}", item));
+                            }
+                            return Ok(Value::String(hex));
+                        }
+                        return Err("toHex requires a byte vector".to_string());
+                    } else if member == "toBase64" {
+                    } else if member == "toBase64" {
+                        if let Value::Bytes(bytes) = &receiver_val {
+                            const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                            let mut b64 = String::new();
+                            let mut i = 0;
+                            while i < bytes.len() {
+                                let b1 = bytes[i];
+                                let b2 = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
+                                let b3 = if i + 2 < bytes.len() { bytes[i + 2] } else { 0 };
+                                b64.push(CHARS[(b1 >> 2) as usize] as char);
+                                b64.push(CHARS[(((b1 & 0x03) << 4) | (b2 >> 4)) as usize] as char);
+                                if i + 1 < bytes.len() {
+                                    b64.push(CHARS[(((b2 & 0x0F) << 2) | (b3 >> 6)) as usize] as char);
+                                } else {
+                                    b64.push('=');
+                                }
+                                if i + 2 < bytes.len() {
+                                    b64.push(CHARS[(b3 & 0x3F) as usize] as char);
+                                } else {
+                                    b64.push('=');
+                                }
+                                i += 3;
+                            }
+                            return Ok(Value::String(b64));
+                        }
+                        return Err("toBase64 requires a byte vector".to_string());
+                    } else if member == "concat" {
+                        if args.len() < 1 { return Err("concat requires 1 argument".to_string()); }
+                        let other = self.eval_expr(&args[0].1, env.clone())?;
+                        if let (Value::Bytes(a), Value::Bytes(b)) = (&receiver_val, &other) {
+                            let mut new_vec = a.clone();
+                            new_vec.extend(b.clone());
+                            return Ok(Value::Bytes(new_vec));
+                        }
+                        if let (Value::Tuple(a), Value::Tuple(b)) = (&receiver_val, &other) {
+                            let mut new_vec = a.clone();
+                            new_vec.extend(b.clone());
+                            return Ok(Value::Tuple(new_vec));
+                        }
+                        if let (Value::String(a), Value::String(b)) = (&receiver_val, &other) {
+                            return Ok(Value::String(format!("{}{}", a, b)));
+                        }
+                        return Err("concat requires vectors or strings".to_string());
+                    } else if member == "year" {
+                        if let Value::Int(timestamp) = receiver_val {
+                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                return Ok(Value::Int(chrono::Datelike::year(&dt) as i64));
+                            }
+                        }
+                        return Err("year requires a valid timestamp".to_string());
+                    } else if member == "month" {
+                        if let Value::Int(timestamp) = receiver_val {
+                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                return Ok(Value::Int(chrono::Datelike::month(&dt) as i64));
+                            }
+                        }
+                        return Err("month requires a valid timestamp".to_string());
+                    } else if member == "day" {
+                        if let Value::Int(timestamp) = receiver_val {
+                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                return Ok(Value::Int(chrono::Datelike::day(&dt) as i64));
+                            }
+                        }
+                        return Err("day requires a valid timestamp".to_string());
+                    } else if member == "addDays" {
+                        if args.len() < 1 { return Err("addDays requires 1 argument".to_string()); }
+                        let other = self.eval_expr(&args[0].1, env.clone())?;
+                        if let (Value::Int(timestamp), Value::Int(days)) = (&receiver_val, &other) {
+                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
+                                if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::days(*days)) {
+                                    return Ok(Value::Int(new_dt.timestamp_millis()));
+                                }
+                            }
+                        }
+                        return Err("addDays requires a valid timestamp and an integer".to_string());
+                    } else if member == "addHours" {
+                        if args.len() < 1 { return Err("addHours requires 1 argument".to_string()); }
+                        let other = self.eval_expr(&args[0].1, env.clone())?;
+                        if let (Value::Int(timestamp), Value::Int(hours)) = (&receiver_val, &other) {
+                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
+                                if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::hours(*hours)) {
+                                    return Ok(Value::Int(new_dt.timestamp_millis()));
+                                }
+                            }
+                        }
+                        return Err("addHours requires a valid timestamp and an integer".to_string());
+                    } else if member == "toJson" {
+                        // Very simple JSON serializer
+                        fn to_json(val: &Value) -> String {
+                            match val {
+                                Value::String(s) => format!("\"{}\"", s.replace("\"", "\\\"").replace("\n", "\\n")),
+                                Value::Int(i) => i.to_string(),
+                                Value::Float(f) => f.to_string(),
+                                Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                Value::Nil => "null".to_string(),
+                                Value::Tuple(arr) => {
+                                    let items: Vec<String> = arr.iter().map(|v| to_json(v)).collect();
+                                    format!("[{}]", items.join(", "))
+                                }
+                                Value::Bytes(arr) => {
+                                    let items: Vec<String> = arr.iter().map(|v| v.to_string()).collect();
+                                    format!("[{}]", items.join(", "))
+                                }
+                                Value::StructInstance { fields, .. } | Value::Object(fields) | Value::Formula(fields) => {
+                                    let items: Vec<String> = fields.iter().map(|(k, v)| format!("\"{}\": {}", k, to_json(v))).collect();
+                                    format!("{{{}}}", items.join(", "))
+                                }
+                                _ => "\"<unserializable>\"".to_string(),
+                            }
+                        }
+                        return Ok(Value::String(to_json(&receiver_val)));
+                    } else if member == "fromJson" {
+                        if args.len() < 1 { return Err("fromJson requires 1 argument (json string)".to_string()); }
+                        let json_val = self.eval_expr(&args[0].1, env.clone())?;
+                        let json_str = json_val.to_string();
+                        
+                        fn from_json(v: &serde_json::Value) -> Value {
+                            match v {
+                                serde_json::Value::Null => Value::Nil,
+                                serde_json::Value::Bool(b) => Value::Bool(*b),
+                                serde_json::Value::Number(n) => {
+                                    if let Some(i) = n.as_i64() { Value::Int(i) }
+                                    else if let Some(f) = n.as_f64() { Value::Float(f) }
+                                    else { Value::Nil }
+                                },
+                                serde_json::Value::String(s) => Value::String(s.clone()),
+                                serde_json::Value::Array(arr) => {
+                                    let items: Vec<Value> = arr.iter().map(|x| from_json(x)).collect();
+                                    Value::Tuple(items)
+                                },
+                                serde_json::Value::Object(map) => {
+                                    let mut m = std::collections::HashMap::new();
+                                    for (k, v) in map {
+                                        m.insert(k.clone(), from_json(v));
+                                    }
+                                    Value::Object(m) // Return Object, which can be coerced or used dynamically
+                                }
+                            }
+                        }
+                        
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                            let obj = from_json(&parsed);
+                            if let Value::StructConstructor { name, .. } = &receiver_val {
+                                if let Value::Object(fields) = obj {
+                                    return Ok(Value::StructInstance { name: name.clone(), fields });
+                                }
+                            }
+                            return Ok(obj);
+                        }
+                        return Err("Invalid JSON string".to_string());
+                    } else if member == "fromBytes" {
+                        if args.len() < 1 { return Err("fromBytes requires 1 argument (byte vector)".to_string()); }
+                        let bytes_val = self.eval_expr(&args[0].1, env.clone())?;
+                        if let Value::Bytes(bytes) = bytes_val {
+                            if let Ok(json_str) = String::from_utf8(bytes.clone()) {
+                                fn from_json(v: &serde_json::Value) -> Value {
+                                    match v {
+                                        serde_json::Value::Null => Value::Nil,
+                                        serde_json::Value::Bool(b) => Value::Bool(*b),
+                                        serde_json::Value::Number(n) => {
+                                            if let Some(i) = n.as_i64() { Value::Int(i) }
+                                            else if let Some(f) = n.as_f64() { Value::Float(f) }
+                                            else { Value::Nil }
+                                        },
+                                        serde_json::Value::String(s) => Value::String(s.clone()),
+                                        serde_json::Value::Array(arr) => {
+                                            let items: Vec<Value> = arr.iter().map(|x| from_json(x)).collect();
+                                            Value::Tuple(items)
+                                        },
+                                        serde_json::Value::Object(map) => {
+                                            let mut m = std::collections::HashMap::new();
+                                            for (k, v) in map {
+                                                m.insert(k.clone(), from_json(v));
+                                            }
+                                            Value::Object(m)
+                                        }
+                                    }
+                                }
+                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                                    let obj = from_json(&parsed);
+                                    if let Value::StructConstructor { name, .. } = &receiver_val {
+                                        if let Value::Object(fields) = obj {
+                                            return Ok(Value::StructInstance { name: name.clone(), fields });
+                                        }
+                                    }
+                                    return Ok(obj);
+                                }
+                            }
+                        }
+                        return Err("Invalid JSON bytes".to_string());
                     }
 
                     let mut custom_method = None;
@@ -3521,6 +3993,14 @@ impl Runner {
                 }
                 Ok(Value::Formula(map))
             }
+            Expr::Object(mappings, _) => {
+                let mut map = HashMap::new();
+                for (k, v) in mappings {
+                    let val = self.eval_expr(v, env.clone())?;
+                    map.insert(k.clone(), val);
+                }
+                Ok(Value::Object(map))
+            }
             Expr::InterpolatedString(segments, _) => {
                 let mut result = String::new();
                 for seg in segments {
@@ -3729,6 +4209,9 @@ impl Runner {
                 };
                 match &mut owner_val {
                     Value::Formula(map) => {
+                        map.insert(member, new_val);
+                    }
+                    Value::StructInstance { name: _, fields: map } => {
                         map.insert(member, new_val);
                     }
                     Value::EnumValue(enum_name, variant_name, data) => match data {

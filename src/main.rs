@@ -1338,6 +1338,8 @@ pub struct JsonCompletion {
     pub kind: String,
     pub detail: String,
     pub documentation: Option<String>,
+    #[serde(rename = "sortText", skip_serializing_if = "Option::is_none")]
+    pub sort_text: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1505,13 +1507,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
     let mut completions = Vec::new();
     if current_line.trim_end().ends_with("import") {
-        completions.push(JsonCompletion {
+        completions.push(JsonCompletion { sort_text: None,
             label: "native".to_string(),
             kind: "module".to_string(),
             detail: "native dependencies".to_string(),
             documentation: None,
         });
-        completions.push(JsonCompletion {
+        completions.push(JsonCompletion { sort_text: None,
             label: "std".to_string(),
             kind: "module".to_string(),
             detail: "standard library".to_string(),
@@ -1519,7 +1521,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         });
     } else if current_line.contains("import native.") {
         for module in &native_modules {
-            completions.push(JsonCompletion {
+            completions.push(JsonCompletion { sort_text: None,
                 label: module.clone(),
                 kind: "plugin".to_string(),
                 detail: "native plugin".to_string(),
@@ -1528,7 +1530,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     } else if current_line.contains("import std.") {
         for module in &std_modules {
-            completions.push(JsonCompletion {
+            completions.push(JsonCompletion { sort_text: None,
                 label: module.clone(),
                 kind: "module".to_string(),
                 detail: "standard library".to_string(),
@@ -1537,7 +1539,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     } else if current_line.contains("@p") || current_line.contains("@plugin") {
         for plugin in &plugins {
-            completions.push(JsonCompletion {
+            completions.push(JsonCompletion { sort_text: None,
                 label: "plugin".to_string(),
                 kind: "plugin".to_string(),
                 detail: plugin.source.clone(),
@@ -1585,8 +1587,14 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 name: name.clone(),
                 typ: Some(sig.clone()),
             });
+            let (actual_label, sort_text) = if is_annotation {
+                (format!("@{}", name), Some("1_".to_string()))
+            } else {
+                (name.clone(), Some("1_".to_string()))
+            };
             completions.push(JsonCompletion {
-                label: name.clone(),
+                sort_text,
+                label: actual_label,
                 kind: if is_annotation {
                     "annotation".to_string()
                 } else {
@@ -1738,7 +1746,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     .map(|prefix| function.flame_name.starts_with(prefix))
                     .unwrap_or(true)
                 {
-                    completions.push(JsonCompletion {
+                    completions.push(JsonCompletion { sort_text: None,
                         label: function.flame_name.clone(),
                         kind: "function".to_string(),
                         detail: format!("native.{}", namespace),
@@ -1757,7 +1765,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                             .map(|prefix| function.flame_name.starts_with(prefix))
                             .unwrap_or(true)
                         {
-                            completions.push(JsonCompletion {
+                            completions.push(JsonCompletion { sort_text: None,
                                 label: function.flame_name.clone(),
                                 kind: "function".to_string(),
                                 detail: format!("native.{}", namespace),
@@ -1847,7 +1855,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     .as_deref()
                     .map_or(true, |prefix| method.starts_with(prefix))
                 {
-                    completions.push(JsonCompletion {
+                    completions.push(JsonCompletion { sort_text: None,
                         label: method.clone(),
                         kind: "function".to_string(),
                         detail: format!("std.{}", namespace),
@@ -1886,28 +1894,30 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         params,
                         return_type,
                         ..
-                    }
-                    | crate::parser::Stmt::AnnotationDecl {
+                    } => Some((name, params, return_type, false)),
+                    crate::parser::Stmt::AnnotationDecl {
                         name,
                         params,
                         return_type,
                         ..
-                    } => Some((name, params, return_type)),
+                    } => Some((name, params, return_type, true)),
                     crate::parser::Stmt::ExportDecl(inner, _) => {
                         if let crate::parser::Stmt::FuncDecl {
                             name,
                             params,
                             return_type,
                             ..
-                        }
-                        | crate::parser::Stmt::AnnotationDecl {
+                        } = &**inner
+                        {
+                            Some((name, params, return_type, false))
+                        } else if let crate::parser::Stmt::AnnotationDecl {
                             name,
                             params,
                             return_type,
                             ..
                         } = &**inner
                         {
-                            Some((name, params, return_type))
+                            Some((name, params, return_type, true))
                         } else {
                             None
                         }
@@ -1915,7 +1925,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     _ => None,
                 };
 
-                if let Some((name, params, return_type)) = func_info {
+                if let Some((name, params, return_type, is_annotation)) = func_info {
                     let param_strs = params
                         .iter()
                         .map(|p| {
@@ -1931,17 +1941,28 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     let ret_str = return_type.as_deref().unwrap_or("Nil");
                     let sig = format!("fn {}({}) -> {}", name, param_strs, ret_str);
 
+                    let actual_label = if is_annotation {
+                        format!("@{}", name)
+                    } else {
+                        name.clone()
+                    };
+
                     if member_prefix
                         .as_deref()
                         .map_or(true, |prefix| name.starts_with(prefix))
                     {
-                        completions.push(JsonCompletion {
-                            label: name.clone(),
-                            kind: "function".to_string(),
-                            detail: format!("module {}", namespace),
-                            documentation: Some(sig.clone()),
-                        });
-                        provided_completions = true;
+                        if is_annotation && !word_under_cursor_raw.starts_with('@') {
+                            // Only suggest annotations when user types @
+                        } else {
+                            completions.push(JsonCompletion {
+                                sort_text: Some("1_".to_string()),
+                                label: actual_label,
+                                kind: if is_annotation { "annotation".to_string() } else { "function".to_string() },
+                                detail: format!("module {}", namespace),
+                                documentation: Some(sig.clone()),
+                            });
+                            provided_completions = true;
+                        }
                     }
 
                     if !word_under_cursor.is_empty() && name == &word_under_cursor {
@@ -1957,10 +1978,24 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 // If the local file had no such functions matching the prefix, we just do nothing here.
             }
         } else {
-            let mut var_type = scanned_vars
-                .iter()
-                .find(|v| v.name == namespace)
-                .and_then(|v| v.typ.clone());
+            let mut var_type = None;
+            if let Some(first_part) = namespace.split('.').next() {
+                var_type = scanned_vars
+                    .iter()
+                    .find(|v| v.name == first_part)
+                    .and_then(|v| v.typ.clone());
+                
+                for part in namespace.split('.').skip(1) {
+                    if let Some(vt) = var_type {
+                        var_type = None;
+                        if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == vt) {
+                            if let Some(field) = struct_def.fields.iter().find(|f| f.0 == part) {
+                                var_type = Some(field.1.clone());
+                            }
+                        }
+                    }
+                }
+            }
 
             // If not found as a variable, maybe it's a struct name directly?
             if var_type.is_none() {
@@ -1971,8 +2006,34 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
             let mut provided_completions = false;
 
+            // If it's a standard module directly (e.g. `json.`, `tcp.`, `http.`)
+            let is_std_module = std_modules.contains(&namespace) || matches!(namespace.as_str(), "json" | "tcp" | "udp" | "http" | "ws" | "mqtt" | "dns" | "url" | "interface");
+            if var_type.is_none() && is_std_module {
+                if let Some(methods) = ide::get_std_module_methods(&namespace) {
+                    for method in methods {
+                        if member_prefix.as_deref().map_or(true, |p| method.starts_with(p)) {
+                            let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
+                            completions.push(JsonCompletion { sort_text: None,
+                                label: method.clone(),
+                                kind: "function".to_string(),
+                                detail: format!("std.{} function", namespace),
+                                documentation: doc.map(|d| d.to_string()),
+                            });
+                            provided_completions = true;
+                        }
+                        if !word_under_cursor.is_empty() && method == word_under_cursor {
+                            let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
+                            hover_found = Some(JsonHover {
+                                label: format!("std.{}::{}()", namespace, method),
+                                documentation: doc.map(|d| d.to_string()), // std_docs already provides good markdown
+                            });
+                        }
+                    }
+                }
+            }
+
             // If it's a native module directly (e.g. `flamer.`)
-            if var_type.is_none() && native_modules.contains(&namespace) {
+            if !provided_completions && var_type.is_none() && native_modules.contains(&namespace) {
                 if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
                     for function in &meta.functions {
                         if member_prefix
@@ -1993,7 +2054,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                 function.return_type
                             );
                             
-                            completions.push(JsonCompletion {
+                            completions.push(JsonCompletion { sort_text: None,
                                 label: function.flame_name.clone(),
                                 kind: "function".to_string(),
                                 detail: format!("{} (from {})", function.flame_name, namespace),
@@ -2035,6 +2096,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                             .unwrap_or(true)
                         {
                             completions.push(JsonCompletion {
+                                sort_text: Some("2_".to_string()),
                                 label: struct_meta.name.clone(),
                                 kind: "class".to_string(),
                                 detail: format!("struct (from {})", namespace),
@@ -2065,10 +2127,10 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     for field in &struct_def.fields {
                         if member_prefix
                             .as_deref()
-                            .map_or(true, |prefix| field.starts_with(prefix))
+                            .map_or(true, |prefix| field.0.starts_with(prefix))
                         {
-                            completions.push(JsonCompletion {
-                                label: field.clone(),
+                            completions.push(JsonCompletion { sort_text: None,
+                                label: field.0.clone(),
                                 kind: "property".to_string(),
                                 detail: format!("{} field", t),
                                 documentation: None,
@@ -2081,7 +2143,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                             .as_deref()
                             .map_or(true, |prefix| method.starts_with(prefix))
                         {
-                            completions.push(JsonCompletion {
+                            completions.push(JsonCompletion { sort_text: None,
                                 label: method.clone(),
                                 kind: "method".to_string(),
                                 detail: format!("{} method", t),
@@ -2113,7 +2175,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                             .map(|p| function.flame_name.starts_with(p))
                                             .unwrap_or(true)
                                         {
-                                            completions.push(JsonCompletion {
+                                            completions.push(JsonCompletion { sort_text: None,
                                                 label: function.flame_name.clone(),
                                                 kind: "method".to_string(),
                                                 detail: format!(
@@ -2189,7 +2251,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                                     .as_deref()
                                     .map_or(true, |prefix| method.starts_with(prefix))
                                 {
-                                    completions.push(JsonCompletion {
+                                    completions.push(JsonCompletion { sort_text: None,
                                         label: method.clone(),
                                         kind: "method".to_string(),
                                         detail: format!("{} method", t),
@@ -2205,7 +2267,18 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
             if !provided_completions {
                 // Fallback for primitive and collection methods
-                let builtin_methods = vec![
+                let mut builtin_methods = vec![
+                    ("type", "Returns the type of the value as a string"),
+                    ("toString", "Converts the value to a string representation"),
+                    ("toInt", "Converts the value to an integer, throws error if invalid"),
+                    ("tryInt", "Converts the value to an integer, returns nil if invalid"),
+                    ("toFloat", "Converts the value to a floating point number, throws error if invalid"),
+                    ("tryFloat", "Converts the value to a floating point number, returns nil if invalid"),
+                    ("toBool", "Converts the value to its truthy boolean representation"),
+                    ("tryBool", "Converts the value to its truthy boolean representation"),
+                    ("toBytes", "Converts the value to an array of bytes"),
+                    ("index", "Extracts the value at the given key/index (requires 1 argument)"),
+                    ("toJson", "Serializes a struct or object into a JSON string"),
                     (
                         "len",
                         "Returns the length in bytes (String) or elements (Vec)",
@@ -2241,13 +2314,35 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     ("stop", "Electro-dynamically brakes shaft to halt (Hardware Motor/Servo)"),
                 ];
 
+                if content.contains("import std.math") {
+                    builtin_methods.extend(vec![
+                        ("abs", "Returns the absolute value (Math)"),
+                        ("floor", "Returns the largest integer less than or equal to a number (Math)"),
+                        ("ceil", "Returns the smallest integer greater than or equal to a number (Math)"),
+                        ("round", "Returns the nearest integer to a number (Math)"),
+                        ("sqrt", "Returns the square root of a number (Math)"),
+                        ("pow", "Returns the base to the exponent power (Math)"),
+                        ("min", "Returns the smaller of two numbers (Math)"),
+                        ("max", "Returns the larger of two numbers (Math)"),
+                        ("clamp", "Clamps a number within the inclusive range specified (Math)"),
+                    ]);
+                }
+                
+                if content.contains("import std.byte") {
+                    builtin_methods.extend(vec![
+                        ("toHex", "Returns the hexadecimal string representation (Bytes)"),
+                        ("toBase64", "Returns the Base64 string representation (Bytes)"),
+                        ("concat", "Concatenates another byte array (Bytes)"),
+                    ]);
+                }
+
                 for (method, doc) in &builtin_methods {
                     if member_prefix
                         .as_deref()
                         .map(|prefix| method.starts_with(prefix))
                         .unwrap_or(true)
                     {
-                        completions.push(JsonCompletion {
+                        completions.push(JsonCompletion { sort_text: None,
                             label: method.to_string(),
                             kind: "method".to_string(),
                             detail: "built-in method".to_string(),
@@ -2270,7 +2365,11 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         hover = hover_found;
     } else {
         // Keyword completions for bare words
-        completions.extend(ide::get_keyword_completions(&word_under_cursor));
+        completions.extend(ide::get_keyword_completions(
+            current_line,
+            &word_under_cursor_raw,
+            &word_under_cursor,
+        ));
 
         let mut hover_found = None;
 
@@ -2308,7 +2407,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         // Provide variables as completion for bare words
         for v in &scanned_vars {
             if v.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
-                completions.push(JsonCompletion {
+                completions.push(JsonCompletion { sort_text: Some("0_".to_string()),
                     label: v.name.clone(),
                     kind: "variable".to_string(),
                     detail: v.typ.clone().unwrap_or_else(|| "unknown".to_string()),
@@ -2320,7 +2419,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         // Provide structs as completion for bare words
         for s in &scanned_structs {
             if s.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
-                completions.push(JsonCompletion {
+                completions.push(JsonCompletion { sort_text: None,
                     label: s.name.clone(),
                     kind: "class".to_string(),
                     detail: "struct".to_string(),
@@ -2453,7 +2552,7 @@ fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<Str
         let left = upto[..dot_index].trim();
         let right = after_dot.to_string();
         return (
-            left.split(|c: char| !c.is_alphanumeric() && c != '_')
+            left.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
                 .filter(|s| !s.is_empty())
                 .last()
                 .map(|value| value.to_string()),

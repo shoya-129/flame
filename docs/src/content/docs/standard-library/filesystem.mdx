@@ -65,3 +65,37 @@ fs.remove("data")
 | `fs.mkdir` | `path: String` | `Nil` | Creates a single directory at the specified path. |
 | `fs.mkdir_all` | `path: String` | `Nil` | Recursively creates a directory and any missing parent directories. |
 | `fs.remove` | `path: String` | `Nil` | Removes a file, or recursively deletes a directory and all of its contents. |
+
+---
+
+## File Objects
+
+You can also interact with files dynamically using the `fs.open` method, which returns a `File` object containing stateful operations.
+
+```flame
+import std.fs
+
+let file = fs.open("data.txt")
+
+// Write and append string data
+file.write("First Line\n")
+file.append("Second Line\n")
+
+if file.exists() {
+    println($"File size: {file.size()} bytes")
+    let content = file.read()
+    println(content)
+}
+
+// Delete the file when done
+file.delete()
+```
+
+| File Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `file.read()` | None | `String` | Reads entire file contents into a UTF-8 string. |
+| `file.write(data)` | `data: Any` | `Nil` | Overwrites the file with the given string data. |
+| `file.append(data)` | `data: Any` | `Nil` | Appends the string data to the end of the file. |
+| `file.exists()` | None | `Bool` | Returns true if this specific file exists. |
+| `file.size()` | None | `Int` | Returns the file size in bytes. |
+| `file.delete()` | None | `Nil` | Deletes this file from the filesystem. |

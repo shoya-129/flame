@@ -4,6 +4,21 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.3] - 2026-08-10 (Codename: *Second Spark*)
+
+### 🐛 Bug Fixes & AOT Enhancements
+- **Filesystem Write Append Bug**: Fixed an internal state corruption in `std.fs` where invoking `.write()` on an active file instance created via `fs.open()` would serialize and dump the `HashMap` object metadata into the file payload instead of the requested string/bytes.
+- **Await Synchronization Fallback**: Ensured `await` execution behaves identically to JavaScript. Calling `await` on a synchronous primitive or object strictly bypasses thread evaluation and resolves the inner value immediately without throwing an invalid thread crash.
+
+### 📚 Documentation & Ecosystem Tooling
+- **`std.math` Architecture Migration**: Decoupled math documentation globally. Abstracted `math` interfaces away from `threading-and-time.mdx` and `overview.mdx` into a brand new standalone `math.mdx` documentation page. 
+- **`std.fs` IDE Support**: Pushed expansive IDE hover docs to `std.fs` methods, injecting Markdown definitions for `open`, `delete`, `mkdir`, `mkdir_all`, and `copy` directly into the typechecker memory mapping.
+
+### 🏗️ Object Architecture & Primitives
+- **Data Conversion Macros**: Injected `.toHex()`, `.toBase64()`, and `.concat()` routines universally across the virtual machine's `Expr::Call` bridge. Byte-array data representations can now be natively re-encoded, merged, and transmitted strictly off the `Value::Bytes` AST prototype without requiring external packages.
+
+---
+
 ## [0.2.2] - 2026-08-08 (Codename: *Second Spark*)
 
 ### 🌐 Network Toolkit & Standard Library (`std.net`, `std.json`)
@@ -16,7 +31,16 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ### 📚 Documentation & Ecosystem Tooling
 - **Starlight Docs Overhaul**: Completely updated the Astro Starlight documentation (`docs/`). Added dedicated index cards for `Network & Web (std.net, std.json)`, fixed async bindings in standard library examples, and documented the new `http.post` and `formula` JSON pipeline.
+- **Object vs Formula Documentation**: Added comprehensive documentation distinguishing `Object` (`{ ... }`) from `Formula` (`formula { ... }`) to clarify their distinct syntax and structural advantages.
 - **Example Hardening**: Stabilized the `flame-macro` dependency paths in `examples/ex/native` plugins to reference canonical registry versions (`0.1.0`) instead of local monorepo paths, streamlining developer testing workflows.
+
+### 🏗️ Object Architecture & Destructuring
+- **Struct Instance Identity**: Re-architected `StructInit` behavior at the VM level. Struct initializations no longer collapse into `Value::Formula`. They now map to a distinct `Value::StructInstance` to strictly preserve struct identity, enabling perfect method resolution from `impl_<name>` environments.
+- **Native Object Expressions**: Implemented the standalone `Expr::Object` AST node. Standard curly braces (`{ ... }`) natively parse as objects, completely separating them from the explicit `formula { ... }` syntax.
+- **Object Destructuring**: Added robust destructuring support for Objects, Formulas, and StructInstances. You can now effortlessly unpack fields into local scope using `let { status, data } = obj`.
+
+### 🎨 IDE Syntax Highlighting
+- **Annotation Consistency**: Hardened the TextMate grammars in `flame-ide` and the documentation site. Both the `@` symbol and annotation names now flawlessly render as `keyword.declaration.flame` (matching `struct` and `formula`), ensuring they no longer inherit default function colors.
 
 ## [0.2.1] - 2026-08-07 (Codename: *Second Spark*)
 

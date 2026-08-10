@@ -90,6 +90,7 @@ pub enum Expr {
     Dot(Box<Expr>, String, Span),
     SafeDot(Box<Expr>, String, Span),
     Formula(Vec<(String, Expr)>, Span),
+    Object(Vec<(String, Expr)>, Span),
     ThreadSpawn(Box<Expr>, Span),
     Closure {
         params: Vec<Param>,
@@ -122,8 +123,9 @@ impl Expr {
             Expr::Call(_, _, s) => s.clone(),
             Expr::Dot(_, _, s) => s.clone(),
             Expr::SafeDot(_, _, s) => s.clone(),
-            Expr::Formula(_, s) => s.clone(),
-            Expr::ThreadSpawn(_, s) => s.clone(),
+            Expr::Formula(_, span) => span.clone(),
+            Expr::Object(_, span) => span.clone(),
+            Expr::ThreadSpawn(_, span) => span.clone(),
             Expr::Closure { span, .. } => span.clone(),
             Expr::Await(_, s) => s.clone(),
             Expr::Tuple(_, s) => s.clone(),
@@ -586,7 +588,15 @@ impl Parser {
                     TokenKind::Identifier,
                     "expected variable identifier in destructuring",
                 )?;
-                items.push(id.lexeme.clone());
+                let mut item = id.lexeme.clone();
+                if self.match_token(TokenKind::Colon) {
+                    let index_tok = self.consume(
+                        TokenKind::IntLiteral,
+                        "expected integer index after ':' in tuple destructuring",
+                    )?;
+                    item = format!("{}:{}", item, index_tok.lexeme);
+                }
+                items.push(item);
                 if self.match_token(TokenKind::Comma) {
                     if self.check(TokenKind::CloseParen) {
                         return Err(Diagnostic::new_error(
@@ -601,6 +611,28 @@ impl Parser {
             }
             self.consume(TokenKind::CloseParen, "expected ')' to close destructuring")?;
             format!("({})", items.join(", "))
+        } else if self.match_token(TokenKind::OpenBrace) {
+            let mut items = Vec::new();
+            while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
+                let id = self.consume(
+                    TokenKind::Identifier,
+                    "expected variable identifier in object destructuring",
+                )?;
+                items.push(id.lexeme.clone());
+                if self.match_token(TokenKind::Comma) {
+                    if self.check(TokenKind::CloseBrace) {
+                        return Err(Diagnostic::new_error(
+                            "trailing comma in object destructuring without identifier".to_string(),
+                            self.filepath.clone(),
+                            id.span.clone(),
+                            Some("expected variable name after ','".to_string()),
+                            Some("Remove the comma or add another variable name".to_string()),
+                        ));
+                    }
+                }
+            }
+            self.consume(TokenKind::CloseBrace, "expected '}' to close object destructuring")?;
+            format!("{{{}}}", items.join(", "))
         } else {
             if self.match_token(TokenKind::Mut) {
                 is_mut = true;
@@ -1660,6 +1692,36 @@ impl Parser {
                 };
                 Ok(Expr::Await(Box::new(expr), span))
             }
+            TokenKind::OpenBrace => {
+                let start_tok = self.advance();
+                let mut mappings = Vec::new();
+                while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
+                    let key_tok = self.consume(
+                        TokenKind::Identifier,
+                        "expected object field key",
+                    )?;
+                    self.consume(
+                        TokenKind::Colon,
+                        "expected ':' after object field key",
+                    )?;
+                    let value = self.parse_expr()?;
+                    mappings.push((key_tok.lexeme.clone(), value));
+                    self.match_token(TokenKind::Comma);
+                }
+                let end_tok = self.consume(
+                    TokenKind::CloseBrace,
+                    "expected '}' to close object",
+                )?;
+                Ok(Expr::Object(
+                    mappings,
+                    Span {
+                        start: start_tok.span.start,
+                        end: end_tok.span.end,
+                        line: start_tok.span.line,
+                        col: start_tok.span.col,
+                    },
+                ))
+            }
             _ => Err(Diagnostic::new_error(
                 format!("expected expression, found '{}'", token.lexeme),
                 self.filepath.clone(),
@@ -1867,10 +1929,11 @@ impl Parser {
     fn parse_accessors(&mut self, mut expr: Expr) -> Result<Expr, Diagnostic> {
         loop {
             if self.match_token(TokenKind::Dot) {
-                let name = self.consume(
-                    TokenKind::Identifier,
-                    "expected member identifier after '.'",
-                )?;
+                let name = if self.check(TokenKind::Type) {
+                    self.advance()
+                } else {
+                    self.consume(TokenKind::Identifier, "expected member identifier after '.'")?
+                };
                 let span = Span {
                     start: expr.span().start,
                     end: name.span.end,
@@ -1879,10 +1942,11 @@ impl Parser {
                 };
                 expr = Expr::Dot(Box::new(expr), name.lexeme.clone(), span);
             } else if self.match_token(TokenKind::QuestionDot) {
-                let name = self.consume(
-                    TokenKind::Identifier,
-                    "expected member identifier after '?.'",
-                )?;
+                let name = if self.check(TokenKind::Type) {
+                    self.advance()
+                } else {
+                    self.consume(TokenKind::Identifier, "expected member identifier after '?.'")?
+                };
                 let span = Span {
                     start: expr.span().start,
                     end: name.span.end,

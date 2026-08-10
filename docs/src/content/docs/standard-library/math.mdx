@@ -1,0 +1,113 @@
+---
+title: Math & Calculations (std.math)
+description: Mathematical operations, trigonometry, random numbers, and rounding in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `std.math` module, alongside the globally available mathematical methods on `Int` and `Float` primitives, provides robust native calculation capabilities in Flame.
+
+---
+
+## Global Math Methods on Primitives
+
+Flame's primitive numeric types (`Int` and `Float`) have built-in mathematical methods available directly on their values.
+
+### Absolute Value
+Returns the absolute (non-negative) value.
+```flame
+let a = -10
+println(a.abs()) // 10
+
+let b = -3.14
+println(b.abs()) // 3.14
+```
+
+### Rounding (Floats only)
+Floats have `.floor()`, `.ceil()`, and `.round()` methods:
+```flame
+let f = 5.7
+println(f.floor()) // 5.0
+println(f.ceil())  // 6.0
+println(f.round()) // 6.0
+```
+
+### Min, Max, and Clamp
+Easily compare or limit bounds on numbers.
+
+```flame
+let x = 15
+
+// Min & Max
+println(x.min(10)) // 10
+println(x.max(20)) // 20
+
+// Clamp keeps the number within [min, max]
+println(x.clamp(0, 10))  // 10
+println(x.clamp(20, 30)) // 20
+```
+
+### Square Root and Power
+```flame
+let n = 16
+println(n.sqrt()) // 4.0
+
+let base = 5
+println(base.pow(3)) // 125
+```
+
+---
+
+## The `std.math` Module
+
+For more advanced mathematical calculations, import the `std.math` module.
+
+```flame
+import std.math
+
+// Mathematical Constants
+println(math.PI) // 3.141592653589793
+println(math.E)  // 2.718281828459045
+
+// Trigonometry
+let angle = math.PI / 2
+println(math.sin(angle)) // 1.0
+println(math.cos(angle)) // 0.0
+println(math.tan(0))     // 0.0
+
+// Random Numbers
+// Generates a random integer between min and max (inclusive)
+let dice = math.random_int(1, 6)
+println($"Rolled a {dice}")
+
+// Generates a random float between 0.0 and 1.0
+let chance = math.random_float()
+```
+
+## API Summary Table
+
+### Primitive Numeric Methods
+
+| Method | Available On | Description |
+| :--- | :--- | :--- |
+| `.abs()` | `Int`, `Float` | Returns absolute value. |
+| `.floor()` | `Float` | Rounds down to the nearest integer. |
+| `.ceil()` | `Float` | Rounds up to the nearest integer. |
+| `.round()` | `Float` | Rounds to the nearest integer. |
+| `.sqrt()` | `Int`, `Float` | Returns the square root. |
+| `.pow(exp)` | `Int`, `Float` | Returns number to the given power. |
+| `.min(y)` | `Int`, `Float` | Returns the smaller of two values. |
+| `.max(y)` | `Int`, `Float` | Returns the larger of two values. |
+| `.clamp(min, max)`| `Int`, `Float` | Restricts value between min and max bounds. |
+
+### `std.math` Methods
+
+| Method / Constant | Description |
+| :--- | :--- |
+| `math.PI` | The constant Pi (π). |
+| `math.E` | Euler's number (e). |
+| `math.sin(rad)` | Sine of an angle in radians. |
+| `math.cos(rad)` | Cosine of an angle in radians. |
+| `math.tan(rad)` | Tangent of an angle in radians. |
+| `math.random_int(min, max)` | Random integer between min and max. |
+| `math.random_float()` | Random float between 0.0 and 1.0. |
