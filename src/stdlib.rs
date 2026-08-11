@@ -137,6 +137,7 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.thread" => Some(crate::native_std::thread::init()),
         "std.process" => Some(crate::native_std::process::init()),
         "std.fs" => Some(crate::native_std::fs::init()),
+        "std.byte" => Some(crate::native_std::byte::init()),
         #[cfg(feature = "net")]
         "std.net" => {
             let mut map = std::collections::HashMap::new();

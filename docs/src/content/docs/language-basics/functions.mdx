@@ -82,7 +82,8 @@ For complete details on asynchronous tasks and runtime scheduling, visit the [As
 
 Flame includes standard global I/O functions out of the box:
 
-- **`print(...)`**: Prints values to standard output (`stdout`) followed by a newline.
+- **`print(...)`**: Prints values to standard output (`stdout`) without a trailing newline.
+- **`println(...)`**: Prints values to standard output (`stdout`) followed by a newline.
 - **`eprint(...)`**: Prints values to standard error (`stderr`) followed by a newline (ideal for warnings/errors).
 - **`input(prompt: String) -> String`**: Displays a prompt and reads a line of input from `stdin`.
 

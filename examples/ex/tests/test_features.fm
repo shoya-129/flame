@@ -21,20 +21,21 @@ fn test_math() {
 fn test_type_conv() {
     let s = "123"
     s.toInt().assert_eq(123)
-    s.type ().assert_eq("String")
-    let b = s.toBytes()
-    b.type ().assert_eq("Bytes")
+    s.type().assert_eq("String")
+    let b = s.toByte()
+    b.type().assert_eq("Byte")
     b.toHex().assert_eq("313233")
     // toBase64 gives "MTIz" for "123"
     b.toBase64().assert_eq("MTIz")
-    let b2 = "456".toBytes()
-    b.concat(b2).type ().assert_eq("Bytes")
+
+    let b2 = "456".toByte()
+    b.concat(b2).type().assert_eq("Byte")
 }
 
 @Test
 fn test_time() {
     let now = time.now()
-    now.type ().assert_eq("Int")
+    now.type().assert_eq("Int")
     let year = now.year()
     let is_future = year>2020
     is_future.assert_eq(true)

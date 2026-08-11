@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{PathBuf};
 use std::env;
 
-fn resolve_path(path_str: &str) -> PathBuf {
+pub fn resolve_path(path_str: &str) -> PathBuf {
     let base = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let resolved = base.join("src").join(path_str);
     resolved
@@ -41,6 +41,62 @@ pub fn init() -> HashMap<String, Value> {
             match fs::write(&path, content) {
                 Ok(_) => Ok(Value::Nil),
                 Err(e) => Err(format!("fs.write error: {}", e)),
+            }
+        }),
+    );
+
+    m.insert(
+        "readBytes".to_string(),
+        Value::NativeCallback(|args| {
+            if args.is_empty() {
+                return Err("fs.readBytes expects 1 argument (path)".to_string());
+            }
+            let path = resolve_path(&args[0].to_string().trim_matches('"'));
+            match std::fs::read(&path) {
+                Ok(bytes) => Ok(Value::Bytes(bytes)),
+                Err(e) => Err(format!("fs.readBytes error: {}", e)),
+            }
+        }),
+    );
+
+    m.insert(
+        "writeBytes".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() < 2 {
+                return Err("fs.writeBytes expects 2 arguments (path, bytes)".to_string());
+            }
+            let path = resolve_path(&args[0].to_string().trim_matches('"'));
+            let bytes = match &args[1] {
+                Value::Bytes(b) => b.clone(),
+                _ => return Err(format!("fs.writeBytes: expected Bytes, found {}", args[1].type_name())),
+            };
+            match std::fs::write(&path, bytes) {
+                Ok(_) => Ok(Value::Nil),
+                Err(e) => Err(format!("fs.writeBytes error: {}", e)),
+            }
+        }),
+    );
+
+    m.insert(
+        "appendBytes".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() < 2 {
+                return Err("fs.appendBytes expects 2 arguments (path, bytes)".to_string());
+            }
+            let path = resolve_path(&args[0].to_string().trim_matches('"'));
+            let bytes = match &args[1] {
+                Value::Bytes(b) => b.clone(),
+                _ => return Err(format!("fs.appendBytes: expected Bytes, found {}", args[1].type_name())),
+            };
+            match std::fs::OpenOptions::new().append(true).create(true).open(&path) {
+                Ok(mut file) => {
+                    use std::io::Write;
+                    match file.write_all(&bytes) {
+                        Ok(_) => Ok(Value::Nil),
+                        Err(e) => Err(format!("fs.appendBytes error: {}", e)),
+                    }
+                },
+                Err(e) => Err(format!("fs.appendBytes error: {}", e)),
             }
         }),
     );

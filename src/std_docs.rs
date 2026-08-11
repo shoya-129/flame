@@ -381,6 +381,7 @@ let led = embedded.pin(13)
 led.high()
 ```
 "),
+        "byte" | "std.byte" => Some("# Module `byte`\n\nThe `byte` module provides tools to manipulate files at the byte level.\n\n## Functions\n- **`readBytes()`**: Reads all bytes from a file.\n- **`writeBytes()`**: Writes a byte array to a file.\n- **`appendBytes()`**: Appends bytes to a file.\n- **`readByte()`**: Reads a single byte.\n- **`writeByte()`**: Writes a single byte.\n- **`readByteAt()`**: Reads a byte at an offset.\n- **`writeByteAt()`**: Writes a byte at an offset."),
         _ => None,
     }
 }
@@ -464,6 +465,17 @@ fs.write(\"data.txt\", \"Hello World\")
         ("fs" | "std.fs", "is_file") => Some("Returns true if the path points to a regular file."),
         ("fs" | "std.fs", "is_dir") => Some("Returns true if the path points to a directory."),
         ("fs" | "std.fs", "read_dir") => Some("Returns a list of files in a directory."),
+        ("fs" | "std.fs", "readBytes") => Some("Reads an entire file into a binary byte array."),
+        ("fs" | "std.fs", "writeBytes") => Some("Writes raw binary bytes to a file."),
+        ("fs" | "std.fs", "appendBytes") => Some("Appends raw binary bytes to the end of a file."),
+        ("byte" | "std.byte", "readBytes") => Some("Reads the entire contents of a file as a byte array."),
+        ("byte" | "std.byte", "writeBytes") => Some("Writes a byte array to a file, overwriting if it exists."),
+        ("byte" | "std.byte", "appendBytes") => Some("Appends a byte array to the end of a file."),
+        ("byte" | "std.byte", "writeByte") => Some("Writes a single byte (0-255) to a file."),
+        ("byte" | "std.byte", "readByte") => Some("Reads a single byte from a file."),
+        ("byte" | "std.byte", "appendByte") => Some("Appends a single byte (0-255) to a file."),
+        ("byte" | "std.byte", "writeByteAt") => Some("Writes a single byte to a file at a specific offset."),
+        ("byte" | "std.byte", "readByteAt") => Some("Reads a single byte from a file at a specific offset."),
         ("math" | "std.math", "abs") => Some("Returns the absolute value of a number."),
         ("math" | "std.math", "pow") => Some("Returns the base raised to the power exponent."),
         ("math" | "std.math", "sqrt") => Some("Returns the square root of a number."),

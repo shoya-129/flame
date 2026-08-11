@@ -143,9 +143,11 @@ pub fn format_code(source: &str) -> String {
                     TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Annotation | TokenKind::Type | TokenKind::Where | TokenKind::Comma | TokenKind::Colon | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow | TokenKind::FatArrow
                 );
 
-                if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot {
+                if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot && !out.ends_with('.') {
                     if (is_last_ident_like && is_current_ident_like) || is_last_keyword {
-                        if !out.ends_with(' ') && !out.ends_with('\n') {
+                        // Exception: do not add a space before OpenParen if the last token was a keyword that acts like a function (e.g. type())
+                        let skip_space = tok.kind == TokenKind::OpenParen && matches!(last_kind, TokenKind::Type | TokenKind::Identifier);
+                        if !skip_space && !out.ends_with(' ') && !out.ends_with('\n') {
                             out.push(' ');
                         }
                     }
@@ -171,9 +173,38 @@ pub fn format_code(source: &str) -> String {
                 empty_line_pending = true;
             }
         }
-        if tok.kind == TokenKind::Identifier && original_text == "print" {
-            // A print statement should be followed by an empty line gap
-            empty_line_pending = true;
+        if tok.kind == TokenKind::Let || (tok.kind == TokenKind::Identifier && (original_text == "print" || original_text == "println")) {
+            let is_start = i == 0 || matches!(tokens[i-1].kind, TokenKind::Newline | TokenKind::OpenBrace);
+            if is_start {
+                let mut next_start = None;
+                let mut j = i + 1;
+                while j < tokens.len() {
+                    if tokens[j].kind == TokenKind::Newline {
+                        let mut k = j + 1;
+                        while k < tokens.len() && tokens[k].kind == TokenKind::Newline {
+                            k += 1;
+                        }
+                        if k < tokens.len() && tokens[k].kind != TokenKind::CloseBrace && tokens[k].kind != TokenKind::CloseParen {
+                            next_start = Some(&tokens[k]);
+                        }
+                        break;
+                    }
+                    j += 1;
+                }
+                if let Some(nst) = next_start {
+                    let nst_text = &source[nst.span.start..nst.span.end];
+                    let same_group = if tok.kind == TokenKind::Let {
+                        nst.kind == TokenKind::Let
+                    } else {
+                        nst.kind == TokenKind::Identifier && (nst_text == "print" || nst_text == "println")
+                    };
+                    if !same_group {
+                        empty_line_pending = true;
+                    }
+                } else {
+                    empty_line_pending = true;
+                }
+            }
         }
 
         last_kind = tok.kind.clone();

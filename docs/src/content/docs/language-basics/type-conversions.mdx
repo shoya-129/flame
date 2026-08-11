@@ -48,31 +48,36 @@ let is_prod = "true".toBool() // true
 let flag = "0".toBool()       // false
 ```
 
-### UTF-8 Bytes: `.toBytes()`
+### UTF-8 Bytes: `.toByte()`
 
-Converts a string into a dynamic array of UTF-8 byte values (`Value::Bytes`):
+- **`.toByte()`**: Converts a string or integer into a dynamic array of UTF-8 byte values (or a single byte) (`Value::Byte`).
+- **`.toByte()`**: Converts a valid integer (0-255) into a single 8-bit unsigned `Byte` value (`Value::Byte`).
 
 ```flame
-let bytes = "Flame".toBytes() // <Bytes>
+let bytes = "Flame".toByte() // <Byte>
+let single_byte = 65.toByte()  // <Byte> representing 'A'
 ```
 
 ---
 
 ## Byte Manipulations
 
-For `Bytes` arrays (such as those returned by `.toBytes()`), Flame provides built-in utilities:
+For `Byte` arrays (such as those returned by `.toByte()`), Flame provides built-in utilities:
 
 - **`.toHex()`**: Converts a byte array into a continuous hexadecimal string.
 - **`.toBase64()`**: Encodes the byte array using standard Base64 encoding.
+- **`.toUtf8()`**: Attempts to parse the bytes as a UTF-8 encoded string. Throws an error on invalid sequences.
+- **`.tryUtf8()`**: Non-panicking version of `.toUtf8()`. Returns `Nil` on invalid sequences.
 - **`.concat(other)`**: Appends another byte array, returning a new `Bytes` array.
 
 ```flame
-let b1 = "hello".toBytes()
-let b2 = " world".toBytes()
+let b1 = "hello".toByte()
+let b2 = " world".toByte()
 
 let combined = b1.concat(b2)
 println(combined.toHex())    // "68656C6C6F20776F726C64"
 println(combined.toBase64()) // "aGVsbG8gd29ybGQ="
+println(combined.toUtf8())   // "hello world"
 ```
 
 ---
@@ -114,9 +119,12 @@ println(text.type())   // "String"
 | `.tryFloat()` | `String` | `Float \| Nil` | No (`Nil`) |
 | `.toBool()` | `String` | `Bool` | Yes |
 | `.tryBool()` | `String` | `Bool \| Nil` | No (`Nil`) |
-| `.toBytes()` | `String` | `Bytes` | No |
-| `.toHex()` | `Bytes` | `String` | No |
-| `.toBase64()` | `Bytes` | `String` | No |
-| `.concat(Bytes)` | `Bytes` | `Bytes` | No |
+| `.toByte()` | `String` | `Byte` | No |
+| `.toByte()` | `Int` | `Byte` | Yes |
+| `.toHex()` | `Byte` | `String` | No |
+| `.toBase64()` | `Byte` | `String` | No |
+| `.toUtf8()` | `Byte` | `String` | Yes |
+| `.tryUtf8()` | `Byte` | `String \| Nil` | No (`Nil`) |
+| `.concat()` | `Byte` | `Byte` | No |
 | `.type()` | `Any` | `String` | No |
 | `.toString(precision?)` | `Any` | `String` | No |

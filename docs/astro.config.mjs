@@ -104,6 +104,7 @@ export default defineConfig({
 						{ label: 'Overview & Status', slug: 'standard-library/overview' },
 						{ label: 'Network Toolkit (std.net)', slug: 'standard-library/net' },
 						{ label: 'File System (std.fs)', slug: 'standard-library/filesystem' },
+						{ label: 'Byte Manipulation (std.byte)', slug: 'standard-library/byte' },
 						{ label: 'Process & OS (std.process, std.os, std.env)', slug: 'standard-library/process-and-os' },
 						{ label: 'Hardware & Desktop Automation', slug: 'standard-library/hardware-and-automation' },
 						{ label: 'Threading & Time (std.thread, std.time)', slug: 'standard-library/threading-and-time' },

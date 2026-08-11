@@ -4,6 +4,18 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.5] - 2026-08-11 (Codename: *Second Spark*)
+
+### 🔧 Language & Standard Library Updates
+- **Byte Type Unification**: Replaced the separate `Bytes` and `Byte` types with a unified singular `Byte` type. Whether you are dealing with a single byte or a byte array, the `.type()` will correctly return `"Byte"`.
+- **camelCase Standardization**: Refactored all byte operations and `std.byte`/`std.fs` methods to use standard `camelCase`. Functions like `to_bytes`, `to_utf8`, `write_bytes`, and `read_bytes` have been upgraded to `.toByte()`, `.toUtf8()`, `.writeBytes()`, and `.readBytes()` respectively.
+- **Hover Docs**: Implemented rich, in-editor Markdown hover documentation for the new `Byte` functions (e.g., `toByte`, `toUtf8`, `writeBytes`) directly into the IDE language server (`flamelang check`).
+
+### 📚 Documentation
+- Updated `byte.mdx` and `filesystem.mdx` on the official documentation website to reflect the new `camelCase` standard and unified `Byte` type.
+
+---
+
 ## [0.2.4] - 2026-08-10 (Codename: *Second Spark*)
 
 ### 🐛 Bug Fixes & VM Enhancements

@@ -91,6 +91,28 @@ print(office.location.lat) // 37.7749
 
 ---
 
+## Deserializing Structs
+
+Flame provides built-in `.fromJson()` and `.fromBytes()` methods on all `struct` type definitions. This allows you to easily parse JSON strings or binary UTF-8 byte payloads directly into a typed struct instance.
+
+```flame
+struct Config {
+    port: Int,
+    host: String
+}
+
+// Parse from a JSON string
+let cfg1 = Config.fromJson('{"port": 8080, "host": "localhost"}')
+print(cfg1.port) // 8080
+
+// Parse from raw bytes (e.g., from an HTTP response or file)
+let raw_bytes = "{\"port\": 3000, \"host\": \"0.0.0.0\"}".toByte()
+let cfg2 = Config.fromBytes(raw_bytes)
+print(cfg2.host) // "0.0.0.0"
+```
+
+---
+
 ## Next Steps
 
 To add methods and constructors to your structs, explore [Impl & Methods](/types-and-traits/impl-and-methods/).

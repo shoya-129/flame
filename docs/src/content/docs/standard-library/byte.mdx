@@ -1,0 +1,79 @@
+---
+title: Byte Manipulation (std.byte)
+description: Utilities for reading, writing, and mutating binary data in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `std.byte` module provides a comprehensive API for handling raw binary data (`Bytes` and `Byte`). It mirrors many filesystem (`std.fs`) operations but is strictly typed for bytes instead of UTF-8 text strings.
+
+---
+
+## File I/O with Bytes
+
+You can perform direct binary I/O operations without string encodings. This is essential when dealing with non-text files like images, executables, or compressed data.
+
+```flame
+import std.byte
+
+// Read an entire file as a byte array (Bytes)
+let raw_data = byte.readBytes("image.png")
+println(raw_data.type()) // "Bytes"
+
+// Write an entire byte array to a file
+byte.writeBytes("copy.png", raw_data)
+
+// Append bytes to an existing file
+let extra = "trailer data".toByte()
+byte.appendBytes("copy.png", extra)
+```
+
+---
+
+## Single Byte Level Operations
+
+If you only need to modify or read a single 8-bit `Byte` (which maps internally to `u8`), you can use the byte-level methods:
+
+#### `byte.readByte(path)`
+Reads the first byte of a file.
+
+#### `byte.readByteAt(path, offset)`
+Reads a single byte at the specified `offset`.
+
+#### `byte.writeByteAt(path, offset, byte)`
+Writes a single `byte` at the specified `offset` without truncating the rest of the file.
+
+```flame
+import std.byte
+
+// Write the byte '0' at offset 128
+byte.writeByteAt("data.bin", 128, 0.toByte())
+
+// Read the byte located at offset 128
+let b = byte.readByteAt("data.bin", 128)
+
+// Write a single byte to a file (creates or overwrites)
+byte.writeByte("flag.bin", 255.toByte())
+
+// Append a single byte to the end of a file
+byte.appendByte("flag.bin", 0)
+```
+
+---
+
+## API Summary Table
+
+#### `byte.readBytes(path)`
+Reads all bytes from the file at `path` and returns a `Byte` array.
+
+#### `byte.writeBytes(path, bytes)`
+Writes the given `Byte` array to `path`, creating or overwriting the file.
+
+#### `byte.appendBytes(path, bytes)`
+Appends the given `Byte` array to the file at `path`.
+
+#### `byte.writeByte(path, byte)`
+Writes a single 8-bit `Byte` to `path`.
+
+#### `byte.appendByte(path, byte)`
+Appends a single 8-bit `Byte` to the file at `path`.

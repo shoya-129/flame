@@ -158,7 +158,7 @@ fn main() {
             init_native_bridge(plugin_name);
         }
         "version" | "--version" | "-version" | "--v" | "-v" | "-V" => {
-            println!("Flame {} (Codename: Second Spark)", env!("CARGO_PKG_VERSION"));
+            println!("Flame {} (Second Spark)", env!("CARGO_PKG_VERSION"));
         }
         "help" | "--help" | "-h" => {
             print_help();
@@ -2276,7 +2276,9 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     ("tryFloat", "Converts the value to a floating point number, returns nil if invalid"),
                     ("toBool", "Converts the value to its truthy boolean representation"),
                     ("tryBool", "Converts the value to its truthy boolean representation"),
-                    ("toBytes", "Converts the value to an array of bytes"),
+                    ("toByte", "Converts a String or Int into a binary Byte or Byte array."),
+                    ("toUtf8", "Decodes a Byte array into a UTF-8 String. Panics if invalid UTF-8."),
+                    ("tryUtf8", "Attempts to decode a Byte array into a UTF-8 String. Returns nil if invalid."),
                     ("index", "Extracts the value at the given key/index (requires 1 argument)"),
                     ("toJson", "Serializes a struct or object into a JSON string"),
                     (

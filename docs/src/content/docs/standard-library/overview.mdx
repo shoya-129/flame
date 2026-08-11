@@ -36,6 +36,10 @@ assert_ne(10, 20)
     File reading, writing, copying, path verification, and recursive directory manipulation.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
+  <Card title="Byte Manipulation (std.byte)" icon="document">
+    Read, write, append, and seek raw binary byte streams directly from the filesystem.
+    <br/><Badge text="Production Ready" variant="success" />
+  </Card>
   <Card title="Network Toolkit (std.net)" icon="globe">
     Complete async networking (TCP, UDP, HTTP, WebSockets, MQTT), DNS resolution, and native JSON parsing/serialization capabilities.
     <br/><Badge text="Production Ready" variant="success" />
@@ -68,6 +72,7 @@ Standard modules are imported using the `std.` namespace. Top-level expressions 
 import std.net.http
 import std.json
 import std.fs
+import std.byte
 import std.os
 import std.thread
 import std.math

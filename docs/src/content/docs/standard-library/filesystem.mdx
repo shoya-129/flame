@@ -59,7 +59,10 @@ fs.remove("data")
 | Method | Arguments | Returns | Description |
 | :--- | :--- | :--- | :--- |
 | `fs.read` | `path: String` | `String` | Reads entire file contents into a UTF-8 string. |
+| `fs.readBytes` | `path: String` | `Byte` | Reads an entire file into a binary byte array. |
 | `fs.write` | `path: String, content: Any` | `Nil` | Writes string data to a file, overwriting existing content. |
+| `fs.writeBytes` | `path: String, bytes: Byte` | `Nil` | Writes raw binary bytes to a file. |
+| `fs.appendBytes` | `path: String, bytes: Byte` | `Nil` | Appends raw binary bytes to the end of a file. |
 | `fs.exists` | `path: String` | `Bool` | Returns `true` if the filesystem path (file or directory) exists. |
 | `fs.copy` | `src: String, dest: String` | `Nil` | Copies a file from `src` to `dest`. |
 | `fs.mkdir` | `path: String` | `Nil` | Creates a single directory at the specified path. |

@@ -400,12 +400,52 @@ const KEYWORDS: &[(&str, &str)] = &[
         "```flame\nfn toChar() -> String\n```\nReturns a string consisting of the first character.",
     ),
     (
-        "toBytes",
-        "```flame\nfn toBytes() -> Vector<Int>\n```\nConverts a UTF-8 String into an array of byte integers.",
+        "toByte",
+        "```flame\nfn toByte() -> Byte\n```\nConverts a String or Int into a binary Byte or Byte array.",
     ),
     (
         "toString",
         "```flame\nfn toString(precision: Int = -1) -> String\n```\nConverts any value (integer, float, boolean, nil, byte array) into its String representation. For floats, specifying precision limits decimal digits.",
+    ),
+    (
+        "toUtf8",
+        "```flame\nfn toUtf8() -> String\n```\nDecodes a Byte array into a UTF-8 String. Panics if the bytes are not valid UTF-8.",
+    ),
+    (
+        "tryUtf8",
+        "```flame\nfn tryUtf8() -> String?\n```\nAttempts to decode a Byte array into a UTF-8 String. Returns `nil` if the bytes are not valid UTF-8.",
+    ),
+    (
+        "writeBytes",
+        "```flame\nfn writeBytes(path: String, bytes: Byte)\n```\nWrites a byte array to a file, overwriting if it exists.",
+    ),
+    (
+        "readBytes",
+        "```flame\nfn readBytes(path: String) -> Byte\n```\nReads the entire contents of a file as a byte array.",
+    ),
+    (
+        "appendBytes",
+        "```flame\nfn appendBytes(path: String, bytes: Byte)\n```\nAppends a byte array to the end of a file.",
+    ),
+    (
+        "writeByte",
+        "```flame\nfn writeByte(path: String, byte: Int | Byte)\n```\nWrites a single byte (0-255) to a file.",
+    ),
+    (
+        "readByte",
+        "```flame\nfn readByte(path: String) -> Byte\n```\nReads a single byte from a file.",
+    ),
+    (
+        "appendByte",
+        "```flame\nfn appendByte(path: String, byte: Int | Byte)\n```\nAppends a single byte (0-255) to a file.",
+    ),
+    (
+        "writeByteAt",
+        "```flame\nfn writeByteAt(path: String, offset: Int, byte: Int | Byte)\n```\nWrites a single byte to a file at a specific offset.",
+    ),
+    (
+        "readByteAt",
+        "```flame\nfn readByteAt(path: String, offset: Int) -> Byte\n```\nReads a single byte from a file at a specific offset.",
     ),
 ];
 
@@ -761,6 +801,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "thread" => Some(crate::native_std::thread::init()),
         "process" => Some(crate::native_std::process::init()),
         "fs" => Some(crate::native_std::fs::init()),
+        "byte" => Some(crate::native_std::byte::init()),
         "net" => Some(crate::native_std::net::init(&parts.next()?)),
         "json" => Some(crate::native_std::json::init()),
         "math" => Some(crate::native_std::math::init()),

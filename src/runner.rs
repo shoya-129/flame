@@ -1285,15 +1285,21 @@ impl Runner {
                 }
                 _ => Some(Err(format!("cannot convert {:?} to Char", val))),
             },
-            "toBytes" | "to_bytes" => match val {
+            "toByte" | "to_byte" => match val {
                 Value::String(s) => {
                     Some(Ok(Value::Bytes(s.clone().into_bytes())))
                 }
-                Value::Bytes(b) => {
-                    let ints = b.iter().map(|v| Value::Int(*v as i64)).collect();
-                    Some(Ok(Value::Tuple(ints)))
+                Value::Int(i) => {
+                    if *i < 0 || *i > 255 {
+                        Some(Err(format!("toByte: value {} is out of bounds for Byte (0..255)", i)))
+                    } else {
+                        Some(Ok(Value::Byte(*i as u8)))
+                    }
                 }
-                _ => Some(Err(format!("cannot convert {:?} to Bytes", val))),
+                Value::Bytes(b) => {
+                    Some(Ok(Value::Bytes(b.clone())))
+                }
+                _ => Some(Err(format!("cannot convert {:?} to Byte", val))),
             },
             _ => None,
         }
@@ -3287,9 +3293,31 @@ impl Runner {
                         return Ok(Value::Bool(receiver_val.is_truthy()));
                     } else if member == "tryBool" {
                         return Ok(Value::Bool(receiver_val.is_truthy()));
-                    } else if member == "toBytes" {
+                    } else if member == "toByte" {
+                        if let Value::Int(i) = receiver_val {
+                            if i < 0 || i > 255 {
+                                return Err(format!("toByte: value {} is out of bounds for Byte (0..255)", i));
+                            }
+                            return Ok(Value::Byte(i as u8));
+                        }
+                        if let Value::Byte(b) = receiver_val {
+                            return Ok(Value::Byte(b));
+                        }
                         let bytes_vec = receiver_val.to_string().into_bytes();
                         return Ok(Value::Bytes(bytes_vec));
+                    } else if member == "toUtf8" {
+                        if let Value::Bytes(b) = receiver_val {
+                            return String::from_utf8(b).map(Value::String).map_err(|_| "toUtf8: invalid UTF-8 data".to_string());
+                        }
+                        return Err(format!("toUtf8 is only supported on Bytes, found {}", receiver_val.type_name()));
+                    } else if member == "tryUtf8" {
+                        if let Value::Bytes(b) = receiver_val {
+                            return match String::from_utf8(b) {
+                                Ok(s) => Ok(Value::String(s)),
+                                Err(_) => Ok(Value::Nil),
+                            };
+                        }
+                        return Err(format!("tryUtf8 is only supported on Bytes, found {}", receiver_val.type_name()));
                     } else if member == "toHex" {
                         if let Value::Bytes(b) = receiver_val {
                             let hex = b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>();
@@ -3341,7 +3369,7 @@ impl Runner {
                             Value::Bytes(items) => {
                                 if let Value::Int(i) = key_val {
                                     if i >= 0 && (i as usize) < items.len() {
-                                        return Ok(Value::Int(items[i as usize] as i64));
+                                        return Ok(Value::Byte(items[i as usize]));
                                     }
                                 }
                                 return Ok(Value::Nil);
@@ -3407,60 +3435,7 @@ impl Runner {
                         let min_f = if let Value::Float(f) = min_val { f } else { min_val.as_int().unwrap_or(0) as f64 };
                         let max_f = if let Value::Float(f) = max_val { f } else { max_val.as_int().unwrap_or(0) as f64 };
                         return Ok(Value::Float(v_f.max(min_f).min(max_f)));
-                    } else if member == "toHex" {
-                    } else if member == "toHex" {
-                        if let Value::Bytes(items) = &receiver_val {
-                            let mut hex = String::new();
-                            for item in items.iter() {
-                                hex.push_str(&format!("{:02x}", item));
-                            }
-                            return Ok(Value::String(hex));
-                        }
-                        return Err("toHex requires a byte vector".to_string());
-                    } else if member == "toBase64" {
-                    } else if member == "toBase64" {
-                        if let Value::Bytes(bytes) = &receiver_val {
-                            const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-                            let mut b64 = String::new();
-                            let mut i = 0;
-                            while i < bytes.len() {
-                                let b1 = bytes[i];
-                                let b2 = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
-                                let b3 = if i + 2 < bytes.len() { bytes[i + 2] } else { 0 };
-                                b64.push(CHARS[(b1 >> 2) as usize] as char);
-                                b64.push(CHARS[(((b1 & 0x03) << 4) | (b2 >> 4)) as usize] as char);
-                                if i + 1 < bytes.len() {
-                                    b64.push(CHARS[(((b2 & 0x0F) << 2) | (b3 >> 6)) as usize] as char);
-                                } else {
-                                    b64.push('=');
-                                }
-                                if i + 2 < bytes.len() {
-                                    b64.push(CHARS[(b3 & 0x3F) as usize] as char);
-                                } else {
-                                    b64.push('=');
-                                }
-                                i += 3;
-                            }
-                            return Ok(Value::String(b64));
-                        }
-                        return Err("toBase64 requires a byte vector".to_string());
-                    } else if member == "concat" {
-                        if args.len() < 1 { return Err("concat requires 1 argument".to_string()); }
-                        let other = self.eval_expr(&args[0].1, env.clone())?;
-                        if let (Value::Bytes(a), Value::Bytes(b)) = (&receiver_val, &other) {
-                            let mut new_vec = a.clone();
-                            new_vec.extend(b.clone());
-                            return Ok(Value::Bytes(new_vec));
-                        }
-                        if let (Value::Tuple(a), Value::Tuple(b)) = (&receiver_val, &other) {
-                            let mut new_vec = a.clone();
-                            new_vec.extend(b.clone());
-                            return Ok(Value::Tuple(new_vec));
-                        }
-                        if let (Value::String(a), Value::String(b)) = (&receiver_val, &other) {
-                            return Ok(Value::String(format!("{}{}", a, b)));
-                        }
-                        return Err("concat requires vectors or strings".to_string());
+
                     } else if member == "year" {
                         if let Value::Int(timestamp) = receiver_val {
                             if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {

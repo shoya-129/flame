@@ -1,4 +1,5 @@
 pub mod fs;
+pub mod byte;
 pub mod thread;
 pub mod process;
 pub mod env;

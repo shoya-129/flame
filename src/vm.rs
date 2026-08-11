@@ -12,6 +12,7 @@ pub enum Value {
     String(String),
     Bool(bool),
     Nil,
+    Byte(u8),
     Bytes(Vec<u8>),
     Tuple(Vec<Value>),
     Formula(HashMap<String, Value>),
@@ -109,8 +110,6 @@ static RUNTIME_QUEUE: OnceLock<(
 )> = OnceLock::new();
 static CALLBACK_REGISTRY: OnceLock<Mutex<HashMap<u64, Value>>> = OnceLock::new();
 static EVENT_LOOP_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-use std::fmt::Display;
-
 #[derive(Clone)]
 pub struct NativeClosureType(pub std::sync::Arc<dyn Fn(Vec<Value>) -> Result<Value, String> + Send + Sync>);
 
@@ -219,6 +218,7 @@ impl fmt::Display for Value {
             Value::String(s) => write!(f, "{s}"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Nil => write!(f, "nil"),
+            Value::Byte(b) => write!(f, "{}", b),
             Value::Bytes(bytes) => {
                 let hex: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
 
@@ -325,7 +325,8 @@ impl Value {
             Value::Bool(_) => "Bool",
             Value::String(_) => "String",
             Value::Tuple(_) => "Tuple",
-            Value::Bytes(_) => "Bytes",
+            Value::Byte(_) => "Byte",
+            Value::Bytes(_) => "Byte",
             Value::Object(_) => "Object",
             Value::Formula(_) => "Formula",
             Value::Ref(_) | Value::RefPath(_, _) => "Ref",

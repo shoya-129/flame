@@ -618,7 +618,7 @@ impl<'a> Lexer<'a> {
             } else if next == '.' && !has_dot {
                 // Make sure it is not double dots `..` or `..=` or safe navigation `?.`
                 if let Some(after) = self.peek_next() {
-                    if after == '.' {
+                    if after == '.' || after.is_ascii_alphabetic() || after == '_' {
                         break;
                     }
                 }

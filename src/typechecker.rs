@@ -10,6 +10,7 @@ pub enum Type {
     String,
     Bool,
     Nil,
+    Byte,
     Tuple(Vec<Type>),
     Vector(Box<Type>),
     Formula(HashMap<String, Type>),
@@ -1417,7 +1418,10 @@ impl TypeChecker {
             "toBool" | "tryBool" | "contains" | "starts_with" | "ends_with" | "is_empty" => {
                 return Type::Bool;
             }
-            "toBytes" | "split" | "keys" | "values" => {
+            "toByte" | "to_byte" => {
+                return Type::Byte;
+            }
+            "split" | "keys" | "values" => {
                 return Type::Vector(Box::new(Type::Unknown));
             }
             "clone" => return inner_ty.clone(),
@@ -1505,7 +1509,7 @@ impl TypeChecker {
                 Type::Unknown
             }
             Type::Formula(ref fmap) => fmap.get(member).cloned().unwrap_or(Type::Unknown),
-            Type::Vector(_) | Type::String | Type::Int | Type::Float | Type::Bool | Type::Tuple(_) => {
+            Type::Vector(_) | Type::String | Type::Int | Type::Float | Type::Bool | Type::Tuple(_) | Type::Byte => {
                 Type::Named("Function".into())
             }
             Type::Unknown | Type::Named(_) => Type::Unknown,
@@ -1669,7 +1673,7 @@ impl TypeChecker {
                 | "tryDouble" | "try_double" => return Type::Float,
                 "toBool" | "to_bool" | "tryBool" | "try_bool" => return Type::Bool,
                 "toChar" | "to_char" => return Type::String,
-                "toBytes" | "to_bytes" => return Type::Vector(Box::new(Type::Int)),
+                "toByte" | "to_byte" => return Type::Byte,
                 _ => {}
             }
 
@@ -1697,6 +1701,50 @@ impl TypeChecker {
                     None,
                 );
                 return Type::Unknown;
+            }
+
+            if let Type::Byte = &inner_ty {
+                match member.as_str() {
+                    "toHex" | "toBase64" | "toUtf8" | "tryUtf8" => {
+                        self.check_call_args(&[], args, span, member);
+                        return match member.as_str() {
+                            "toHex" | "toBase64" | "toUtf8" => Type::String,
+                            "tryUtf8" => Type::Named("String?".to_string()),
+                            _ => Type::Unknown,
+                        };
+                    }
+                    "concat" => {
+                        self.check_call_args(
+                            &[ParamInfo {
+                                name: "other".into(),
+                                ty: Type::Byte,
+                                is_ref: false,
+                                is_mut: false,
+                            }],
+                            args,
+                            span,
+                            member,
+                        );
+                        return Type::Byte;
+                    }
+                    "len" => {
+                        self.check_call_args(&[], args, span, member);
+                        return Type::Int;
+                    }
+                    "type" => {
+                        self.check_call_args(&[], args, span, member);
+                        return Type::String;
+                    }
+                    _ => {
+                        self.error(
+                            format!("Bytes has no method '{}'", member),
+                            span.clone(),
+                            None,
+                            None,
+                        );
+                        return Type::Unknown;
+                    }
+                }
             }
 
             if let Type::Vector(element_ty) = &inner_ty {
@@ -1991,6 +2039,7 @@ impl TypeChecker {
             (Type::Named(expected_name), Type::EnumVariant { enum_name, .. }) => {
                 expected_name == enum_name
             }
+            (Type::Byte, Type::Byte) => true,
             (Type::Vector(expected_item), Type::Vector(actual_item)) => {
                 self.is_compatible(expected_item, actual_item)
             }
@@ -2052,6 +2101,7 @@ impl TypeChecker {
             "String" => Type::String,
             "Bool" => Type::Bool,
             "Nil" | "nil" => Type::Nil,
+            "Byte" | "Bytes" => Type::Byte,
             "Formula" => Type::Formula(HashMap::new()),
             _ if trimmed.contains("->") => {
                 if let Some((left, right)) = trimmed.split_once("->") {
@@ -2100,6 +2150,7 @@ impl TypeChecker {
             Type::String => "String".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Nil => "Nil".to_string(),
+            Type::Byte => "Byte".to_string(),
             Type::Tuple(items) => format!(
                 "({})",
                 items
