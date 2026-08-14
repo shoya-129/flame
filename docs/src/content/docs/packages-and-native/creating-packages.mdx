@@ -129,11 +129,10 @@ When you are ready to distribute your package, simply run:
 flame build
 ```
 
-Because `type = "pkg"`, Flame acts as a package bundler. It will create a directory at `target/dev/pkg/my_package` containing:
+Because `type = "pkg"`, Flame acts as a package bundler. It will create a directory at `target/pkg/my_package` containing:
 - Your `flame.toml` manifest.
 - Your entire `src/` directory.
 - Generated `.fmi` interface files from your local plugins.
-- Built `.rlib` static archives for native interop.
 
 ### Publishing to GitHub
 
