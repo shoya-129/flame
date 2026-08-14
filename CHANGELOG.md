@@ -4,6 +4,18 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.7] - 2026-08-14 (Codename: *Second Spark*)
+
+### 🐛 Parsing & Syntax Fixes
+- **Match Destructuring**: The Flame `match` expression parser has been completely overhauled to support dot-notation paths (e.g. `Result.Ok` or `Option.None`) inside pattern arms. 
+- **Tuple Pattern Unpacking**: Added full parser syntax to cleanly unpack positional enum values using parenthesis `(val)`, allowing true destructuring (`Option.Some(value) => ...`).
+- **Match Blocks**: You can now correctly write `{ ... }` scoped execution blocks directly inside the `match` arm expression bodies, drastically improving flow control aesthetics without causing token collisions.
+
+### 📚 Documentation
+- **Control Flow**: Added comprehensive documentation on using Enum Destructuring and `{ ... }` blocks within `match` expressions.
+
+---
+
 ## [0.2.6] - 2026-08-14 (Codename: *Second Spark*)
 
 ### 🎨 IDE & Developer Experience
