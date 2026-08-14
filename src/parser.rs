@@ -77,6 +77,7 @@ pub struct MatchArm {
     pub pattern: String,
     pub pattern_span: Span,
     pub destructure: Vec<String>,
+    pub is_tuple_destructure: bool,
     pub body: Expr,
 }
 
@@ -1066,10 +1067,19 @@ impl Parser {
         let mut arms = Vec::new();
         while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
             let pat_tok = self.peek();
-            let pat = pat_tok.lexeme.clone();
-            let pattern_span = pat_tok.span.clone();
+            let mut pat = pat_tok.lexeme.clone();
+            let mut pattern_span = pat_tok.span.clone();
             self.advance();
+
+            // Handle enum paths like `Result.Ok`
+            while self.match_token(TokenKind::Dot) {
+                let next_tok = self.consume(TokenKind::Identifier, "expected identifier in pattern path")?;
+                pat = format!("{}.{}", pat, next_tok.lexeme);
+                pattern_span.end = next_tok.span.end;
+            }
+
             let mut destructure = Vec::new();
+            let mut is_tuple_destructure = false;
             if self.match_token(TokenKind::OpenBrace) {
                 while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
                     let field = self.consume(TokenKind::Identifier, "expected identifier in pattern destructuring")?;
@@ -1077,15 +1087,38 @@ impl Parser {
                     self.match_token(TokenKind::Comma);
                 }
                 self.consume(TokenKind::CloseBrace, "expected '}' closing pattern destructuring")?;
+            } else if self.match_token(TokenKind::OpenParen) {
+                is_tuple_destructure = true;
+                while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
+                    let field = self.consume(TokenKind::Identifier, "expected identifier in pattern destructuring")?;
+                    destructure.push(field.lexeme.clone());
+                    self.match_token(TokenKind::Comma);
+                }
+                self.consume(TokenKind::CloseParen, "expected ')' closing pattern destructuring")?;
             }
             if !self.match_token(TokenKind::FatArrow) && !self.match_token(TokenKind::Arrow) {
                 return Err(self.consume(TokenKind::FatArrow, "expected '=>' pattern arm arrow").unwrap_err());
             }
-            let body = self.parse_expr()?;
+
+            let body = if self.check(TokenKind::OpenBrace) {
+                let start_span = self.peek().span.clone();
+                let stmts = self.parse_block()?;
+                let end_span = self.tokens[self.index - 1].span.clone();
+                Expr::Block(stmts, Span {
+                    start: start_span.start,
+                    end: end_span.end,
+                    line: start_span.line,
+                    col: start_span.col,
+                })
+            } else {
+                self.parse_expr()?
+            };
+
             arms.push(MatchArm {
                 pattern: pat,
                 pattern_span,
                 destructure,
+                is_tuple_destructure,
                 body,
             });
             self.match_token(TokenKind::Comma);

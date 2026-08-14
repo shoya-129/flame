@@ -997,6 +997,32 @@ impl Runner {
                     let mut child_env_opt = None;
 
                     match &target_val {
+                        Value::EnumValue(enum_name, variant_name, data) => {
+                            let dot_pat = format!("{}.{}", enum_name, variant_name);
+                            let colon_pat = format!("{}::{}", enum_name, variant_name);
+
+                            if dot_pat == arm.pattern || colon_pat == arm.pattern || variant_name == &arm.pattern {
+                                is_match = true;
+                                let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                                
+                                match data {
+                                    EnumData::Tuple(vals) => {
+                                        for (i, field) in arm.destructure.iter().enumerate() {
+                                            let field_val = vals.get(i).cloned().unwrap_or(Value::Nil);
+                                            child.lock().unwrap().define(field.clone(), field_val, false);
+                                        }
+                                    }
+                                    EnumData::Struct(map) => {
+                                        for field in &arm.destructure {
+                                            let field_val = map.get(field).cloned().unwrap_or(Value::Nil);
+                                            child.lock().unwrap().define(field.clone(), field_val, false);
+                                        }
+                                    }
+                                    EnumData::Unit => {}
+                                }
+                                child_env_opt = Some(child);
+                            }
+                        }
                         Value::Object(map) | Value::Formula(map) => {
                             if let Some(Value::String(variant)) = map.get("$variant") {
                                 if variant == &arm.pattern {

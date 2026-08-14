@@ -43,6 +43,32 @@ match status_code {
 }
 ```
 
+#### Enum Destructuring & Blocks
+
+You can unpack data embedded inside Enums (like `Result` and `Option`) using tuple destructuring `(value)` and paths in your match arms. If your logic requires multiple statements, you can use `{ ... }` blocks directly as the body of your match arm!
+
+```flame
+let opt = Option.Some(42)
+
+match opt {
+    Option.Some(value) => {
+        let doubled = value * 2
+        print($"Found value: {doubled}")
+    },
+    Option.None => print("No value found!")
+}
+
+let result: Result<Int, Error> = divide(10, 2)
+
+match result {
+    Result.Ok(ans) => print($"Success: {ans}"),
+    Result.Err(err) => {
+        print("An error occurred!")
+        print(err.message)
+    }
+}
+```
+
 ---
 
 ## Loops
