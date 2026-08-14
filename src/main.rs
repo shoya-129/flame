@@ -11,6 +11,7 @@ mod parser;
 pub mod runner;
 mod std_docs;
 mod stdlib;
+mod test_engine;
 mod typechecker;
 pub mod vm;
 use diagnostics::Diagnostic;
@@ -63,6 +64,9 @@ fn main() {
         }
         "build" => {
             build_project(&args);
+        }
+        "package" => {
+            package_project(&args);
         }
         "check" => {
             run_check_command(&args);
@@ -343,6 +347,37 @@ fn parse_file_stmts(path: &Path, content: &str) -> Result<Vec<Stmt>, Diagnostic>
     parser.parse()
 }
 
+fn filter_platform_stmts(stmts: &mut Vec<Stmt>, current_target: Option<&str>) {
+    stmts.retain(|stmt| {
+        let annotations = match stmt {
+            Stmt::FuncDecl { annotations, .. } => annotations,
+            Stmt::StructDecl { annotations, .. } => annotations,
+            Stmt::EnumDecl { annotations, .. } => annotations,
+            Stmt::LetDecl { annotations, .. } => annotations,
+            Stmt::ConstDecl { annotations, .. } => annotations,
+            _ => return true,
+        };
+
+        for ann in annotations {
+            if ann.name == "Platform" && !ann.args.is_empty() {
+                let required_platform = ann.args[0].trim_matches('"');
+                if let Some(target) = current_target {
+                    if !target.contains(required_platform) {
+                        return false;
+                    }
+                } else {
+                    // If there is no specific target set, we default to host (which might not match embedded)
+                    // But for safety, if they explicitly requested a platform and target is none, we probably ignore it if it doesn't match native.
+                    if !required_platform.is_empty() {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    });
+}
+
 fn typecheck_file_stmts(path: &Path, stmts: &[Stmt]) -> Result<(), Vec<Diagnostic>> {
     TypeChecker::new(path.to_string_lossy().to_string())
         .check_program(stmts)
@@ -368,7 +403,6 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             target = Some(args[i + 1].clone());
         }
     }
-    let mut is_pkg = false;
     if let Ok(toml_str) = fs::read_to_string("flame.toml") {
         for line in toml_str.lines() {
             let t = line.trim();
@@ -380,13 +414,6 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                 if let Some(val) = t.split('=').nth(1) {
                     if target.is_none() {
                         target = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
-                    }
-                }
-            } else if t.starts_with("type =") {
-                if let Some(val) = t.split('=').nth(1) {
-                    let parsed_type = val.trim().trim_matches('"').trim_matches('\'').to_lowercase();
-                    if parsed_type == "pkg" || parsed_type == "lib" {
-                        is_pkg = true;
                     }
                 }
             }
@@ -436,7 +463,8 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                                 let fpath = pkg_file.path();
                                 if fpath.is_file() && fpath.extension().map_or(false, |e| e == "fm") {
                                     let content = fs::read_to_string(&fpath).unwrap_or_default();
-                                    if let Ok(stmts) = parse_file_stmts(&fpath, &content) {
+                                    if let Ok(mut stmts) = parse_file_stmts(&fpath, &content) {
+                                        filter_platform_stmts(&mut stmts, target.as_deref());
                                         all_stmts.extend(stmts);
                                     }
                                 }
@@ -454,7 +482,10 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                 if path.is_file() && path.extension().map_or(false, |e| e == "fm") {
                     let content = fs::read_to_string(&path).unwrap_or_default();
                     let stmts = match parse_file_stmts(&path, &content) {
-                        Ok(stmts) => stmts,
+                        Ok(mut stmts) => {
+                            filter_platform_stmts(&mut stmts, target.as_deref());
+                            stmts
+                        },
                         Err(diag) => {
                             diag.print(&content);
                             println!(
@@ -593,58 +624,18 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             profile,
             &processed_native_deps,
             force_local,
-            is_pkg,
+            false,
+            false,
         );
 
-        let ext = if is_pkg { ".rlib" } else { std::env::consts::EXE_SUFFIX };
-        let exe_name = format!("{}{}", if is_pkg { format!("lib{}_aot", pkg_name) } else { pkg_name.clone() }, ext);
+        let ext = std::env::consts::EXE_SUFFIX;
+        let exe_name = format!("{}{}", pkg_name.clone(), ext);
         let out_rel = format!("target/{}/{}", profile, exe_name);
         println!(
             "\x1b[1;32m    Finished\x1b[0m {} target(s) -> {} in 0.12s",
             mode_str, out_rel
         );
 
-        if is_pkg {
-            let pkg_out_dir = Path::new("pkg").join(&pkg_name);
-            let _ = fs::create_dir_all(&pkg_out_dir);
-            
-            // Copy flame.toml
-            if Path::new("flame.toml").exists() {
-                let _ = fs::copy("flame.toml", pkg_out_dir.join("flame.toml"));
-            }
-            
-            // Copy src/ directory
-            if Path::new("src").exists() {
-                let _ = copy_dir_all("src", pkg_out_dir.join("src"));
-            }
-            
-            // Copy .fmi files
-            if let Ok(entries) = fs::read_dir(".") {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.extension().and_then(|e| e.to_str()) == Some("fmi") {
-                        let _ = fs::copy(&path, pkg_out_dir.join(path.file_name().unwrap()));
-                    }
-                }
-            }
-            
-            // Copy built .rlib (from aot build)
-            let cache_rlib = Path::new(".flame").join("build-cache").join("target").join(profile).join(format!("lib{}_aot.rlib", pkg_name));
-            if cache_rlib.exists() {
-                let _ = fs::copy(&cache_rlib, pkg_out_dir.join(format!("lib{}_aot.rlib", pkg_name)));
-            } else {
-                // If it's a native plugin built natively, we copy it from its own target dir
-                let native_rlib = Path::new("target").join(profile).join(format!("lib{}.rlib", pkg_name));
-                if native_rlib.exists() {
-                    let _ = fs::copy(&native_rlib, pkg_out_dir.join(format!("lib{}.rlib", pkg_name)));
-                }
-            }
-            
-            println!(
-                "\x1b[1;32m   Generated\x1b[0m package output directory -> target/{}/pkg/{}",
-                profile, pkg_name
-            );
-        }
         return Some(PathBuf::from(out_rel));
     } else {
         println!(
@@ -666,6 +657,85 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result
         }
     }
     Ok(())
+}
+
+fn package_project(_args: &[String]) {
+    let toml_path = Path::new("flame.toml");
+    if !toml_path.exists() {
+        println!("\x1b[1;31merror:\x1b[0m no flame.toml manifest file found.");
+        return;
+    }
+    
+    let mut pkg_name = "app".to_string();
+    let mut is_pkg = false;
+    if let Ok(toml_str) = fs::read_to_string("flame.toml") {
+        for line in toml_str.lines() {
+            let t = line.trim();
+            if t.starts_with("name =") {
+                if let Some(val) = t.split('=').nth(1) {
+                    pkg_name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                }
+            } else if t.starts_with("type =") {
+                if let Some(val) = t.split('=').nth(1) {
+                    let parsed_type = val.trim().trim_matches('"').trim_matches('\'').to_lowercase();
+                    if parsed_type == "pkg" || parsed_type == "lib" {
+                        is_pkg = true;
+                    }
+                }
+            }
+        }
+    }
+    
+    if !is_pkg {
+        println!("\x1b[1;33mwarning:\x1b[0m project type is not 'pkg'. packaging anyway.");
+    }
+    
+    println!("\x1b[1;36m Packaging\x1b[0m {} ...", pkg_name);
+    let src_dir = Path::new("src");
+    let mut has_exports = false;
+    if src_dir.exists() {
+        if let Ok(entries) = fs::read_dir(src_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().map_or(false, |e| e == "fm") {
+                    let content = fs::read_to_string(&path).unwrap_or_default();
+                    if let Ok(stmts) = parse_file_stmts(&path, &content) {
+                        for stmt in &stmts {
+                            if matches!(stmt, Stmt::ExportDecl(_, _)) {
+                                has_exports = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    if !has_exports {
+        println!("\x1b[1;33mwarning:\x1b[0m package '{}' does not export anything. Is this intentional?", pkg_name);
+    } else {
+        println!("\x1b[1;32m  Verified\x1b[0m package '{}' exports valid symbols.", pkg_name);
+    }
+    
+    let pkg_out_dir = Path::new("target").join("pkg").join(&pkg_name);
+    let _ = fs::create_dir_all(&pkg_out_dir);
+    
+    if Path::new("flame.toml").exists() {
+        let _ = fs::copy("flame.toml", pkg_out_dir.join("flame.toml"));
+    }
+    if Path::new("src").exists() {
+        let _ = copy_dir_all("src", pkg_out_dir.join("src"));
+    }
+    if let Ok(entries) = fs::read_dir(".") {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("fmi") {
+                let _ = fs::copy(&path, pkg_out_dir.join(path.file_name().unwrap()));
+            }
+        }
+    }
+    println!("\x1b[1;32m  Packaged\x1b[0m successfully to target/pkg/{}", pkg_name);
 }
 
 fn flash_project(args: &[String]) {
@@ -710,7 +780,10 @@ fn flash_project(args: &[String]) {
     };
 
     let stmts = match parse_file_stmts(main_path, &content) {
-        Ok(s) => s,
+        Ok(mut s) => {
+            filter_platform_stmts(&mut s, target.as_deref());
+            s
+        },
         Err(e) => {
             e.print(&content);
             return;
@@ -841,6 +914,129 @@ fn has_test_annotations(stmts: &[Stmt]) -> bool {
 fn run_tests(args: &[String]) {
     println!("\x1b[1;36mFlame Test & Benchmark Engine\x1b[0m");
 
+    let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
+    let mut pkg_name = "app".to_string();
+    for line in manifest_content.lines() {
+        if line.starts_with("name =") {
+            if let Some(val) = line.split('=').nth(1) {
+                pkg_name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+            }
+        }
+    }
+
+    let mut native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
+    let mut plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
+
+    if let Ok(entries) = fs::read_dir(".flame/pkg") {
+        for entry in entries.flatten() {
+            let pkg_path = entry.path();
+            if pkg_path.is_dir() {
+                let toml_path = pkg_path.join("flame.toml");
+                if toml_path.exists() {
+                    let dep_manifest = fs::read_to_string(&toml_path).unwrap_or_default();
+                    for (name, mut path) in parse_manifest_section(&dep_manifest, "[native-dependencies]") {
+                        if path.starts_with('"') && path.ends_with('"') {
+                            path = path[1..path.len()-1].to_string();
+                        }
+                        if path.starts_with('.') || path.starts_with('/') {
+                            let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                            path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
+                        } else {
+                            path = format!("\"{}\"", path);
+                        }
+                        native_deps_raw.push((name, path));
+                    }
+                    for (name, mut path) in parse_manifest_section(&dep_manifest, "[plugins]") {
+                        if path.starts_with('"') && path.ends_with('"') {
+                            path = path[1..path.len()-1].to_string();
+                        }
+                        if path.starts_with('.') || path.starts_with('/') {
+                            let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                            path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
+                        } else {
+                            path = format!("\"{}\"", path);
+                        }
+                        plugins_raw.push((name, path));
+                    }
+                }
+            }
+        }
+    }
+
+    if !native_deps_raw.is_empty() || !plugins_raw.is_empty() {
+        println!("\x1b[1;36m     AOT Testing\x1b[0m Native plugins detected. Compiling test suite natively...");
+        let mut processed_native_deps = Vec::new();
+        for (plugin_name, plugin_path) in native_deps_raw {
+            let mut path_str = plugin_path.clone();
+            if path_str.starts_with('"') && path_str.ends_with('"') {
+                path_str = path_str[1..path_str.len() - 1].to_string();
+            }
+            if path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute() {
+                let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
+                    .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&path_str));
+                let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
+                if abs_path_str.starts_with("//?/") {
+                    abs_path_str = abs_path_str[4..].to_string();
+                }
+                processed_native_deps
+                    .push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
+            } else {
+                processed_native_deps.push((plugin_name, path_str));
+            }
+        }
+
+        for (plugin_name, plugin_path) in plugins_raw {
+            let mut path_str = plugin_path.clone();
+            if path_str.starts_with('"') && path_str.ends_with('"') {
+                path_str = path_str[1..path_str.len() - 1].to_string();
+            }
+
+            let is_local = path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute();
+            let actual_path = if is_local {
+                path_str
+            } else {
+                std::env::current_dir()
+                    .unwrap()
+                    .join(".flame")
+                    .join("pkg")
+                    .join(&plugin_name)
+                    .to_string_lossy()
+                    .into_owned()
+            };
+
+            let absolute_path = std::fs::canonicalize(std::path::Path::new(&actual_path))
+                .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&actual_path));
+            let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
+            if abs_path_str.starts_with("//?/") {
+                abs_path_str = abs_path_str[4..].to_string();
+            }
+            processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
+        }
+
+        crate::aot_compiler::build_aot_project(
+            &pkg_name,
+            "dev",
+            &processed_native_deps,
+            false,
+            false,
+            true, // is_test_mode
+        );
+
+        let exe_name = format!("{}_test{}", pkg_name, std::env::consts::EXE_SUFFIX);
+        let target_exe = Path::new("target").join("dev").join(&exe_name);
+        
+        if target_exe.exists() {
+            println!("\x1b[1;32m    Finished\x1b[0m test executable -> {}", target_exe.display());
+            let status = std::process::Command::new(&target_exe).status();
+            if let Ok(st) = status {
+                if !st.success() {
+                    std::process::exit(1);
+                }
+            }
+        }
+        return;
+    }
+
     let mut files_to_test = Vec::new();
     if args.len() >= 3 && !args[2].starts_with('-') {
         let p = PathBuf::from(&args[2]);
@@ -959,261 +1155,12 @@ fn run_tests(args: &[String]) {
         runner.test_mode = true;
         let _ = runner.run(&stmts);
 
-        let mut before_all = Vec::new();
-        let mut after_all = Vec::new();
-        let mut setup = Vec::new();
-        let mut cleanup = Vec::new();
-        let mut test_cases = Vec::new();
-        let mut has_only_test = false;
-
-        for stmt in &stmts {
-            if let Stmt::FuncDecl {
-                name, annotations, ..
-            } = stmt
-            {
-                for anno in annotations {
-                    match anno.name.as_str() {
-                        "BeforeAll" => before_all.push(name.clone()),
-                        "AfterAll" => after_all.push(name.clone()),
-                        "Setup" => setup.push(name.clone()),
-                        "Cleanup" => cleanup.push(name.clone()),
-                        "Test" | "Benchmark" | "Parameterized" | "ExpectPanic" | "Ignore"
-                        | "Only" => {
-                            if !test_cases.contains(&name.clone()) {
-                                test_cases.push(name.clone());
-                            }
-                            if anno.name == "Only"
-                                || anno
-                                    .args
-                                    .iter()
-                                    .any(|arg| arg.contains("only: true") || arg == "only: true")
-                            {
-                                has_only_test = true;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        for func_name in &before_all {
-            let func_opt = runner.env.lock().unwrap().get(func_name);
-            if let Some(func_val) = func_opt {
-                if let Err(e) = runner.invoke_callback_value(&func_val, vec![]) {
-                    println!(
-                        "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@BeforeAll\x1b[0m {}: {}",
-                        func_name, e
-                    );
-                    total_failed += 1;
-                    break;
-                }
-            }
-        }
-
-        for func_name in &test_cases {
-            let mut is_ignore = false;
-            let mut is_only = false;
-            let mut is_benchmark = false;
-            let mut is_expect_panic = false;
-            let mut parameterized_args = None;
-
-            for stmt in &stmts {
-                if let Stmt::FuncDecl {
-                    name, annotations, ..
-                } = stmt
-                {
-                    if name == func_name {
-                        for anno in annotations {
-                            match anno.name.as_str() {
-                                "Ignore" => is_ignore = true,
-                                "Only" => is_only = true,
-                                "Benchmark" => is_benchmark = true,
-                                "ExpectPanic" => is_expect_panic = true,
-                                "Parameterized" => {
-                                    if !anno.args.is_empty() {
-                                        parameterized_args = Some(anno.args[0].clone());
-                                    }
-                                }
-                                "Test" => {
-                                    if anno.args.iter().any(|arg| arg.contains("skip: true")) {
-                                        is_ignore = true;
-                                    }
-                                    if anno.args.iter().any(|arg| arg.contains("only: true")) {
-                                        is_only = true;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-
-            if has_only_test && !is_only {
-                total_filtered += 1;
-                continue;
-            }
-
-            if is_ignore {
-                println!(
-                    "  \x1b[33m[SKIP]\x1b[0m \x1b[1;36m@Ignore\x1b[0m {}",
-                    func_name
-                );
-                total_ignored += 1;
-                continue;
-            }
-
-            for setup_name in &setup {
-                let setup_opt = runner.env.lock().unwrap().get(setup_name);
-                if let Some(s_val) = setup_opt {
-                    let _ = runner.invoke_callback_value(&s_val, vec![]);
-                }
-            }
-
-            let test_func_opt = runner.env.lock().unwrap().get(func_name);
-            if let Some(f_val) = test_func_opt {
-                if is_benchmark {
-                    let mut durations = Vec::new();
-                    let mut benchmark_failed = false;
-                    for _ in 0..25 {
-                        let start = std::time::Instant::now();
-                        if let Err(e) = runner.invoke_callback_value(&f_val, vec![]) {
-                            println!(
-                                "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Benchmark\x1b[0m {}: {}",
-                                func_name, e
-                            );
-                            total_failed += 1;
-                            benchmark_failed = true;
-                            break;
-                        }
-                        durations.push(start.elapsed().as_secs_f64() * 1000.0);
-                    }
-                    if !benchmark_failed && !durations.is_empty() {
-                        let avg = durations.iter().sum::<f64>() / durations.len() as f64;
-                        let min = durations.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-                        let max = durations.iter().fold(0.0_f64, |a, &b| a.max(b));
-                        println!(
-                            "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@Benchmark\x1b[0m {}",
-                            func_name
-                        );
-                        println!("    Benchmark: {}", func_name);
-                        println!("    -----------");
-                        println!("    average: {:.2} ms", avg);
-                        println!("    min: {:.2} ms", min);
-                        println!("    max: {:.2} ms", max);
-                        total_measured += 1;
-                    }
-                } else if let Some(arg_str) = parameterized_args {
-                    let mut l = Lexer::new(&arg_str);
-                    let mut tok_vec = Vec::new();
-                    loop {
-                        let tok = l.next_token();
-                        let e = tok.kind == lexer::TokenKind::EOF;
-                        tok_vec.push(tok);
-                        if e {
-                            break;
-                        }
-                    }
-                    let mut p = Parser::new(tok_vec, "param_arg".to_string());
-                    if let Ok(expr) = p.parse_expr() {
-                        let env_clone = runner.env.clone();
-                        if let Ok(evaled) = runner.eval_expr(&expr, env_clone) {
-                            let list = match evaled {
-                                crate::vm::Value::Tuple(vec_val) => vec_val.clone(),
-                                other => vec![other],
-                            };
-                            let mut all_ok = true;
-                            let start = std::time::Instant::now();
-                            for case in &list {
-                                let call_args = match case {
-                                    crate::vm::Value::Tuple(tup) => tup.clone(),
-                                    single => vec![single.clone()],
-                                };
-                                if let Err(e) = runner.invoke_callback_value(&f_val, call_args) {
-                                    println!(
-                                        "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {} on argument {:?}: {}",
-                                        func_name, case, e
-                                    );
-                                    all_ok = false;
-                                    break;
-                                }
-                            }
-                            if all_ok {
-                                println!(
-                                    "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {} ({} parameter cases in {:.2}ms)",
-                                    func_name,
-                                    list.len(),
-                                    start.elapsed().as_secs_f64() * 1000.0
-                                );
-                                total_passed += 1;
-                            } else {
-                                total_failed += 1;
-                            }
-                        } else {
-                            println!(
-                                "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {}: failed to evaluate parameter argument expression",
-                                func_name
-                            );
-                            total_failed += 1;
-                        }
-                    }
-                } else {
-                    let start = std::time::Instant::now();
-                    let res = runner.invoke_callback_value(&f_val, vec![]);
-                    let elapsed = start.elapsed().as_secs_f64() * 1000.0;
-                    if is_expect_panic {
-                        match res {
-                            Err(e) => {
-                                println!(
-                                    "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@ExpectPanic\x1b[0m {} (expected panic occurred in {:.2}ms: {})",
-                                    func_name, elapsed, e
-                                );
-                                total_passed += 1;
-                            }
-                            Ok(_) => {
-                                println!(
-                                    "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@ExpectPanic\x1b[0m {}: function completed without expected error/panic!",
-                                    func_name
-                                );
-                                total_failed += 1;
-                            }
-                        }
-                    } else {
-                        match res {
-                            Ok(_) => {
-                                println!(
-                                    "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@Test\x1b[0m {} ({:.2}ms)",
-                                    func_name, elapsed
-                                );
-                                total_passed += 1;
-                            }
-                            Err(e) => {
-                                println!(
-                                    "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Test\x1b[0m {}: {}",
-                                    func_name, e
-                                );
-                                total_failed += 1;
-                            }
-                        }
-                    }
-                }
-            }
-
-            for cleanup_name in &cleanup {
-                let cleanup_opt = runner.env.lock().unwrap().get(cleanup_name);
-                if let Some(c_val) = cleanup_opt {
-                    let _ = runner.invoke_callback_value(&c_val, vec![]);
-                }
-            }
-        }
-
-        for func_name in &after_all {
-            let after_opt = runner.env.lock().unwrap().get(func_name);
-            if let Some(func_val) = after_opt {
-                let _ = runner.invoke_callback_value(&func_val, vec![]);
-            }
-        }
+        let stats = crate::test_engine::execute_test_suite(&mut runner, &stmts, &path.display().to_string());
+        total_passed += stats.passed;
+        total_failed += stats.failed;
+        total_ignored += stats.ignored;
+        total_measured += stats.measured;
+        total_filtered += stats.filtered;
     }
 
     let total_elapsed = total_start.elapsed().as_secs_f64() * 1000.0;
@@ -1357,6 +1304,7 @@ struct JsonCheckOutput {
     plugins: Vec<package_manager::PluginSpec>,
     completions: Vec<JsonCompletion>,
     hover: Option<JsonHover>,
+    pub tokens: Vec<crate::ide::SemanticToken>,
 }
 
 fn run_check_command(args: &[String]) {
@@ -1388,6 +1336,7 @@ fn run_check_command(args: &[String]) {
             plugins: vec![],
             completions: vec![],
             hover: None,
+            tokens: vec![],
         });
 
     if json_mode {
@@ -1451,7 +1400,17 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     let mut parser = Parser::new(tokens, file.to_string());
     let mut tc_opt = None;
     match parser.parse() {
-        Ok(stmts) => {
+        Ok(mut stmts) => {
+            let mut target = None;
+            for line in manifest_content.lines() {
+                let t = line.trim();
+                if t.starts_with("target =") {
+                    if let Some(val) = t.split('=').nth(1) {
+                        target = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                    }
+                }
+            }
+            filter_platform_stmts(&mut stmts, target.as_deref());
             let (res, tc) = TypeChecker::new(file.to_string()).check_program(&stmts);
             tc_opt = Some(tc);
             if let Err(diags) = res {
@@ -2476,6 +2435,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     }
 
+    let tokens = ide::get_semantic_tokens(&content);
+
     JsonCheckOutput {
         file: file.to_string(),
         diagnostics,
@@ -2484,6 +2445,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         plugins,
         completions,
         hover,
+        tokens,
     }
 }
 

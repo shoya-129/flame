@@ -18,7 +18,7 @@ Flame is statically typed with strong type inference. Types can either be explic
 | **`Float`** | 64-bit IEEE 754 floating-point number | `let pi: Float = 3.14159` |
 | **`String`** | UTF-8 encoded text string | `let name: String = "Flame"` |
 | **`Bool`** | Boolean value (`true` or `false`) | `let is_ready: Bool = true` |
-| **`Nil`** | Represents the absence of a value (void / null) | `let empty = Nil` |
+| **`Nil`** | Represents the absence of a value (void / null) | `let empty = nil` |
 
 ### String Interpolation
 Flame supports expressive string interpolation using the `$` prefix:
@@ -66,6 +66,64 @@ let record: (String, Int, Bool) = ("Server", 8080, true)
 let host = record.0
 let port = record.1
 ```
+
+---
+
+## Standard Types
+
+Flame includes several built-in types to handle common language patterns like error handling and optional values robustly, mimicking modern system languages.
+
+### `Result<T, E>`
+`Result` is an enum used for returning and propagating errors. It has two variants:
+- `Ok(value)`: Indicates a successful execution and contains the success value.
+- `Err(error)`: Indicates a failure and contains the error value.
+
+```flame
+fn divide(a: Int, b: Int) -> Result<Int, Error> {
+    if b == 0 {
+        return Err(Error { message: "Division by zero", code: 1 })
+    }
+    return Ok(a / b)
+}
+
+let res = divide(10, 2)
+```
+
+### `Option<T>`
+`Option` is an enum used when a value might be absent. It has two variants:
+- `Some(value)`: Contains the value.
+- `None`: Indicates the absence of a value.
+
+```flame
+let user_id: Option<Int> = Some(10)
+let missing_id: Option<Int> = None
+```
+
+<Aside type="note" title="Nil vs None">
+In Flame, **`nil`** and **`None`** serve related but distinct purposes. 
+
+**`nil`** is a raw, untyped primitive representing the absence of a value (similar to `null` or `void`). While simple to use, it bypasses the type-checker, which can lead to runtime crashes if a `nil` value is accessed unexpectedly.
+
+**`None`**, on the other hand, is a strict, type-safe variant of the `Option<T>` enum. Using `Option` forces the compiler to track whether a variable might be empty and requires the developer to handle both the `Some` and `None` cases properly, entirely eliminating null-pointer exceptions!
+</Aside>
+
+### `Error`
+`Error` is a standard built-in struct containing structured information about a failure.
+```flame
+let err = Error {
+    message: "File not found",
+    code: 404
+}
+```
+
+<Aside type="note" title="Err vs Error">
+Why do we need both `Err` and `Error`? 
+
+- **`Error`** is a built-in `struct` that holds the actual data about what went wrong (like the error message and an error code). It is just a regular data structure.
+- **`Err`** is a variant of the `Result` enum. It acts as a strict, type-safe wrapper that tells the compiler and the caller that the function *failed*. 
+
+You wrap an `Error` inside an `Err` (e.g., `return Err(Error { ... })`) so that the function's return type correctly matches `Result<T, Error>`. This forces the caller to explicitly check if the result was a success (`Ok`) or a failure (`Err`) before they can access the data, preventing unexpected crashes!
+</Aside>
 
 ---
 

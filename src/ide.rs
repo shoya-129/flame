@@ -214,6 +214,14 @@ const KEYWORDS: &[(&str, &str)] = &[
         "**CLI Application**\n\nMarks the application as a Command Line Interface tool, enabling automatic parsing of command line arguments into structures.",
     ),
     (
+        "@Platform",
+        "**Conditional Compilation**\n\nConditionally compiles the annotated declaration only if the active build target matches the given substring.\n\n**Example:**\n```flame\n@Platform(\"windows\")\nfn get_os_name() -> String {\n    \"Windows\"\n}\n```",
+    ),
+    (
+        "@Docs",
+        "**Documentation Provider**\n\nProvides rich IDE hover documentation for functions, structs, and enums, supporting markdown syntax.\n\n**Example:**\n```flame\n@Docs(\"Computes the sum of two numbers.\")\nfn sum(a: Int, b: Int) -> Int {\n    a + b\n}\n```",
+    ),
+    (
         "@Command",
         "**CLI Command**\n\nRegisters a function as an executable command within a `@Cli` application. Associates the function with a specific command-line keyword.",
     ),
@@ -655,7 +663,53 @@ fn extract_balanced_block(source: &str, open_brace_pos: usize) -> Option<&str> {
     None
 }
 
+fn strip_comments_and_strings(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut lexer = crate::lexer::Lexer::new(source);
+    let mut last_idx = 0;
+    
+    loop {
+        let t = lexer.next_token();
+        if t.kind == crate::lexer::TokenKind::EOF {
+            if last_idx < source.len() {
+                out.push_str(&source[last_idx..]);
+            }
+            break;
+        }
+        
+        match t.kind {
+            crate::lexer::TokenKind::Comment 
+            | crate::lexer::TokenKind::StringLiteral 
+            | crate::lexer::TokenKind::InterpolatedStringContent 
+            | crate::lexer::TokenKind::StringEnd => {
+                if t.span.start > last_idx {
+                    out.push_str(&source[last_idx..t.span.start]);
+                }
+                for ch in source[t.span.start..t.span.end].chars() {
+                    if ch == '\n' || ch == '\r' {
+                        out.push(ch);
+                    } else {
+                        // preserve byte length matching where possible for ASCII
+                        // but if it's a multi-byte char, spaces will mess up byte offset
+                        // We push a space for each char. If we have multi-byte chars,
+                        // this might drift. It's better to just push spaces equal to the byte len
+                        for _ in 0..ch.len_utf8() {
+                            out.push(' ');
+                        }
+                    }
+                }
+                last_idx = t.span.end;
+            }
+            _ => {}
+        }
+    }
+    
+    out
+}
+
 pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
+    let stripped = strip_comments_and_strings(content);
+    let content = &stripped;
     let mut vars = Vec::new();
     let mut structs = Vec::new();
 
@@ -828,4 +882,74 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
     }
 
     Some(map.keys().cloned().collect())
+}
+
+#[derive(serde::Serialize)]
+pub struct SemanticToken {
+    pub line: usize,
+    pub col: usize,
+    pub length: usize,
+    pub token_type: usize,
+    pub token_modifiers: usize,
+}
+
+pub fn get_semantic_tokens(source: &str) -> Vec<SemanticToken> {
+    let mut tokens = Vec::new();
+    let mut lexer = crate::lexer::Lexer::new(source);
+    
+    loop {
+        let t = lexer.next_token();
+        if t.kind == crate::lexer::TokenKind::EOF {
+            break;
+        }
+        
+        let mut token_type = None;
+        let modifiers = 0;
+        
+        match t.kind {
+            crate::lexer::TokenKind::Comment => {
+                token_type = Some(3); // comment
+            }
+            crate::lexer::TokenKind::StringLiteral | crate::lexer::TokenKind::InterpolatedStringContent | crate::lexer::TokenKind::StringEnd => {
+                token_type = Some(4); // string
+            }
+            crate::lexer::TokenKind::Annotation => {
+                token_type = Some(2); // annotation
+            }
+            crate::lexer::TokenKind::Fn => {
+                token_type = Some(0); // keyword
+            }
+            crate::lexer::TokenKind::Let | crate::lexer::TokenKind::Const | 
+            crate::lexer::TokenKind::Struct | crate::lexer::TokenKind::Enum | crate::lexer::TokenKind::Trait |
+            crate::lexer::TokenKind::Impl | crate::lexer::TokenKind::Export | crate::lexer::TokenKind::Import |
+            crate::lexer::TokenKind::Mut | crate::lexer::TokenKind::As | crate::lexer::TokenKind::Type |
+            crate::lexer::TokenKind::Where | crate::lexer::TokenKind::Formula | crate::lexer::TokenKind::If |
+            crate::lexer::TokenKind::Else | crate::lexer::TokenKind::Match | crate::lexer::TokenKind::For |
+            crate::lexer::TokenKind::In | crate::lexer::TokenKind::While | crate::lexer::TokenKind::Loop |
+            crate::lexer::TokenKind::Break | crate::lexer::TokenKind::Continue | crate::lexer::TokenKind::Defer |
+            crate::lexer::TokenKind::Return | crate::lexer::TokenKind::Yield | crate::lexer::TokenKind::Await |
+            crate::lexer::TokenKind::Async | crate::lexer::TokenKind::Thread | crate::lexer::TokenKind::Ampersand2 |
+            crate::lexer::TokenKind::Pipe2 | crate::lexer::TokenKind::Exclamation | crate::lexer::TokenKind::True |
+            crate::lexer::TokenKind::False | crate::lexer::TokenKind::Nil => {
+                token_type = Some(0); // keyword
+            }
+            _ => {
+                if t.kind == crate::lexer::TokenKind::Identifier && (t.lexeme == "self" || t.lexeme == "Self") {
+                    token_type = Some(0); // keyword
+                }
+            }
+        }
+        
+        if let Some(ty) = token_type {
+            tokens.push(SemanticToken {
+                line: t.span.line.saturating_sub(1),
+                col: t.span.col.saturating_sub(1),
+                length: t.span.end.saturating_sub(t.span.start),
+                token_type: ty,
+                token_modifiers: modifiers,
+            });
+        }
+    }
+    
+    tokens
 }

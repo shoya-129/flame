@@ -1327,11 +1327,6 @@ fn parse_syn_return(output: &syn::ReturnType) -> String {
         syn::ReturnType::Default => "()".to_string(),
         syn::ReturnType::Type(_, ty) => {
             let ty_str = quote::quote!(#ty).to_string();
-            if ty_str.starts_with("std :: io :: Result") || ty_str.starts_with("Result") {
-                if let Some(inner) = ty_str.split('<').nth(1).and_then(|s| s.split(',').next()) {
-                    return inner.trim().to_string();
-                }
-            }
             ty_str.replace(" ", "")
         }
     }
@@ -1350,7 +1345,8 @@ fn parse_syn_params(
                 syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
                 _ => format!("arg{}", params.len()),
             };
-            let ty_str = quote::quote!(&*pat_type.ty).to_string();
+            let ty_node = &*pat_type.ty;
+            let ty_str = quote::quote!(#ty_node).to_string();
             let clean_ty = ty_str.replace(" ", "");
             let is_ref = clean_ty.starts_with('&') && !clean_ty.starts_with("&mut");
             let is_mut = clean_ty.starts_with("&mut") || clean_ty.starts_with("mut");

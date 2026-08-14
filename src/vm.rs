@@ -89,6 +89,8 @@ pub enum CValueTag {
     NativeObject,
     Range,
     Function,
+    EnumVariant,
+    Array,
 }
 
 #[repr(C)]
@@ -409,6 +411,42 @@ impl Value {
                     obj_ptr: std::ptr::null_mut(),
                 }
             }
+            Value::EnumValue(enum_name, variant_name, data) => {
+                let name = format!("{}::{}", enum_name, variant_name);
+                let c_str = std::ffi::CString::new(name).unwrap_or_default();
+                let inner_ptr = match data {
+                    EnumData::Tuple(vals) if !vals.is_empty() => {
+                        let inner_val = vals[0].clone();
+                        Box::into_raw(Box::new(inner_val.pack()))
+                    }
+                    _ => std::ptr::null_mut(),
+                };
+                CValue {
+                    tag: CValueTag::EnumVariant,
+                    int_val: 0,
+                    int_val2: 0,
+                    float_val: 0.0,
+                    bool_val: false,
+                    string_ptr: c_str.into_raw(),
+                    obj_ptr: inner_ptr as *mut std::ffi::c_void,
+                }
+            }
+            Value::Tuple(arr) => {
+                let mut cvals: Vec<CValue> = arr.iter().map(|v| v.pack()).collect();
+                cvals.shrink_to_fit();
+                let len = cvals.len();
+                let ptr = cvals.as_mut_ptr();
+                std::mem::forget(cvals);
+                CValue {
+                    tag: CValueTag::Array,
+                    int_val: len as i64,
+                    int_val2: 0,
+                    float_val: 0.0,
+                    bool_val: false,
+                    string_ptr: std::ptr::null_mut(),
+                    obj_ptr: ptr as *mut std::ffi::c_void,
+                }
+            }
             _ => CValue::null(),
         }
     }
@@ -433,6 +471,47 @@ impl Value {
                         let _ = std::ffi::CString::from_raw(cval.string_ptr);
                     }
                     Value::String(s)
+                }
+            }
+            CValueTag::EnumVariant => {
+                let variant_name = if cval.string_ptr.is_null() {
+                    String::new()
+                } else {
+                    unsafe {
+                        std::ffi::CStr::from_ptr(cval.string_ptr)
+                            .to_string_lossy()
+                            .into_owned()
+                    }
+                };
+                
+                let mut parts = variant_name.splitn(2, "::");
+                let enum_n = parts.next().unwrap_or("").to_string();
+                let variant_n = parts.next().unwrap_or(&enum_n).to_string();
+
+                let data = if cval.obj_ptr.is_null() {
+                    EnumData::Unit
+                } else {
+                    let inner_cval = unsafe { Box::from_raw(cval.obj_ptr as *mut CValue) };
+                    EnumData::Tuple(vec![Value::unpack(*inner_cval, crate_name, type_name)])
+                };
+                Value::EnumValue(enum_n, variant_n, data)
+            }
+            CValueTag::Array => {
+                if cval.obj_ptr.is_null() || cval.int_val == 0 {
+                    Value::Tuple(Vec::new())
+                } else {
+                    let cvals = unsafe {
+                        Vec::from_raw_parts(
+                            cval.obj_ptr as *mut CValue,
+                            cval.int_val as usize,
+                            cval.int_val as usize,
+                        )
+                    };
+                    let mut vals = Vec::with_capacity(cvals.len());
+                    for cv in cvals {
+                        vals.push(Value::unpack(cv, crate_name, type_name));
+                    }
+                    Value::Tuple(vals)
                 }
             }
             CValueTag::NativeObject => Value::NativeObject {

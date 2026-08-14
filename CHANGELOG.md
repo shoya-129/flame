@@ -4,6 +4,23 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.2.6] - 2026-08-14 (Codename: *Second Spark*)
+
+### 🎨 IDE & Developer Experience
+- **Rich Hover Documentation**: Upgraded the IDE Language Server's typechecker to display beautifully formatted function signatures and inject custom `@Docs(...)` markdown metadata whenever a function or standard Enum (`Result`, `Option`) is hovered in the editor.
+
+### 🐛 Formatter Fixes
+- **Generic vs Operator Heuristic**: Fixed a critical spacing bug where the Flame formatter blindly collapsed mathematical comparisons (e.g. `total>50`). Engineered a heuristic pre-pass to perfectly differentiate generic type parameters (`Result<Int, Error>`) from logical comparison operators (`a > b`), enforcing accurate spacing for both scenarios automatically.
+
+### 📚 Documentation
+- **Error Handling Details**: Added an explicit breakdown in `data-types.mdx` clarifying the architectural differences between the strict `Err` enum variant and the standardized `Error` struct, explaining why structural errors are explicitly wrapped.
+
+### 🧪 Testing & AOT
+- **Native Test Execution (`@Test`)**: `flame test` now fully supports executing user-defined `@Test` blocks via the AOT compiler engine for projects containing native dependencies, dynamically marshalling parameters and results (`Option`, `Result`, and Arrays) across the Rust/Flame FFI boundaries seamlessly.
+- **Production Build Isolation**: Hardened the compiler pipeline to ensure that any code inside `@Test` functions is completely pruned and excluded from both standard interpretation and compiled binary builds (`flame run`, `flame build`), ensuring zero footprint in production deployments.
+
+---
+
 ## [0.2.5] - 2026-08-11 (Codename: *Second Spark*)
 
 ### 🔧 Language & Standard Library Updates

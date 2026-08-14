@@ -9,6 +9,7 @@ pub fn build_aot_project(
     native_deps: &[(String, String)],
     force_local: bool,
     is_pkg: bool,
+    is_test_mode: bool,
 ) {
     println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
@@ -544,6 +545,7 @@ panic = "abort"
     }
 
     main_rs.push_str("fn main() {\n");
+    main_rs.push_str("    let handle = std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {\n");
     main_rs.push_str("    let mut runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
 
     for (name, _) in native_deps {
@@ -608,17 +610,31 @@ panic = "abort"
     );
     main_rs.push_str("    match parser.parse() {\n");
     main_rs.push_str("        Ok(stmts) => {\n");
-    main_rs.push_str("            let clean_stmts: Vec<_> = stmts.into_iter().filter(|stmt| !flamelang::parser::is_test_statement(stmt)).collect();\n");
-    main_rs.push_str("            let result = runner.run(&clean_stmts);\n");
-    main_rs.push_str("            vm::wait_for_all_threads();\n");
-    main_rs.push_str("            if let Err(e) = result {\n");
-    main_rs.push_str("                eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m {}\", e);\n");
-    main_rs.push_str("            }\n");
+    if is_test_mode {
+        main_rs.push_str("            runner.test_mode = true;\n");
+        main_rs.push_str("            let _ = runner.run(&stmts);\n");
+        main_rs.push_str("            let stats = flamelang::test_engine::execute_test_suite(&mut runner, &stmts, \"AOT Test Suite\");\n");
+        main_rs.push_str("            let result_str = if stats.failed == 0 { \"\\x1b[1;32mok.\\x1b[0m\" } else { \"\\x1b[1;31mFAILED.\\x1b[0m\" };\n");
+        main_rs.push_str("            println!(\"\\n\\x1b[1;32mtest result:\\x1b[0m {} {} passed; {} failed; {} ignored; {} measured; {} filtered out\", result_str, stats.passed, stats.failed, stats.ignored, stats.measured, stats.filtered);\n");
+        main_rs.push_str("            if stats.failed > 0 {\n");
+        main_rs.push_str("                std::process::exit(1);\n");
+        main_rs.push_str("            }\n");
+    } else {
+        main_rs.push_str("            let clean_stmts: Vec<_> = stmts.into_iter().filter(|stmt| !flamelang::parser::is_test_statement(stmt)).collect();\n");
+        main_rs.push_str("            let result = runner.run(&clean_stmts);\n");
+        main_rs.push_str("            vm::wait_for_all_threads();\n");
+        main_rs.push_str("            if let Err(e) = result {\n");
+        main_rs.push_str("                eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m {}\", e);\n");
+        main_rs.push_str("                std::process::exit(1);\n");
+        main_rs.push_str("            }\n");
+    }
     main_rs.push_str("        }\n");
     main_rs.push_str("        Err(diag) => {\n");
     main_rs.push_str("            eprintln!(\"Parse error: {}\", diag.message);\n");
     main_rs.push_str("        }\n");
     main_rs.push_str("    }\n");
+    main_rs.push_str("    }).unwrap();\n");
+    main_rs.push_str("    handle.join().unwrap();\n");
     main_rs.push_str("}\n");
 
     fs::write(build_cache.join("src/main.rs"), main_rs).unwrap();
@@ -633,7 +649,11 @@ panic = "abort"
 
     let target_dir = Path::new("target").join(profile);
     fs::create_dir_all(&target_dir).unwrap();
-    let exe_name = format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX);
+    let exe_name = if is_test_mode {
+        format!("{}_test{}", pkg_name, std::env::consts::EXE_SUFFIX)
+    } else {
+        format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX)
+    };
     let target_exe = target_dir.join(&exe_name);
 
     if let Ok(out) = output {
@@ -807,7 +827,7 @@ fn generate_param_extraction(
             var_name, var_name
         ));
         code.push_str(&format!("        let {} = {}_path;\n", var_name, var_name));
-    } else if p_type.contains("&[u8]") || p_type.contains("& [u8]") || p_type == "[u8]" {
+    } else if p_type.contains("&[u8]") || p_type.contains("& [u8]") {
         code.push_str(&format!(
             "        let {}_cstr = unsafe {{ std::ffi::CStr::from_ptr(c_args[{}].string_ptr) }};\n",
             var_name, c_idx
@@ -842,8 +862,29 @@ fn generate_param_extraction(
         ));
     } else if p_type.starts_with("option<") {
         code.push_str(&format!("        let {} = if c_args[{}].tag == flamelang::runner::CValueTag::Null {{ None }} else {{ Some(c_args[{}].int_val) }};\n", var_name, c_idx, c_idx));
-    } else if p_type.starts_with("vec<") {
-        code.push_str(&format!("        let {} = Vec::new();\n", var_name));
+    } else if p_type.starts_with("vec<") || p_type == "[u8]" {
+        let inner_type = p_type.split('<').nth(1).unwrap_or("u8").trim_end_matches('>');
+        code.push_str(&format!("        let {} = if c_args[{}].tag == flamelang::runner::CValueTag::Array {{\n", var_name, c_idx));
+        code.push_str(&format!("            if c_args[{}].obj_ptr.is_null() || c_args[{}].int_val == 0 {{\n", c_idx, c_idx));
+        code.push_str("                Vec::new()\n");
+        code.push_str("            } else {\n");
+        code.push_str(&format!("                let cvals = unsafe {{ Vec::from_raw_parts(c_args[{}].obj_ptr as *mut CValue, c_args[{}].int_val as usize, c_args[{}].int_val as usize) }};\n", c_idx, c_idx, c_idx));
+        code.push_str("                let mut out = Vec::with_capacity(cvals.len());\n");
+        code.push_str("                for cv in cvals.iter() {\n");
+        if inner_type == "u8" {
+            code.push_str("                    out.push(cv.int_val as u8);\n");
+        } else if inner_type == "i64" || inner_type == "int" {
+            code.push_str("                    out.push(cv.int_val);\n");
+        } else {
+            code.push_str("                    // Default fallback\n");
+        }
+        code.push_str("                }\n");
+        code.push_str("                std::mem::forget(cvals);\n"); // prevent dropping the raw parts! Wait, from_raw_parts means it takes ownership! If we drop it, the pointer is freed. But wait, `cvals` is a copy? No, we shouldn't drop the original CValues yet!
+        code.push_str("                out\n");
+        code.push_str("            }\n");
+        code.push_str("        } else {\n");
+        code.push_str("            Vec::new()\n");
+        code.push_str("        };\n");
     } else {
         if p.type_name.starts_with('&')
             || p_type.contains("object")
@@ -873,6 +914,10 @@ fn generate_param_extraction(
 }
 
 fn generate_return_conversion(return_type: &str, s_name: &str) -> String {
+    generate_return_conversion_var(return_type, s_name, "res")
+}
+
+fn generate_return_conversion_var(return_type: &str, s_name: &str, var_name: &str) -> String {
     let rt = return_type.to_lowercase();
     let mut code = String::new();
     if rt == "()" {
@@ -883,7 +928,7 @@ fn generate_return_conversion(return_type: &str, s_name: &str) -> String {
         || (rt == "self" && s_name == "Uuid")
     {
         code.push_str(
-            "        let c_str = std::ffi::CString::new(res.to_string()).unwrap_or_default();\n",
+            &format!("        let c_str = std::ffi::CString::new({}.to_string()).unwrap_or_default();\n", var_name),
         );
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
@@ -896,61 +941,84 @@ fn generate_return_conversion(return_type: &str, s_name: &str) -> String {
     {
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
-        code.push_str("        cv.int_val = res as i64;\n");
+        code.push_str(&format!("        cv.int_val = {} as i64;\n", var_name));
         code.push_str("        cv\n");
     } else if rt == "bool" {
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::Bool;\n");
-        code.push_str("        cv.bool_val = res;\n");
+        code.push_str(&format!("        cv.bool_val = {};\n", var_name));
         code.push_str("        cv\n");
     } else if ["f32", "f64"].contains(&rt.as_str()) {
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::Float;\n");
-        code.push_str("        cv.float_val = res as f64;\n");
+        code.push_str(&format!("        cv.float_val = {} as f64;\n", var_name));
         code.push_str("        cv\n");
     } else if rt == "char" {
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::Int;\n");
-        code.push_str("        cv.int_val = res as u32 as i64;\n");
+        code.push_str(&format!("        cv.int_val = {} as u32 as i64;\n", var_name));
         code.push_str("        cv\n");
     } else if rt == "pathbuf" || rt == "&path" {
-        code.push_str("        let c_str = std::ffi::CString::new(res.to_str().unwrap_or_default()).unwrap_or_default();\n");
+        code.push_str(&format!("        let c_str = std::ffi::CString::new({}.to_str().unwrap_or_default()).unwrap_or_default();\n", var_name));
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::String;\n");
         code.push_str("        cv.string_ptr = c_str.into_raw();\n");
         code.push_str("        cv\n");
     } else if rt.starts_with("option<") {
-        code.push_str("        match res {\n");
+        let inner = return_type.split('<').nth(1).unwrap_or("").trim_end_matches('>');
+        let inner_code = generate_return_conversion_var(inner, s_name, "val");
+        code.push_str(&format!("        match {} {{\n", var_name));
         code.push_str("            Some(val) => {\n");
-        code.push_str("                let boxed = Box::new(val);\n");
-        code.push_str("                let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+        code.push_str(&format!("                let inner_cv = {{\n{}}};\n", inner_code));
+        code.push_str("                let inner_val = Box::new(inner_cv);\n");
+        code.push_str("                let c_str = std::ffi::CString::new(\"Option::Some\").unwrap_or_default();\n");
         code.push_str("                let mut cv = CValue::null();\n");
-        code.push_str("                cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
-        code.push_str("                cv.obj_ptr = ptr;\n");
+        code.push_str("                cv.tag = flamelang::runner::CValueTag::EnumVariant;\n");
+        code.push_str("                cv.string_ptr = c_str.into_raw();\n");
+        code.push_str("                cv.obj_ptr = Box::into_raw(inner_val) as *mut std::ffi::c_void;\n");
         code.push_str("                cv\n");
         code.push_str("            }\n");
-        code.push_str("            None => CValue::null(),\n");
+        code.push_str("            None => {\n");
+        code.push_str("                let c_str = std::ffi::CString::new(\"Option::None\").unwrap_or_default();\n");
+        code.push_str("                let mut cv = CValue::null();\n");
+        code.push_str("                cv.tag = flamelang::runner::CValueTag::EnumVariant;\n");
+        code.push_str("                cv.string_ptr = c_str.into_raw();\n");
+        code.push_str("                cv\n");
+        code.push_str("            }\n");
         code.push_str("        }\n");
     } else if rt.starts_with("result<")
         || rt.contains("::result::")
         || rt.starts_with("std::io::result")
     {
-        code.push_str("        match res {\n");
+        let inner = return_type.split('<').nth(1).unwrap_or("").split(',').next().unwrap_or("").trim();
+        let inner_code = generate_return_conversion_var(inner, s_name, "val");
+        code.push_str(&format!("        match {} {{\n", var_name));
         code.push_str("            Ok(val) => {\n");
-        code.push_str("                let boxed = Box::new(val);\n");
-        code.push_str("                let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
+        code.push_str(&format!("                let inner_cv = {{\n{}}};\n", inner_code));
+        code.push_str("                let inner_val = Box::new(inner_cv);\n");
+        code.push_str("                let c_str = std::ffi::CString::new(\"Result::Ok\").unwrap_or_default();\n");
         code.push_str("                let mut cv = CValue::null();\n");
-        code.push_str("                cv.tag = flamelang::runner::CValueTag::NativeObject;\n");
-        code.push_str("                cv.obj_ptr = ptr;\n");
+        code.push_str("                cv.tag = flamelang::runner::CValueTag::EnumVariant;\n");
+        code.push_str("                cv.string_ptr = c_str.into_raw();\n");
+        code.push_str("                cv.obj_ptr = Box::into_raw(inner_val) as *mut std::ffi::c_void;\n");
         code.push_str("                cv\n");
         code.push_str("            }\n");
-        code.push_str("            Err(e) => {\n");
-        code.push_str("                eprintln!(\"Runtime bridge exception: {:?}\", e);\n");
-        code.push_str("                CValue::null()\n");
+        code.push_str("            Err(err) => {\n");
+        code.push_str("                let err_str = format!(\"{}\", err);\n");
+        code.push_str("                let c_str = std::ffi::CString::new(\"Result::Err\").unwrap_or_default();\n");
+        code.push_str("                let err_c_str = std::ffi::CString::new(err_str).unwrap_or_default();\n");
+        code.push_str("                let mut inner_cv = CValue::null();\n");
+        code.push_str("                inner_cv.tag = flamelang::runner::CValueTag::String;\n");
+        code.push_str("                inner_cv.string_ptr = err_c_str.into_raw();\n");
+        code.push_str("                let mut cv = CValue::null();\n");
+        code.push_str("                cv.tag = flamelang::runner::CValueTag::EnumVariant;\n");
+        code.push_str("                cv.string_ptr = c_str.into_raw();\n");
+        code.push_str("                cv.obj_ptr = Box::into_raw(Box::new(inner_cv)) as *mut std::ffi::c_void;\n");
+        code.push_str("                cv\n");
         code.push_str("            }\n");
         code.push_str("        }\n");
     } else {
-        code.push_str("        let boxed = Box::new(res);\n");
+        code.push_str(&format!("        let boxed = Box::new({});\n", var_name));
         code.push_str("        let ptr = Box::into_raw(boxed) as *mut std::ffi::c_void;\n");
         code.push_str("        let mut cv = CValue::null();\n");
         code.push_str("        cv.tag = flamelang::runner::CValueTag::NativeObject;\n");

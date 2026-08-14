@@ -47,24 +47,28 @@ pub struct ParamInfo {
 
 #[derive(Debug, Clone)]
 pub struct FunctionSig {
-    params: Vec<ParamInfo>,
-    return_type: Type,
+    pub params: Vec<ParamInfo>,
+    pub return_type: Type,
+    pub hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 struct StructInfo {
     fields: Vec<(String, Type)>,
+    hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 struct VariantInfo {
     tuple_items: Vec<Type>,
     struct_fields: Vec<(String, Type)>,
+    hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 struct EnumInfo {
     variants: HashMap<String, VariantInfo>,
+    hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -137,7 +141,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -149,7 +153,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -161,7 +165,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -173,7 +177,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::Unknown,
+                hover_doc: None, return_type: Type::Unknown,
             },
         );
         self.functions.insert(
@@ -185,7 +189,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -197,7 +201,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::Named("ServerHandle".to_string()),
+                hover_doc: None, return_type: Type::Named("ServerHandle".to_string()),
             },
         );
         self.functions.insert(
@@ -209,7 +213,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                return_type: Type::String,
+                hover_doc: None, return_type: Type::String,
             },
         );
         self.functions.insert(
@@ -220,7 +224,7 @@ impl TypeChecker {
                     ParamInfo { name: "expected".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
                     ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
                 ],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -231,7 +235,7 @@ impl TypeChecker {
                     ParamInfo { name: "expected".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
                     ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
                 ],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -241,7 +245,7 @@ impl TypeChecker {
                     ParamInfo { name: "cond".to_string(), ty: Type::Bool, is_ref: false, is_mut: false },
                     ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
                 ],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
@@ -251,45 +255,99 @@ impl TypeChecker {
                     ParamInfo { name: "cond".to_string(), ty: Type::Bool, is_ref: false, is_mut: false },
                     ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
                 ],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
         self.functions.insert(
             "mock_api".to_string(),
             FunctionSig {
                 params: vec![],
-                return_type: Type::Unknown,
+                hover_doc: None, return_type: Type::Unknown,
             },
         );
         self.functions.insert(
             "mock_data".to_string(),
             FunctionSig {
                 params: vec![],
-                return_type: Type::Unknown,
+                hover_doc: None, return_type: Type::Unknown,
             },
         );
         self.functions.insert(
             "mock_function".to_string(),
             FunctionSig {
                 params: vec![],
-                return_type: Type::Nil,
+                hover_doc: None, return_type: Type::Nil,
             },
         );
+
+        // Built-in Enums
+        let mut result_variants = HashMap::new();
+        result_variants.insert("Ok".to_string(), VariantInfo { tuple_items: vec![Type::Unknown], struct_fields: vec![], hover_doc: Some("The successful variant of `Result`, containing the value.\n\n### Example\n```flame\nlet res = Ok(42)\n```".to_string()) });
+        result_variants.insert("Err".to_string(), VariantInfo { tuple_items: vec![Type::Unknown], struct_fields: vec![], hover_doc: Some("The error variant of `Result`, containing the error data.\n\n### Example\n```flame\nlet err = Err(\"Something went wrong\")\n```".to_string()) });
+        self.enums.insert("Result".to_string(), EnumInfo {
+            variants: result_variants,
+            hover_doc: Some("`Result` is a generic type that represents either success (`Ok`) or failure (`Err`).\nIt is commonly used for error handling instead of exceptions.\n\n### Example\n```flame\nfn divide(a: Int, b: Int) -> Result<Int, Error> {\n    if b == 0 {\n        return Err(Error { code: 1, message: \"Divide by zero\" })\n    }\n    return Ok(a / b)\n}\n```".to_string()),
+        });
+
+        let mut option_variants = HashMap::new();
+        option_variants.insert("Some".to_string(), VariantInfo { tuple_items: vec![Type::Unknown], struct_fields: vec![], hover_doc: Some("Contains a value in an `Option`.\n\n### Example\n```flame\nlet val = Some(\"data\")\n```".to_string()) });
+        option_variants.insert("None".to_string(), VariantInfo { tuple_items: vec![], struct_fields: vec![], hover_doc: Some("Indicates no value in an `Option`.\n\n### Example\n```flame\nlet empty = None\n```".to_string()) });
+        self.enums.insert("Option".to_string(), EnumInfo {
+            variants: option_variants,
+            hover_doc: Some("`Option` is a generic type that represents an optional value: every `Option` is either `Some` and contains a value, or `None`, and does not.\n\n### Example\n```flame\nlet val = Some(42)\nlet empty = None\n```".to_string()),
+        });
+
+        // Built-in Structs
+        self.structs.insert("Error".to_string(), StructInfo {
+            fields: vec![
+                ("message".to_string(), Type::String),
+                ("code".to_string(), Type::Named("Int".to_string())),
+            ],
+            hover_doc: Some("`Error` is a built-in type that represents a standard runtime error.\n\n### Example\n```flame\nlet err = Error { message: \"Not found\", code: 404 }\n```".to_string()),
+        });
     }
 
     fn collect_top_level_declarations(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             match stmt {
-                Stmt::StructDecl { name, fields, .. } => {
+                Stmt::StructDecl { name, fields, annotations, span } => {
+                    let mut hover_doc = None;
+                    for a in annotations {
+                        if a.name == "Docs" && !a.args.is_empty() {
+                            let raw = a.args[0].trim_matches('"').replace("\\n", "\n").replace("\\t", "\t");
+                            hover_doc = Some(raw);
+                            break;
+                        }
+                    }
+                    if let Some(doc) = &hover_doc {
+                        let mut name_span = span.clone();
+                        name_span.col += 7; // 'struct ' length
+                        name_span.end = name_span.start + name.len();
+                        self.hover_info.insert(name_span, doc.clone());
+                    }
                     let fields = fields
                         .iter()
                         .map(|(field_name, type_name)| {
                             (field_name.clone(), self.parse_type_name(type_name))
                         })
                         .collect();
-                    self.structs.insert(name.clone(), StructInfo { fields });
+                    self.structs.insert(name.clone(), StructInfo { fields, hover_doc });
                 }
-                Stmt::EnumDecl { name, variants, .. } => {
+                Stmt::EnumDecl { name, variants, annotations, span } => {
+                    let mut hover_doc = None;
+                    for a in annotations {
+                        if a.name == "Docs" && !a.args.is_empty() {
+                            let raw = a.args[0].trim_matches('"').replace("\\n", "\n").replace("\\t", "\t");
+                            hover_doc = Some(raw);
+                            break;
+                        }
+                    }
+                    if let Some(doc) = &hover_doc {
+                        let mut name_span = span.clone();
+                        name_span.col += 5; // 'enum ' length
+                        name_span.end = name_span.start + name.len();
+                        self.hover_info.insert(name_span, doc.clone());
+                    }
                     let mut map = HashMap::new();
                     for variant in variants {
                         match variant {
@@ -299,6 +357,7 @@ impl TypeChecker {
                                     VariantInfo {
                                         tuple_items: Vec::new(),
                                         struct_fields: Vec::new(),
+                                        hover_doc: None,
                                     },
                                 );
                             }
@@ -311,6 +370,7 @@ impl TypeChecker {
                                             .map(|item| self.parse_type_name(item))
                                             .collect(),
                                         struct_fields: Vec::new(),
+                                        hover_doc: None,
                                     },
                                 );
                             }
@@ -328,12 +388,13 @@ impl TypeChecker {
                                                 )
                                             })
                                             .collect(),
+                                        hover_doc: None,
                                     },
                                 );
                             }
                         }
                     }
-                    self.enums.insert(name.clone(), EnumInfo { variants: map });
+                    self.enums.insert(name.clone(), EnumInfo { variants: map, hover_doc });
                 }
                 Stmt::FuncDecl {
                     name,
@@ -343,6 +404,24 @@ impl TypeChecker {
                     span,
                     ..
                 } => {
+                    let mut hover_doc = None;
+                    for a in annotations {
+                        if a.name == "Docs" && !a.args.is_empty() {
+                            // Unescape the string and remove surrounding quotes
+                            let raw = a.args[0].trim_matches('"').replace("\\n", "\n").replace("\\t", "\t");
+                            hover_doc = Some(raw);
+                            break;
+                        }
+                    }
+
+                    if let Some(doc) = &hover_doc {
+                        // Estimate the span of the function name
+                        let mut name_span = span.clone();
+                        name_span.col += 3; // 'fn ' length
+                        name_span.end = name_span.start + name.len();
+                        self.hover_info.insert(name_span, doc.clone());
+                    }
+
                     if let Some(cmd_info) = self.parse_command_annotation(name, annotations, params, span) {
                         self.commands.insert(cmd_info.name.clone(), cmd_info);
                     }
@@ -358,6 +437,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
+                            hover_doc,
                             return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
@@ -383,7 +463,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
-                            return_type: return_type
+                            hover_doc: None, return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
                                 .unwrap_or(Type::Nil),
@@ -422,7 +502,7 @@ impl TypeChecker {
                                 name.clone(),
                                 FunctionSig {
                                     params: params_info,
-                                    return_type: ret_type,
+                                    hover_doc: None, return_type: ret_type,
                                 },
                             );
                         }
@@ -989,9 +1069,15 @@ impl TypeChecker {
             Expr::Identifier(name, span) => {
                 let inferred = if let Some(var) = self.lookup_var(name) {
                     var.ty.clone()
-                } else if self.structs.contains_key(name) {
+                } else if let Some(struct_info) = self.structs.get(name).cloned() {
+                    if let Some(doc) = struct_info.hover_doc {
+                        self.hover_info.insert(span.clone(), doc);
+                    }
                     Type::Named(name.clone())
-                } else if self.enums.contains_key(name) {
+                } else if let Some(enum_info) = self.enums.get(name).cloned() {
+                    if let Some(doc) = enum_info.hover_doc {
+                        self.hover_info.insert(span.clone(), doc);
+                    }
                     Type::Enum(name.clone())
                 } else if let Some(func) = self.functions.get(name) {
                     let params_str: Vec<String> = func
@@ -1037,38 +1123,88 @@ impl TypeChecker {
                 } else if self.modules.contains(name) {
                     Type::Named("module".to_string())
                 } else {
-                    self.error(
-                        format!("undefined identifier '{}'", name),
-                        span.clone(),
-                        Some("This name is not declared in the current scope".to_string()),
-                        None,
-                    );
-                    Type::Unknown
+                    let mut found_variant = None;
+                    for (enum_name, enum_info) in &self.enums {
+                        if let Some(variant) = enum_info.variants.get(name) {
+                            found_variant = Some((enum_name.clone(), variant.clone()));
+                            break;
+                        }
+                    }
+                    if let Some((enum_name, variant)) = found_variant {
+                        if let Some(doc) = &variant.hover_doc {
+                            self.hover_info.insert(span.clone(), doc.clone());
+                        }
+                        if variant.struct_fields.is_empty() && variant.tuple_items.is_empty() {
+                            Type::EnumVariant {
+                                enum_name,
+                                variant_name: name.clone(),
+                                tuple_items: vec![],
+                                struct_fields: HashMap::new(),
+                            }
+                        } else {
+                            // It's a constructor for a tuple or struct variant
+                            let params_str: Vec<String> = variant.tuple_items.iter().map(|t| format!("{:?}", t)).collect();
+                            Type::Named(format!("fn({}) -> EnumVariant", params_str.join(", ")))
+                        }
+                    } else {
+                        self.error(
+                            format!("undefined identifier '{}'", name),
+                            span.clone(),
+                            Some("This name is not declared in the current scope".to_string()),
+                            None,
+                        );
+                        Type::Unknown
+                    }
                 };
 
                 let hover_str = if let Some(var) = self.lookup_var(name) {
-                    let type_str = match &inferred {
-                        Type::Named(n) => n.clone(),
-                        Type::Int => "Int".to_string(),
-                        Type::Float => "Float".to_string(),
-                        Type::String => "String".to_string(),
-                        Type::Bool => "Bool".to_string(),
-                        Type::Nil => "Nil".to_string(),
-                        t => format!("{:?}", t),
-                    };
-                    if var.is_mut {
-                        format!("mut {}", type_str)
+                    if let (Type::Function(_, _), Some(func_sig)) = (&var.ty, self.functions.get(name)) {
+                        let mut params_str = Vec::new();
+                        for p in &func_sig.params {
+                            let ty_str = self.format_type(&p.ty);
+                            params_str.push(format!("{}: {}", p.name, ty_str));
+                        }
+                        let ret_ty_str = self.format_type(&func_sig.return_type);
+                        let sig_str = format!("```flame\nfn {}({}) -> {}\n```", name, params_str.join(", "), ret_ty_str);
+                        if let Some(doc) = &func_sig.hover_doc {
+                            format!("{}\n{}", sig_str, doc)
+                        } else {
+                            sig_str
+                        }
                     } else {
-                        type_str
+                        let type_str = self.format_type(&inferred);
+                        if var.is_mut {
+                            format!("mut {}", type_str)
+                        } else {
+                            type_str
+                        }
                     }
                 } else if self.plugins.contains(name) {
                     "plugin".to_string()
                 } else if self.modules.contains(name) {
                     "module".to_string()
-                } else if let Type::Named(s) = &inferred {
-                    s.clone()
                 } else {
-                    format!("{:?}", inferred)
+                    let mut is_enum_variant = false;
+                    let mut variant_doc = None;
+                    for (enum_name, enum_info) in &self.enums {
+                        if let Some(variant) = enum_info.variants.get(name) {
+                            is_enum_variant = true;
+                            if let Some(doc) = &variant.hover_doc {
+                                variant_doc = Some(format!("```flame\n{}::{}\n```\n{}", enum_name, name, doc));
+                            } else {
+                                let params_str: Vec<String> = variant.tuple_items.iter().map(|t| self.format_type(t)).collect();
+                                variant_doc = Some(format!("```flame\n{}({}) -> {}\n```", name, params_str.join(", "), enum_name));
+                            }
+                            break;
+                        }
+                    }
+                    if let Some(doc) = variant_doc {
+                        doc
+                    } else if let Type::Named(s) = &inferred {
+                        s.clone()
+                    } else {
+                        self.format_type(&inferred)
+                    }
                 };
 
                 self.hover_info.insert(span.clone(), hover_str);
@@ -1431,6 +1567,9 @@ impl TypeChecker {
             Type::Enum(enum_name) => {
                 if let Some(info) = self.enums.get(&enum_name) {
                     if let Some(variant) = info.variants.get(member) {
+                        if let Some(doc) = &variant.hover_doc {
+                            self.hover_info.insert(span.clone(), doc.clone());
+                        }
                         let struct_fields = variant
                             .struct_fields
                             .iter()
@@ -1645,15 +1784,68 @@ impl TypeChecker {
             return *ret.clone();
         }
 
-        if let Expr::Identifier(name, _) = callee {
+        if let Expr::Identifier(name, id_span) = callee {
             if let Some(sig) = self.functions.get(name).cloned() {
                 self.check_call_args(&sig.params, args, span, name);
+                if let Some(doc) = sig.hover_doc {
+                    self.hover_info.insert(id_span.clone(), doc);
+                }
                 return sig.return_type;
             }
 
             if let Some(struct_info) = self.structs.get(name).cloned() {
                 self.check_struct_constructor_args(name, &struct_info, args, span);
+                if let Some(doc) = struct_info.hover_doc {
+                    self.hover_info.insert(id_span.clone(), doc);
+                }
                 return Type::Struct(name.clone());
+            }
+
+            // Check if it's a globally available enum variant (like Ok, Err, Some, None)
+            let mut found_variant = None;
+            for (enum_name, enum_info) in &self.enums {
+                if let Some(variant) = enum_info.variants.get(name) {
+                    found_variant = Some((enum_name.clone(), variant.clone()));
+                    break;
+                }
+            }
+
+            if let Some((enum_name, variant)) = found_variant {
+                if variant.struct_fields.is_empty() && !variant.tuple_items.is_empty() {
+                    if variant.tuple_items.len() != args.len() {
+                        self.error(
+                            format!(
+                                "enum constructor '{}' expects {} argument(s), got {}",
+                                name,
+                                variant.tuple_items.len(),
+                                args.len()
+                            ),
+                            span.clone(),
+                            None,
+                            None,
+                        );
+                    }
+                    for (idx, expected) in variant.tuple_items.iter().enumerate() {
+                        if let Some((_, arg)) = args.get(idx) {
+                            let actual = self.infer_expr_type(arg);
+                            self.expect_assignable(
+                                expected,
+                                &actual,
+                                &arg.span(),
+                                "enum constructor argument",
+                            );
+                        }
+                    }
+                    if let Some(doc) = variant.hover_doc {
+                        self.hover_info.insert(id_span.clone(), doc);
+                    }
+                    return Type::EnumVariant {
+                        enum_name: enum_name.clone(),
+                        variant_name: name.clone(),
+                        tuple_items: variant.tuple_items.clone(),
+                        struct_fields: HashMap::new(),
+                    };
+                }
             }
         }
 
@@ -2033,11 +2225,15 @@ impl TypeChecker {
                 expected_name == enum_name
             }
             (Type::Named(expected_name), Type::Struct(actual_name))
-            | (Type::Named(expected_name), Type::Enum(actual_name)) => expected_name == actual_name,
+            | (Type::Named(expected_name), Type::Enum(actual_name)) => {
+                expected_name == actual_name || expected_name.starts_with(&format!("{}<", actual_name))
+            }
             (Type::Struct(expected_name), Type::Named(actual_name))
-            | (Type::Enum(expected_name), Type::Named(actual_name)) => expected_name == actual_name,
+            | (Type::Enum(expected_name), Type::Named(actual_name)) => {
+                expected_name == actual_name || actual_name.starts_with(&format!("{}<", expected_name))
+            }
             (Type::Named(expected_name), Type::EnumVariant { enum_name, .. }) => {
-                expected_name == enum_name
+                expected_name == enum_name || expected_name.starts_with(&format!("{}<", enum_name))
             }
             (Type::Byte, Type::Byte) => true,
             (Type::Vector(expected_item), Type::Vector(actual_item)) => {
@@ -2060,7 +2256,10 @@ impl TypeChecker {
                     mutable: am,
                 },
             ) => em == am && self.is_compatible(expected, actual),
-            (Type::Named(expected_name), Type::Named(actual_name)) => expected_name == actual_name,
+            (Type::Named(expected_name), Type::Named(actual_name)) => {
+                expected_name == actual_name 
+                || expected_name.split('<').next() == actual_name.split('<').next()
+            },
             (Type::Formula(_), Type::Formula(_)) => true,
             (Type::Function(e_params, e_ret), Type::Function(a_params, a_ret)) => {
                 e_params.len() == a_params.len()

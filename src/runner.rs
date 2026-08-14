@@ -1604,7 +1604,7 @@ impl Runner {
                         |op: &BinaryOp, l_val: Value, r_val: &Value| -> Result<Value, String> {
                             match (op, l_val, r_val) {
                                 (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a + b))
+                                    a.checked_add(*b).map(Value::Int).ok_or_else(|| "integer overflow in +=".to_string())
                                 }
                                 (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => {
                                     Ok(Value::Float(a + b))
@@ -1613,25 +1613,25 @@ impl Runner {
                                     Ok(Value::String(format!("{}{}", a, b)))
                                 }
                                 (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a - b))
+                                    a.checked_sub(*b).map(Value::Int).ok_or_else(|| "integer overflow in -=".to_string())
                                 }
                                 (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => {
                                     Ok(Value::Float(a - b))
                                 }
                                 (BinaryOp::MulAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a * b))
+                                    a.checked_mul(*b).map(Value::Int).ok_or_else(|| "integer overflow in *=".to_string())
                                 }
                                 (BinaryOp::MulAssign, Value::Float(a), Value::Float(b)) => {
                                     Ok(Value::Float(a * b))
                                 }
                                 (BinaryOp::DivAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(if *b != 0 { a / b } else { 0 }))
+                                    a.checked_div(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in /=".to_string())
                                 }
                                 (BinaryOp::DivAssign, Value::Float(a), Value::Float(b)) => {
-                                    Ok(Value::Float(if *b != 0.0 { a / b } else { 0.0 }))
+                                    Ok(Value::Float(a / b))
                                 }
                                 (BinaryOp::ModAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(if *b != 0 { a % b } else { 0 }))
+                                    a.checked_rem(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in %=".to_string())
                                 }
                                 (BinaryOp::BitAndAssign, Value::Int(a), Value::Int(b)) => {
                                     Ok(Value::Int(a & b))
@@ -1754,11 +1754,11 @@ impl Runner {
                 let r = self.eval_expr(right, env.clone())?;
                 match (&l, &r) {
                     (Value::Int(a), Value::Int(b)) => match op {
-                        BinaryOp::Add => Ok(Value::Int(a + b)),
-                        BinaryOp::Sub => Ok(Value::Int(a - b)),
-                        BinaryOp::Mul => Ok(Value::Int(a * b)),
-                        BinaryOp::Div => Ok(Value::Int(if *b != 0 { a / b } else { 0 })),
-                        BinaryOp::Mod => Ok(Value::Int(if *b != 0 { a % b } else { 0 })),
+                        BinaryOp::Add => a.checked_add(*b).map(Value::Int).ok_or_else(|| "integer overflow in +".to_string()),
+                        BinaryOp::Sub => a.checked_sub(*b).map(Value::Int).ok_or_else(|| "integer overflow in -".to_string()),
+                        BinaryOp::Mul => a.checked_mul(*b).map(Value::Int).ok_or_else(|| "integer overflow in *".to_string()),
+                        BinaryOp::Div => a.checked_div(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in /".to_string()),
+                        BinaryOp::Mod => a.checked_rem(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in %".to_string()),
                         BinaryOp::BitAnd => Ok(Value::Int(a & b)),
                         BinaryOp::BitOr => Ok(Value::Int(a | b)),
                         BinaryOp::BitXor => Ok(Value::Int(a ^ b)),

@@ -16,8 +16,59 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
     e.define("mock_api".to_string(), Value::Nil, false);
     e.define("mock_data".to_string(), Value::Nil, false);
     e.define("mock_function".to_string(), Value::Nil, false);
-}
+    
+    use crate::parser::EnumVariant;
+    e.define(
+        "Result".to_string(),
+        Value::EnumMeta(
+            "Result".to_string(),
+            vec![
+                EnumVariant::Tuple("Ok".to_string(), vec!["Any".to_string()]),
+                EnumVariant::Tuple("Err".to_string(), vec!["Any".to_string()]),
+            ],
+        ),
+        false,
+    );
+    
+    e.define(
+        "Option".to_string(),
+        Value::EnumMeta(
+            "Option".to_string(),
+            vec![
+                EnumVariant::Tuple("Some".to_string(), vec!["Any".to_string()]),
+                EnumVariant::Unit("None".to_string()),
+            ],
+        ),
+        false,
+    );
 
+    use crate::vm::EnumData;
+
+    // Register global constructors for Result
+    e.define("Ok".to_string(), Value::NativeCallback(|args| {
+        if args.len() != 1 {
+            return Err("Ok expects exactly 1 argument".to_string());
+        }
+        Ok(Value::EnumValue("Result".to_string(), "Ok".to_string(), EnumData::Tuple(args)))
+    }), false);
+    
+    e.define("Err".to_string(), Value::NativeCallback(|args| {
+        if args.len() != 1 {
+            return Err("Err expects exactly 1 argument".to_string());
+        }
+        Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), EnumData::Tuple(args)))
+    }), false);
+
+    // Register global constructors for Option
+    e.define("Some".to_string(), Value::NativeCallback(|args| {
+        if args.len() != 1 {
+            return Err("Some expects exactly 1 argument".to_string());
+        }
+        Ok(Value::EnumValue("Option".to_string(), "Some".to_string(), EnumData::Tuple(args)))
+    }), false);
+
+    e.define("None".to_string(), Value::EnumValue("Option".to_string(), "None".to_string(), EnumData::Unit), false);
+}
 pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option<PathBuf> {
     if import_path.is_empty() {
         return None;

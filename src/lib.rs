@@ -10,3 +10,4 @@ pub mod typechecker;
 pub mod vm;
 pub mod native_std;
 pub mod embedded;
+pub mod test_engine;
