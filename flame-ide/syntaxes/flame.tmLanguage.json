@@ -89,13 +89,27 @@
         },
 
         {
+          "match": "\\b(export)\\s+(annotation)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.flame"
+            },
+            "2": {
+              "name": "keyword.declaration.flame"
+            },
+            "3": {
+              "name": "entity.name.function.flame"
+            }
+          }
+        },
+        {
           "match": "\\b(annotation)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": {
               "name": "keyword.declaration.flame"
             },
             "2": {
-              "name": "keyword.control.flame"
+              "name": "entity.name.function.flame"
             }
           }
         }

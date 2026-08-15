@@ -524,7 +524,9 @@ impl Parser {
                 | Stmt::LetDecl { annotations, .. }
                 | Stmt::ConstDecl { annotations, .. }
                 | Stmt::StructDecl { annotations, .. }
-                | Stmt::EnumDecl { annotations, .. } => {
+                | Stmt::EnumDecl { annotations, .. }
+                | Stmt::AnnotationDecl { annotations, .. }
+                | Stmt::ImplDecl { annotations, .. } => {
                     let mut combined = outer_annotations;
                     combined.append(annotations);
                     *annotations = combined;

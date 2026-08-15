@@ -914,7 +914,7 @@ pub fn get_semantic_tokens(source: &str) -> Vec<SemanticToken> {
                 token_type = Some(4); // string
             }
             crate::lexer::TokenKind::Annotation => {
-                token_type = Some(2); // annotation
+                token_type = Some(0); // keyword
             }
             crate::lexer::TokenKind::Fn => {
                 token_type = Some(0); // keyword

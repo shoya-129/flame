@@ -2,6 +2,9 @@ import native.bridge
 
 
 
+@Docs("hui")
+export annotation Component(id: String, ) -> Int {
+}
 
 @Test
 fn test_rust_add() {

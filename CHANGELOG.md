@@ -3,6 +3,14 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.2.9] - 2026-08-15 (Codename: *Second Spark*)
+
+### 🐛 IDE & Syntax Highlighting
+- **Semantic Tokens Provider Override**: Fixed a severe bug in the Flame Language Server (in `src/ide.rs`) where the `annotation` keyword was mistakenly classified as an `annotation` semantic token type (mapped to a `function` fallback). It now correctly emits as a `keyword` token, restoring the standard red/pink syntax coloring across all VS Code themes.
+- **TextMate Grammar Specificity**: Hardened the `flame-ide` TextMate grammar rules for the `annotation` keyword. To prevent Oniguruma regex group capturing bugs, the rule was split into two explicit, highly robust declarations for `export annotation` and `annotation`.
+
+---
+
 ## [0.2.8] - 2026-08-15 (Codename: *Second Spark*)
 
 ### 🐛 Testing & Package Manager
