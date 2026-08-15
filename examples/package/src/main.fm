@@ -2,6 +2,7 @@ import native.bridge
 
 
 
+
 @Test
 fn test_rust_add() {
     let result = bridge.rust_add(10, 20)

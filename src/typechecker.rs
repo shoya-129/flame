@@ -1,6 +1,6 @@
 use crate::diagnostics::Diagnostic;
 use crate::lexer::Span;
-use crate::parser::{BinaryOp, EnumVariant, Expr, LiteralValue, Param, Stmt, UnaryOp};
+use crate::parser::{Annotation, BinaryOp, EnumVariant, Expr, LiteralValue, Param, Stmt, UnaryOp};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,7 +13,7 @@ pub enum Type {
     Byte,
     Tuple(Vec<Type>),
     Vector(Box<Type>),
-    Formula(HashMap<String, Type>),
+    Formula(HashMap<String, Type>, HashMap<String, String>),
     Function(Vec<Type>, Box<Type>),
     Struct(String),
     Enum(String),
@@ -95,6 +95,7 @@ pub struct TypeChecker {
     pub hover_info: HashMap<Span, String>,
     pub modules: HashSet<String>,
     pub plugins: HashSet<String>,
+    pub plugin_methods: HashMap<String, HashMap<String, Type>>,
 }
 
 impl TypeChecker {
@@ -112,6 +113,7 @@ impl TypeChecker {
             hover_info: HashMap::new(),
             modules: HashSet::new(),
             plugins: HashSet::new(),
+            plugin_methods: HashMap::new(),
         };
         checker.register_builtins();
         checker
@@ -129,6 +131,34 @@ impl TypeChecker {
             Err(self.diagnostics.clone())
         };
         (res, self)
+    }
+
+    fn process_annotations(&mut self, annotations: &[Annotation]) -> Option<String> {
+        let mut hover_doc = None;
+        for ann in annotations {
+            if ann.name == "Docs" {
+                self.hover_info.insert(
+                    ann.name_span.clone(),
+                    "```flame\n@Docs\n```\n\nAdds documentation to declarations. This documentation will appear when hovering over the declared item.\n\n**Example:**\n```flame\n@Docs(\"Adds two numbers\")\nfn add(a: Int, b: Int) -> Int {\n    return a + b\n}\n```".to_string()
+                );
+                
+                if !ann.args.is_empty() {
+                    let mut raw = ann.args[0].clone();
+                    if raw.starts_with('"') && raw.ends_with('"') {
+                        raw = raw[1..raw.len() - 1].to_string();
+                    }
+                    let doc_str = raw.replace("\\n", "\n");
+                    self.hover_info.insert(ann.span.clone(), format!("**Documentation**\n\n{}", doc_str));
+                    hover_doc = Some(doc_str);
+                }
+            } else if ann.name == "Test" {
+                self.hover_info.insert(
+                    ann.name_span.clone(),
+                    "**@Test**\n\nMarks a function as a unit test. It will be executed by the test runner.".to_string()
+                );
+            }
+        }
+        hover_doc
     }
 
     fn register_builtins(&mut self) {
@@ -310,21 +340,13 @@ impl TypeChecker {
     fn collect_top_level_declarations(&mut self, stmts: &[Stmt]) {
         for stmt in stmts {
             match stmt {
-                Stmt::StructDecl { name, fields, annotations, span } => {
-                    let mut hover_doc = None;
-                    for a in annotations {
-                        if a.name == "Docs" && !a.args.is_empty() {
-                            let raw = a.args[0].trim_matches('"').replace("\\n", "\n").replace("\\t", "\t");
-                            hover_doc = Some(raw);
-                            break;
-                        }
-                    }
+                Stmt::StructDecl { name, fields, annotations, span: _, name_span } => {
+                    let mut hover_str = format!("```flame\nstruct {}\n```", name);
+                    let hover_doc = self.process_annotations(annotations);
                     if let Some(doc) = &hover_doc {
-                        let mut name_span = span.clone();
-                        name_span.col += 7; // 'struct ' length
-                        name_span.end = name_span.start + name.len();
-                        self.hover_info.insert(name_span, doc.clone());
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
+                    self.hover_info.insert(name_span.clone(), hover_str);
                     let fields = fields
                         .iter()
                         .map(|(field_name, type_name)| {
@@ -333,21 +355,13 @@ impl TypeChecker {
                         .collect();
                     self.structs.insert(name.clone(), StructInfo { fields, hover_doc });
                 }
-                Stmt::EnumDecl { name, variants, annotations, span } => {
-                    let mut hover_doc = None;
-                    for a in annotations {
-                        if a.name == "Docs" && !a.args.is_empty() {
-                            let raw = a.args[0].trim_matches('"').replace("\\n", "\n").replace("\\t", "\t");
-                            hover_doc = Some(raw);
-                            break;
-                        }
-                    }
+                Stmt::EnumDecl { name, variants, annotations, span: _, name_span } => {
+                    let mut hover_str = format!("```flame\nenum {}\n```", name);
+                    let hover_doc = self.process_annotations(annotations);
                     if let Some(doc) = &hover_doc {
-                        let mut name_span = span.clone();
-                        name_span.col += 5; // 'enum ' length
-                        name_span.end = name_span.start + name.len();
-                        self.hover_info.insert(name_span, doc.clone());
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
+                    self.hover_info.insert(name_span.clone(), hover_str);
                     let mut map = HashMap::new();
                     for variant in variants {
                         match variant {
@@ -472,9 +486,22 @@ impl TypeChecker {
                 }
                 Stmt::ImplDecl {
                     target_type,
+                    trait_name,
                     methods,
-                    ..
+                    annotations,
+                    span: _,
+                    name_span,
                 } => {
+                    let mut hover_str = if let Some(tr) = &trait_name {
+                        format!("```flame\nimpl {} for {}\n```", tr, target_type)
+                    } else {
+                        format!("```flame\nimpl {}\n```", target_type)
+                    };
+                    let hover_doc = self.process_annotations(annotations);
+                    if let Some(doc) = hover_doc {
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
+                    }
+                    self.hover_info.insert(name_span.clone(), hover_str);
                     for method in methods {
                         if let Stmt::FuncDecl {
                             name,
@@ -513,6 +540,43 @@ impl TypeChecker {
                         if path.first().map_or(false, |p| p == "native" || p == "std") {
                             self.plugins.insert(mod_name.clone());
                             self.modules.insert(mod_name.clone());
+                            if path.first().map_or(false, |p| p == "native") {
+                                let mut methods = HashMap::new();
+                                let p = std::path::Path::new(&self.filepath);
+                                if let Some(parent) = p.parent() {
+                                    if let Some(root) = parent.parent() {
+                                        let lib_rs = root.join("native").join("src").join("lib.rs");
+                                        if let Ok(content) = std::fs::read_to_string(&lib_rs) {
+                                            for line in content.lines() {
+                                                let line = line.trim();
+                                                if line.starts_with("pub fn ") {
+                                                    let rest = &line["pub fn ".len()..];
+                                                    if let Some(paren) = rest.find('(') {
+                                                        let name = rest[..paren].trim().to_string();
+                                                        let mut ret_ty = Type::Unknown;
+                                                        if let Some(arrow) = rest.find("->") {
+                                                            let after_arrow = rest[arrow + 2..].trim();
+                                                            let end = after_arrow.find('{').unwrap_or(after_arrow.len());
+                                                            let ret_str = after_arrow[..end].trim();
+                                                            if ret_str == "i64" || ret_str == "i32" || ret_str == "usize" {
+                                                                ret_ty = Type::Int;
+                                                            } else if ret_str == "f64" || ret_str == "f32" {
+                                                                ret_ty = Type::Float;
+                                                            } else if ret_str == "bool" {
+                                                                ret_ty = Type::Bool;
+                                                            } else if ret_str == "String" {
+                                                                ret_ty = Type::String;
+                                                            }
+                                                        }
+                                                        methods.insert(name, ret_ty);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                self.plugin_methods.insert(mod_name.clone(), methods);
+                            }
                         } else {
                             self.modules.insert(mod_name.clone());
                             if let Some(file_path) = crate::stdlib::locate_import_file(
@@ -555,14 +619,14 @@ impl TypeChecker {
             Stmt::ImportDecl { path, .. } => {
                 if let Some(last) = path.last() {
                     let kind_str = if path.first().map_or(false, |p| p == "native") {
-                        "plugin"
+                        format!("plugin:{}", last)
                     } else {
-                        "module"
+                        "module".to_string()
                     };
                     self.define_var(
                         last.clone(),
                         VarInfo {
-                            ty: Type::Named(kind_str.to_string()),
+                            ty: Type::Named(kind_str),
                             is_mut: false,
                         },
                     );
@@ -614,7 +678,9 @@ impl TypeChecker {
                 is_mut,
                 type_ann,
                 value,
+                annotations,
                 span,
+                name_span,
                 ..
             }
             | Stmt::ConstDecl {
@@ -622,7 +688,9 @@ impl TypeChecker {
                 is_mut,
                 type_ann,
                 value,
+                annotations,
                 span,
+                name_span,
                 ..
             } => {
                 let value_ty = self.infer_expr_type(value);
@@ -634,8 +702,9 @@ impl TypeChecker {
                     self.expect_assignable(expected, &value_ty, span, "variable initializer");
                 }
 
-                if !name.starts_with('(') {
+                if !name.starts_with('{') && !name.starts_with('(') {
                     let stored_ty = match (&declared_ty, &value_ty) {
+                        (Some(Type::Formula(_, _)), Type::Formula(map, _)) => Type::Formula(map.clone(), HashMap::new()),
                         (Some(Type::Enum(expected)), Type::EnumVariant { enum_name, .. })
                             if expected == enum_name =>
                         {
@@ -654,19 +723,16 @@ impl TypeChecker {
                         Type::Nil => "Nil".to_string(),
                         t => format!("{:?}", t),
                     };
-                    let hover_str = if *is_mut {
-                        format!("mut {}", type_str)
-                    } else {
-                        type_str
-                    };
+                    let decl_kw = if matches!(stmt, Stmt::ConstDecl { .. }) { "const" } else if *is_mut { "let mut" } else { "let" };
+                    let mut hover_str = format!("```flame\n{} {}: {}\n```", decl_kw, name, type_str);
 
-                    let mut name_span = span.clone();
-                    // Estimate the span of the variable name
-                    let kw_len = if *is_mut { 8 } else { 4 }; // 'let mut ' vs 'let '
-                    // For const, it's 'const ' (6) but let's just approximate
-                    name_span.col += kw_len;
-                    name_span.end = name_span.start + name.len();
-                    self.hover_info.insert(name_span, hover_str);
+                    let hover_doc = self.process_annotations(annotations);
+
+                    if let Some(doc) = hover_doc {
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
+                    }
+
+                    self.hover_info.insert(name_span.clone(), hover_str);
 
                     self.define_var(
                         name.clone(),
@@ -720,7 +786,7 @@ impl TypeChecker {
                         .map(|s| s.trim().to_string())
                         .collect::<Vec<_>>();
 
-                    if let Type::Formula(map) = &value_ty {
+                    if let Type::Formula(map, _) = &value_ty {
                         for v_name in inner_names {
                             if v_name != "_" {
                                 let v_ty = map.get(&v_name).cloned().unwrap_or(Type::Unknown);
@@ -773,6 +839,8 @@ impl TypeChecker {
                 return_type,
                 body,
                 annotations,
+                span,
+                name_span,
                 ..
             } => {
                 let func_type = Type::Function(
@@ -787,6 +855,25 @@ impl TypeChecker {
                             .unwrap_or(Type::Nil),
                     ),
                 );
+                let params_str = params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_str = if let Some(ret) = &return_type {
+                    format!(" -> {}", ret)
+                } else {
+                    "".to_string()
+                };
+                let mut hover_str = format!("```flame\nfn {}({}){}\n```", name, params_str, ret_str);
+                let hover_doc = self.process_annotations(annotations);
+                
+                if let Some(doc) = hover_doc {
+                    hover_str = format!("{}\n\n{}", hover_str, doc);
+                }
+                
+                self.hover_info.insert(name_span.clone(), hover_str);
+
                 self.define_var(
                     name.clone(),
                     VarInfo {
@@ -840,8 +927,10 @@ impl TypeChecker {
                         },
                     );
                 }
-                for stmt in body {
-                    self.check_stmt(stmt);
+                if let Some(body_stmts) = body {
+                    for stmt in body_stmts {
+                        self.check_stmt(stmt);
+                    }
                 }
                 self.pop_scope();
                 self.current_return_type = prev_return;
@@ -851,7 +940,9 @@ impl TypeChecker {
                 params,
                 return_type,
                 body,
-                ..
+                annotations,
+                span: _,
+                name_span,
             } => {
                 let func_type = Type::Function(
                     params
@@ -865,6 +956,26 @@ impl TypeChecker {
                             .unwrap_or(Type::Nil),
                     ),
                 );
+
+                let params_str = params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_str = if let Some(ret) = &return_type {
+                    format!(" -> {}", ret)
+                } else {
+                    "".to_string()
+                };
+                let mut hover_str = format!("```flame\nannotation {}({}){}\n```", name, params_str, ret_str);
+                let hover_doc = self.process_annotations(annotations);
+                
+                if let Some(doc) = hover_doc {
+                    hover_str = format!("{}\n\n{}", hover_str, doc);
+                }
+                
+                self.hover_info.insert(name_span.clone(), hover_str);
+
                 self.define_var(
                     name.clone(),
                     VarInfo {
@@ -1119,7 +1230,7 @@ impl TypeChecker {
                     };
                     Type::Named(format!("fn({}) -> {}", params_str.join(", "), ret_str))
                 } else if self.plugins.contains(name) {
-                    Type::Named("plugin".to_string())
+                    Type::Named(format!("plugin:{}", name))
                 } else if self.modules.contains(name) {
                     Type::Named("module".to_string())
                 } else {
@@ -1236,19 +1347,45 @@ impl TypeChecker {
             }
             Expr::Formula(pairs, _) => {
                 let mut map = HashMap::new();
-                for (k, v) in pairs {
+                let mut docs = HashMap::new();
+                for (k, v, span, annotations) in pairs {
                     let ty = self.infer_expr_type(v);
+                    let signature = match v {
+                        Expr::Closure { params, return_type, .. } => {
+                            let params_str = params
+                                .iter()
+                                .map(|p| format!("{}: {}", p.name, p.type_name))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let ret_str = if let Some(ret) = return_type {
+                                format!(" -> {}", ret)
+                            } else {
+                                "".to_string()
+                            };
+                            format!("```flame\nfn {}({}){}\n```", k, params_str, ret_str)
+                        }
+                        _ => format!("```flame\n{}: {}\n```", k, self.format_type(&ty)),
+                    };
+                    let hover_doc = self.process_annotations(annotations);
+                    let full_doc = if let Some(doc) = hover_doc {
+                        format!("{}\n\n{}", signature, doc)
+                    } else {
+                        signature
+                    };
+                    self.hover_info.insert(span.clone(), full_doc.clone());
+                    docs.insert(k.clone(), full_doc);
                     map.insert(k.clone(), ty);
                 }
-                Type::Formula(map)
+                Type::Formula(map, docs)
             }
             Expr::Object(pairs, _) => {
                 let mut map = HashMap::new();
-                for (k, v) in pairs {
+                for (k, v, annotations) in pairs {
                     let ty = self.infer_expr_type(v);
+                    let _ = self.process_annotations(annotations);
                     map.insert(k.clone(), ty);
                 }
-                Type::Formula(map) // We treat Object and Formula as structurally equivalent in types for now, or we can use a new Type::Object. Let's use Type::Formula since it's a dynamic map
+                Type::Formula(map, HashMap::new()) // We treat Object and Formula as structurally equivalent in types for now, or we can use a new Type::Object. Let's use Type::Formula since it's a dynamic map
             }
             Expr::InterpolatedString(segments, span) => {
                 for segment in segments {
@@ -1319,8 +1456,30 @@ impl TypeChecker {
                 params,
                 return_type,
                 body,
+                annotations,
+                span,
                 ..
             } => {
+                let params_str = params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_str = if let Some(ret) = &return_type {
+                    format!(" -> {}", ret)
+                } else {
+                    "".to_string()
+                };
+                let mut hover_str = format!("```flame\n|{}|{}\n```", params_str, ret_str);
+                
+                let hover_doc = self.process_annotations(annotations);
+                
+                if let Some(doc) = hover_doc {
+                    hover_str = format!("{}\n\n{}", hover_str, doc);
+                }
+                
+                self.hover_info.insert(span.clone(), hover_str);
+
                 let prev_return = self.current_return_type.clone();
                 let ret_ty = return_type
                     .as_ref()
@@ -1564,6 +1723,15 @@ impl TypeChecker {
             _ => {}
         }
         match inner_ty {
+            Type::Named(name) if name.starts_with("plugin:") => {
+                let plugin_name = &name["plugin:".len()..];
+                if let Some(methods) = self.plugin_methods.get(plugin_name) {
+                    if let Some(ty) = methods.get(member) {
+                        return ty.clone();
+                    }
+                }
+                Type::Unknown
+            }
             Type::Enum(enum_name) => {
                 if let Some(info) = self.enums.get(&enum_name) {
                     if let Some(variant) = info.variants.get(member) {
@@ -1602,7 +1770,7 @@ impl TypeChecker {
                 }
 
                 // Delegate member access to single-item tuple Formula payloads.
-                if let [Type::Formula(fmap)] = tuple_items.as_slice() {
+                if let [Type::Formula(fmap, _)] = tuple_items.as_slice() {
                     if let Some(t) = fmap.get(member) {
                         return t.clone();
                     } else {
@@ -1647,7 +1815,13 @@ impl TypeChecker {
                 );
                 Type::Unknown
             }
-            Type::Formula(ref fmap) => fmap.get(member).cloned().unwrap_or(Type::Unknown),
+            Type::Formula(ref fmap, ref docs) => {
+                let ty = fmap.get(member).cloned().unwrap_or(Type::Unknown);
+                if let Some(doc) = docs.get(member) {
+                    self.hover_info.insert(span.clone(), doc.clone());
+                }
+                ty
+            }
             Type::Vector(_) | Type::String | Type::Int | Type::Float | Type::Bool | Type::Tuple(_) | Type::Byte => {
                 Type::Named("Function".into())
             }
@@ -1867,6 +2041,17 @@ impl TypeChecker {
                 "toChar" | "to_char" => return Type::String,
                 "toByte" | "to_byte" => return Type::Byte,
                 _ => {}
+            }
+
+            if let Type::Named(name) = &inner_ty {
+                if name.starts_with("plugin:") {
+                    let plugin_name = &name["plugin:".len()..];
+                    if let Some(methods) = self.plugin_methods.get(plugin_name) {
+                        if let Some(ty) = methods.get(member) {
+                            return ty.clone();
+                        }
+                    }
+                }
             }
 
             if let Type::Struct(struct_name) = &inner_ty {
@@ -2260,7 +2445,7 @@ impl TypeChecker {
                 expected_name == actual_name 
                 || expected_name.split('<').next() == actual_name.split('<').next()
             },
-            (Type::Formula(_), Type::Formula(_)) => true,
+            (Type::Formula(_, _), Type::Formula(_, _)) => true,
             (Type::Function(e_params, e_ret), Type::Function(a_params, a_ret)) => {
                 e_params.len() == a_params.len()
                     && e_params
@@ -2301,7 +2486,7 @@ impl TypeChecker {
             "Bool" => Type::Bool,
             "Nil" | "nil" => Type::Nil,
             "Byte" | "Bytes" => Type::Byte,
-            "Formula" => Type::Formula(HashMap::new()),
+            "Formula" | "Object" => Type::Formula(HashMap::new(), HashMap::new()),
             _ if trimmed.contains("->") => {
                 if let Some((left, right)) = trimmed.split_once("->") {
                     let left_type = self.parse_type_name(left.trim());
@@ -2359,7 +2544,7 @@ impl TypeChecker {
                     .join(", ")
             ),
             Type::Vector(item) => format!("[{}]", self.format_type(item)),
-            Type::Formula(_) => "Formula".to_string(),
+            Type::Formula(_, _) => "Formula".to_string(),
             Type::Function(params, ret) => {
                 let params_str = params
                     .iter()

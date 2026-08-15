@@ -159,17 +159,23 @@ opt-level = "s"
             } => {
                 if is_embedded_function(annotations) {
                     found_embedded_func = true;
-                    for s in body {
-                        loop_code.push_str(&format!("        {}\n", transpile_stmt(s, target)));
+                    if let Some(body_stmts) = body {
+                        for s in body_stmts {
+                            loop_code.push_str(&format!("        {}\n", transpile_stmt(s, target)));
+                        }
                     }
                 } else if name == "setup" || name == "init" {
-                    for s in body {
-                        setup_code.push_str(&format!("    {}\n", transpile_stmt(s, target)));
+                    if let Some(body_stmts) = body {
+                        for s in body_stmts {
+                            setup_code.push_str(&format!("    {}\n", transpile_stmt(s, target)));
+                        }
                     }
                 } else if name == "loop" || name == "main" {
                     if !found_embedded_func {
-                        for s in body {
-                            loop_code.push_str(&format!("        {}\n", transpile_stmt(s, target)));
+                        if let Some(body_stmts) = body {
+                            for s in body_stmts {
+                                loop_code.push_str(&format!("        {}\n", transpile_stmt(s, target)));
+                            }
                         }
                     }
                 }

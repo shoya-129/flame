@@ -868,12 +868,15 @@ fn run_file(path_str: &str, force_local: bool, script_args: &[String]) {
     }
 }
 
-fn collect_fm_files(dir: &Path, list: &mut Vec<PathBuf>) {
+fn collect_fm_files(dir: &Path, list: &mut Vec<PathBuf>, is_root: bool) {
+    if !is_root && dir.join("flame.toml").exists() {
+        return;
+    }
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let p = entry.path();
             if p.is_dir() {
-                collect_fm_files(&p, list);
+                collect_fm_files(&p, list, false);
             } else if p.extension().and_then(|s| s.to_str()) == Some("fm") {
                 list.push(p);
             }
@@ -1042,7 +1045,7 @@ fn run_tests(args: &[String]) {
         let p = PathBuf::from(&args[2]);
         if p.exists() {
             if p.is_dir() {
-                collect_fm_files(&p, &mut files_to_test);
+                collect_fm_files(&p, &mut files_to_test, true);
             } else {
                 files_to_test.push(p);
             }
@@ -1055,16 +1058,16 @@ fn run_tests(args: &[String]) {
         }
     } else {
         if Path::new("tests").exists() {
-            collect_fm_files(Path::new("tests"), &mut files_to_test);
+            collect_fm_files(Path::new("tests"), &mut files_to_test, false);
         }
         if Path::new("examples/tests").exists() {
-            collect_fm_files(Path::new("examples/tests"), &mut files_to_test);
+            collect_fm_files(Path::new("examples/tests"), &mut files_to_test, false);
         }
         if Path::new("examples").exists() && !Path::new("examples/tests").exists() {
-            collect_fm_files(Path::new("examples"), &mut files_to_test);
+            collect_fm_files(Path::new("examples"), &mut files_to_test, false);
         }
         if Path::new("src").exists() {
-            collect_fm_files(Path::new("src"), &mut files_to_test);
+            collect_fm_files(Path::new("src"), &mut files_to_test, false);
         }
         if files_to_test.is_empty() && Path::new("main.fm").exists() {
             files_to_test.push(PathBuf::from("main.fm"));
@@ -1599,12 +1602,30 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     let mut exact_ast_hover = None;
     if let Some(tc) = &tc_opt {
         if let Some(l) = line {
+            let mut cursor_byte_idx = 0;
+            let mut curr_line = 1;
+            let mut curr_col = 1;
+            for (i, c) in content.char_indices() {
+                if curr_line == l && curr_col == cursor_col {
+                    cursor_byte_idx = i;
+                    break;
+                }
+                if c == '\n' {
+                    curr_line += 1;
+                    curr_col = 1;
+                } else {
+                    curr_col += 1;
+                }
+            }
+            if cursor_byte_idx == 0 && curr_line == l && cursor_col >= curr_col {
+                 cursor_byte_idx = content.len();
+            }
+
             let mut best_span: Option<&crate::lexer::Span> = None;
             let mut best_ty_str = None;
 
             for (span, ty_str) in &tc.hover_info {
-                let end_col = span.col + (span.end - span.start);
-                if span.line == l && cursor_col >= span.col && cursor_col <= end_col {
+                if cursor_byte_idx >= span.start && cursor_byte_idx <= span.end {
                     if let Some(best) = best_span {
                         if (span.end - span.start) < (best.end - best.start) {
                             best_span = Some(span);

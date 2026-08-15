@@ -70,6 +70,8 @@ pub struct Param {
 pub struct Annotation {
     pub name: String,
     pub args: Vec<String>,
+    pub span: Span,
+    pub name_span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -90,13 +92,14 @@ pub enum Expr {
     Call(Box<Expr>, Vec<(Option<String>, Expr)>, Span),
     Dot(Box<Expr>, String, Span),
     SafeDot(Box<Expr>, String, Span),
-    Formula(Vec<(String, Expr)>, Span),
-    Object(Vec<(String, Expr)>, Span),
+    Formula(Vec<(String, Expr, Span, Vec<Annotation>)>, Span),
+    Object(Vec<(String, Expr, Vec<Annotation>)>, Span),
     ThreadSpawn(Box<Expr>, Span),
     Closure {
         params: Vec<Param>,
         return_type: Option<String>,
         body: Vec<Stmt>,
+        annotations: Vec<Annotation>,
         span: Span,
     },
     Await(Box<Expr>, Span),
@@ -155,6 +158,7 @@ pub enum Stmt {
         value: Expr,
         annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     ConstDecl {
         name: String,
@@ -163,33 +167,39 @@ pub enum Stmt {
         value: Expr,
         annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     FuncDecl {
         name: String,
         params: Vec<Param>,
         return_type: Option<String>,
-        body: Vec<Stmt>,
+        body: Option<Vec<Stmt>>,
         annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     AnnotationDecl {
         name: String,
         params: Vec<Param>,
         return_type: Option<String>,
         body: Vec<Stmt>,
+        annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     StructDecl {
         name: String,
         fields: Vec<(String, String)>,
         annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     EnumDecl {
         name: String,
         variants: Vec<EnumVariant>,
         annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     TraitDecl {
         name: String,
@@ -197,10 +207,12 @@ pub enum Stmt {
         span: Span,
     },
     ImplDecl {
-        trait_name: Option<String>,
         target_type: String,
+        trait_name: Option<String>,
         methods: Vec<Stmt>,
+        annotations: Vec<Annotation>,
         span: Span,
+        name_span: Span,
     },
     ImportDecl {
         path: Vec<String>,
@@ -365,10 +377,10 @@ impl Parser {
             TokenKind::Let => self.parse_var_decl(TokenKind::Let, annotations),
             TokenKind::Const => self.parse_var_decl(TokenKind::Const, annotations),
             TokenKind::Fn => self.parse_func_decl(annotations),
-            TokenKind::Annotation => self.parse_annotation_decl(),
+            TokenKind::Annotation => self.parse_annotation_decl(annotations),
             TokenKind::Struct => self.parse_struct_decl(annotations),
             TokenKind::Enum => self.parse_enum_decl(annotations),
-            TokenKind::Impl => self.parse_impl_decl(),
+            TokenKind::Impl => self.parse_impl_decl(annotations),
             TokenKind::If => self.parse_if_statement(),
             TokenKind::For => self.parse_for_statement(),
             TokenKind::While => self.parse_while_statement(),
@@ -393,13 +405,15 @@ impl Parser {
     }
 
     fn parse_annotation(&mut self) -> Result<Annotation, Diagnostic> {
-        self.consume(TokenKind::At, "expected '@' decorator prefix")?;
+        let start_tok = self.consume(TokenKind::At, "expected '@' decorator prefix")?;
         let id = self.consume(TokenKind::Identifier, "expected annotation name")?;
         let mut name = id.lexeme.clone();
+        let mut end_span = id.span.end;
         while self.match_token(TokenKind::Dot) {
             let next_id = self.consume(TokenKind::Identifier, "expected property name after '.'")?;
             name.push('.');
             name.push_str(&next_id.lexeme);
+            end_span = next_id.span.end;
         }
         let mut args = Vec::new();
 
@@ -451,13 +465,24 @@ impl Parser {
                 }
                 self.match_token(TokenKind::Comma);
             }
-            self.consume(
+            let close_tok = self.consume(
                 TokenKind::CloseParen,
                 "expected ')' to close annotation arguments",
             )?;
+            end_span = close_tok.span.end;
         }
 
-        Ok(Annotation { name, args })
+        Ok(Annotation { 
+            name, 
+            args,
+            span: Span {
+                start: start_tok.span.start,
+                end: end_span,
+                line: start_tok.span.line,
+                col: start_tok.span.col,
+            },
+            name_span: id.span.clone(),
+        })
     }
 
     fn parse_import_statement(&mut self) -> Result<Stmt, Diagnostic> {
@@ -582,7 +607,8 @@ impl Parser {
         let start_tok = self.consume(kind.clone(), "expected variable keyword")?;
 
         let mut is_mut = false;
-        let name = if self.match_token(TokenKind::OpenParen) {
+        let mut name_span = start_tok.span.clone();
+        let (name, final_name_span) = if self.match_token(TokenKind::OpenParen) {
             let mut items = Vec::new();
             while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
                 let id = self.consume(
@@ -610,8 +636,9 @@ impl Parser {
                     }
                 }
             }
-            self.consume(TokenKind::CloseParen, "expected ')' to close destructuring")?;
-            format!("({})", items.join(", "))
+            let close_tok = self.consume(TokenKind::CloseParen, "expected ')' to close destructuring")?;
+            name_span.end = close_tok.span.end;
+            (format!("({})", items.join(", ")), name_span)
         } else if self.match_token(TokenKind::OpenBrace) {
             let mut items = Vec::new();
             while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
@@ -632,14 +659,15 @@ impl Parser {
                     }
                 }
             }
-            self.consume(TokenKind::CloseBrace, "expected '}' to close object destructuring")?;
-            format!("{{{}}}", items.join(", "))
+            let close_tok = self.consume(TokenKind::CloseBrace, "expected '}' to close object destructuring")?;
+            name_span.end = close_tok.span.end;
+            (format!("{{{}}}", items.join(", ")), name_span)
         } else {
             if self.match_token(TokenKind::Mut) {
                 is_mut = true;
             }
             let name_tok = self.consume(TokenKind::Identifier, "expected variable name")?;
-            name_tok.lexeme.clone()
+            (name_tok.lexeme.clone(), name_tok.span.clone())
         };
 
         let mut type_ann = None;
@@ -667,6 +695,7 @@ impl Parser {
                 value,
                 annotations,
                 span: decl_span,
+                name_span: final_name_span,
             }),
             TokenKind::Const => Ok(Stmt::ConstDecl {
                 name,
@@ -675,6 +704,7 @@ impl Parser {
                 value,
                 annotations,
                 span: decl_span,
+                name_span: final_name_span,
             }),
             _ => unreachable!(),
         }
@@ -762,7 +792,7 @@ impl Parser {
             name,
             params,
             return_type,
-            body,
+            body: Some(body),
             annotations,
             span: Span {
                 start: start_tok.span.start,
@@ -770,10 +800,11 @@ impl Parser {
                 line: start_tok.span.line,
                 col: start_tok.span.col,
             },
+            name_span: name_tok.span,
         })
     }
 
-    fn parse_annotation_decl(&mut self) -> Result<Stmt, Diagnostic> {
+    fn parse_annotation_decl(&mut self, annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
         let start_tok = self.consume(TokenKind::Annotation, "expected 'annotation' keyword")?;
         let name_tok = self.consume(TokenKind::Identifier, "expected annotation function name")?;
         let name = name_tok.lexeme.clone();
@@ -848,12 +879,14 @@ impl Parser {
             params,
             return_type,
             body,
+            annotations,
             span: Span {
                 start: start_tok.span.start,
                 end: end_span.start,
                 line: start_tok.span.line,
                 col: start_tok.span.col,
             },
+            name_span: name_tok.span,
         })
     }
 
@@ -884,6 +917,7 @@ impl Parser {
                 line: start_tok.span.line,
                 col: start_tok.span.col,
             },
+            name_span: name_tok.span,
         })
     }
 
@@ -939,20 +973,23 @@ impl Parser {
                 line: start_tok.span.line,
                 col: start_tok.span.col,
             },
+            name_span: name_tok.span,
         })
     }
 
-    fn parse_impl_decl(&mut self) -> Result<Stmt, Diagnostic> {
+    fn parse_impl_decl(&mut self, annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
         let start_tok = self.consume(TokenKind::Impl, "expected 'impl'")?;
         let name_tok =
             self.consume(TokenKind::Identifier, "expected implementation target type")?;
         let mut trait_name = None;
         let mut target_type = name_tok.lexeme.clone();
+        let mut target_span = name_tok.span.clone();
 
         if self.match_token(TokenKind::For) {
             trait_name = Some(target_type);
             let target_tok = self.consume(TokenKind::Identifier, "expected target struct name")?;
             target_type = target_tok.lexeme.clone();
+            target_span = target_tok.span.clone();
         }
 
         self.consume(TokenKind::OpenBrace, "expected '{'")?;
@@ -967,12 +1004,14 @@ impl Parser {
             trait_name,
             target_type,
             methods,
+            annotations,
             span: Span {
                 start: start_tok.span.start,
                 end: end_span.start,
                 line: start_tok.span.line,
                 col: start_tok.span.col,
             },
+            name_span: target_span,
         })
     }
 
@@ -1537,6 +1576,22 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, Diagnostic> {
         let token = self.peek();
         match token.kind {
+            TokenKind::At => {
+                let mut annotations = Vec::new();
+                while self.check(TokenKind::At) {
+                    annotations.push(self.parse_annotation()?);
+                }
+                if self.check(TokenKind::OpenParen) && self.is_closure_lookahead() {
+                    return self.parse_closure(annotations);
+                }
+                return Err(Diagnostic::new_error(
+                    "annotations in expressions are only supported on closures".to_string(),
+                    self.filepath.clone(),
+                    token.span.clone(),
+                    None,
+                    None,
+                ));
+            }
             TokenKind::IntLiteral => {
                 let tok = self.advance();
                 let clean = tok.lexeme.replace('_', "");
@@ -1618,11 +1673,15 @@ impl Parser {
                 self.consume(TokenKind::OpenBrace, "expected '{' for formula structure")?;
                 let mut mappings = Vec::new();
                 while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
+                    let mut annotations = Vec::new();
+                    while self.check(TokenKind::At) {
+                        annotations.push(self.parse_annotation()?);
+                    }
                     let key_tok =
                         self.consume(TokenKind::Identifier, "expected formula field key")?;
                     self.consume(TokenKind::Colon, "expected ':' separator")?;
-                    let val = self.parse_expr()?;
-                    mappings.push((key_tok.lexeme.clone(), val));
+                    let mut val = self.parse_expr()?;
+                    mappings.push((key_tok.lexeme.clone(), val, key_tok.span.clone(), annotations));
                     self.match_token(TokenKind::Comma);
                 }
                 let end_tok = self.consume(
@@ -1691,7 +1750,7 @@ impl Parser {
             }
             TokenKind::OpenParen => {
                 if self.is_closure_lookahead() {
-                    return self.parse_closure();
+                    return self.parse_closure(vec![]);
                 }
                 let start_tok = self.advance();
                 let mut expressions = Vec::new();
@@ -1729,6 +1788,10 @@ impl Parser {
                 let start_tok = self.advance();
                 let mut mappings = Vec::new();
                 while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
+                    let mut annotations = Vec::new();
+                    while self.check(TokenKind::At) {
+                        annotations.push(self.parse_annotation()?);
+                    }
                     let key_tok = self.consume(
                         TokenKind::Identifier,
                         "expected object field key",
@@ -1738,7 +1801,7 @@ impl Parser {
                         "expected ':' after object field key",
                     )?;
                     let value = self.parse_expr()?;
-                    mappings.push((key_tok.lexeme.clone(), value));
+                    mappings.push((key_tok.lexeme.clone(), value, annotations));
                     self.match_token(TokenKind::Comma);
                 }
                 let end_tok = self.consume(
@@ -1893,7 +1956,7 @@ impl Parser {
         false
     }
 
-    fn parse_closure(&mut self) -> Result<Expr, Diagnostic> {
+    fn parse_closure(&mut self, annotations: Vec<Annotation>) -> Result<Expr, Diagnostic> {
         let start_tok =
             self.consume(TokenKind::OpenParen, "expected '(' for closure parameters")?;
         let mut params = Vec::new();
@@ -1950,6 +2013,7 @@ impl Parser {
             params,
             return_type,
             body,
+            annotations,
             span: Span {
                 start: start_tok.span.start,
                 end: end_span.start,

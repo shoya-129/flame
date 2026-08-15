@@ -525,7 +525,7 @@ impl Runner {
             } => {
                 let func = Value::Function {
                     params: params.clone(),
-                    body: body.clone(),
+                    body: body.clone().unwrap_or_default(),
                     env: env.clone(),
                     annotations: annotations.clone(),
                 };
@@ -1381,11 +1381,11 @@ impl Runner {
                     }
                 }
             }
-            Expr::Closure { params, body, .. } => Ok(Value::Function {
+            Expr::Closure { params, body, annotations, .. } => Ok(Value::Function {
                 params: params.clone(),
                 body: body.clone(),
                 env: env.clone(),
-                annotations: vec![],
+                annotations: annotations.clone(),
             }),
             Expr::Borrow(inner, is_mut, _) => {
                 // Construct a reference path when possible; fall back to Ref(value)
@@ -3988,7 +3988,7 @@ impl Runner {
             }
             Expr::Formula(mappings, _) => {
                 let mut map = HashMap::new();
-                for (k, v) in mappings {
+                for (k, v, _, _) in mappings {
                     let val = self.eval_expr(v, env.clone())?;
                     map.insert(k.clone(), val);
                 }
@@ -3996,7 +3996,7 @@ impl Runner {
             }
             Expr::Object(mappings, _) => {
                 let mut map = HashMap::new();
-                for (k, v) in mappings {
+                for (k, v, _annotations) in mappings {
                     let val = self.eval_expr(v, env.clone())?;
                     map.insert(k.clone(), val);
                 }

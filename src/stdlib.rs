@@ -41,6 +41,8 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
         ),
         false,
     );
+    
+    e.define("Error".to_string(), Value::StructConstructor { name: "Error".to_string(), fields: vec![("message".to_string(), "String".to_string()), ("code".to_string(), "Int".to_string())] }, false);
 
     use crate::vm::EnumData;
 
