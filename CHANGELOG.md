@@ -1,6 +1,13 @@
 # Flame Toolchain & Language Changelog
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
+---
+
+## [0.2.8] - 2026-08-15 (Codename: *Second Spark*)
+
+### 🐛 Testing & Package Manager
+- **Workspace Isolation in Test Runner**: Hardened the `flamelang test` runner (including the `--all` fallback) to strictly respect package boundaries. The test engine will no longer recursively traverse and execute `.fm` test files inside nested directories that contain their own `flame.toml` manifests. This completely prevents edge-cases where sub-packages containing Native Rust plugins were mistakenly executed in the root's interpreted mode, resulting in stubbed Native functions and false-positive assertion failures.
+- **Native Plugin Typechecking Revert**: Reverted a bug where parsing experimental file-based standard libraries caused the compiler's native type inference signatures (like `assert_eq(actual: Any, expected: Any)`) to be overwritten and evaluated as struct references, generating erroneous `expected Any, found Int` type mismatch diagnostics in the IDE.
 
 ---
 
