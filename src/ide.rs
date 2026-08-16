@@ -199,31 +199,39 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "@Application",
-        "**Application Entry Point**\n\nMarks this function as the application's entry point. The function is invoked automatically when the program starts. Configuration options such as `features` enable optional standard library modules and control application-wide compiler/runtime behavior.",
+        "```flame\nannotation @Application(features: [\"String\"])\n```\n**Application Entry Point**\n\nMarks this function as the application's entry point. The function is invoked automatically when the program starts. Configuration options such as `features` enable optional standard library modules and control application-wide compiler/runtime behavior.",
     ),
     (
         "@Test",
-        "**Unit Test**\n\nMarks this function as a test case. The compiler will aggregate all `@Test` functions and execute them in a secure test harness when you run `flame test`.\n\n**Parameters:**\n- `timeout: Int`: Timeout in milliseconds. Test fails if execution exceeds this.\n- `skip: Bool`: If true, skips executing this test.",
+        "```flame\nannotation @Test(timeout: Int = 1000, skip: Bool = false)\n```\n**Unit Test**\n\nMarks this function as a test case. The compiler will aggregate all `@Test` functions and execute them in a secure test harness when you run `flame test`.\n\n**Parameters:**\n- `timeout: Int`: Timeout in milliseconds. Test fails if execution exceeds this.\n- `skip: Bool`: If true, skips executing this test.",
     ),
     (
         "@Embedded",
-        "**Embedded Target Definition**\n\nDirects the compiler to emit machine code tailored for a specific microcontroller architecture, such as `arduino-uno` or `rp2040`.\n\n**Parameters:**\n- `target: String`: The hardware architecture target name.",
+        "```flame\nannotation @Embedded(target: String)\n```\n**Embedded Target Definition**\n\nDirects the compiler to emit machine code tailored for a specific microcontroller architecture, such as `arduino-uno` or `rp2040`.\n\n**Parameters:**\n- `target: String`: The hardware architecture target name.",
     ),
     (
         "@Cli",
-        "**CLI Application**\n\nMarks the application as a Command Line Interface tool, enabling automatic parsing of command line arguments into structures.",
+        "```flame\nannotation @Cli\n```\n**CLI Application**\n\nMarks the application as a Command Line Interface tool, enabling automatic parsing of command line arguments into structures.",
     ),
     (
         "@Platform",
-        "**Conditional Compilation**\n\nConditionally compiles the annotated declaration only if the active build target matches the given substring.\n\n**Example:**\n```flame\n@Platform(\"windows\")\nfn get_os_name() -> String {\n    \"Windows\"\n}\n```",
+        "```flame\nannotation @Platform(target: String)\n```\n**Conditional Compilation**\n\nConditionally compiles the annotated declaration only if the active build target matches the given substring.\n\n**Example:**\n```flame\n@Platform(\"windows\")\nfn get_os_name() -> String {\n    \"Windows\"\n}\n```",
     ),
     (
         "@Docs",
-        "**Documentation Provider**\n\nProvides rich IDE hover documentation for functions, structs, and enums, supporting markdown syntax.\n\n**Example:**\n```flame\n@Docs(\"Computes the sum of two numbers.\")\nfn sum(a: Int, b: Int) -> Int {\n    a + b\n}\n```",
+        "```flame\nannotation @Docs(String...)\n```\n**Documentation Provider**\n\nProvides rich IDE hover documentation for functions, structs, and enums, supporting markdown syntax.\n\n**Example:**\n```flame\n@Docs(\"Computes the sum of two numbers.\")\nfn sum(a: Int, b: Int) -> Int {\n    a + b\n}\n```",
+    ),
+    (
+        "@Requires",
+        "```flame\nannotation @Requires(String...)\n```\n**Dependency Requirement**\n\nSpecifies system, hardware, or module dependencies required by this function or module. The compiler makes the dependency visible inside the function scope without globally importing it. It is loaded when the function executes and safely unloaded afterwards.\n\n**Example:**\n```flame\n@Requires(\"std.fs\")\n```",
+    ),
+    (
+        "@Permission",
+        "```flame\nannotation @Permission(String...)\n```\n**Access Permission**\n\nRequests specific runtime permissions (e.g., `\"net\"`, `\"fs\"`, `\"env\"`).\n\n**Rules:**\n- If no `@Permission` is specified anywhere in the project, permissions are auto-allowed.\n- If specified on any function, the user must explicitly allow all mentioned permissions at runtime (via terminal prompt or `flame.toml`), otherwise execution stops immediately.\n- When used on an `@Test` function, permissions are automatically granted.\n\n**Example:**\n```flame\n@Permission(\"net\", \"fs\")\n```",
     ),
     (
         "@Command",
-        "**CLI Command**\n\nRegisters a function as an executable command within a `@Cli` application. Associates the function with a specific command-line keyword.",
+        "```flame\nannotation @Command\n```\n**CLI Command**\n\nRegisters a function as an executable command within a `@Cli` application. Associates the function with a specific command-line keyword.",
     ),
     (
         "features",
@@ -321,55 +329,63 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     (
         "Cli",
-        "```flame\n@Cli(name: String, version: String = \"0.1.0\", description: String = \"\")\n```\n**CLI Annotation**\nMarks an entry function or module as a CLI root. Use with `@Command`-annotated functions to describe subcommands, flags, and positional arguments for IDE/documentation tooling.",
+        "```flame\nannotation @Cli\n```\n**CLI Application**\n\nMarks the application as a Command Line Interface tool, enabling automatic parsing of command line arguments into structures.",
     ),
     (
         "Command",
-        "```flame\n@Command(name: String, about: String = \"\")\n```\n**CLI Annotation**\nMarks a function as a CLI subcommand handler. Parameters describe positional arguments and options; Bool parameters map naturally to flags.",
+        "```flame\nannotation @Command\n```\n**CLI Command**\n\nRegisters a function as an executable command within a `@Cli` application. Associates the function with a specific command-line keyword.",
     ),
     (
         "Test",
-        "```flame\n@Test(timeout: Int = 5000, skip: Bool = false, only: Bool = false, tags: Vector<String> = [])\n```\n**Annotated Function**\nMarks a function as a test.\nRuns only when `flame test` executes.\nIgnored during `flame run` and `flame build`.",
+        "```flame\nannotation @Test(timeout: Int = 1000, skip: Bool = false)\n```\n**Unit Test**\n\nMarks this function as a test case. The compiler will aggregate all `@Test` functions and execute them in a secure test harness when you run `flame test`.\n\n**Parameters:**\n- `timeout: Int`: Timeout in milliseconds. Test fails if execution exceeds this.\n- `skip: Bool`: If true, skips executing this test.",
     ),
     (
         "Setup",
-        "```flame\n@Setup\n```\n**Annotated Function**\nRuns before every test in the module (equivalent to `beforeEach()`).\nIgnored during `flame run` and `flame build`.",
+        "```flame\nannotation @Setup\n```\n**Test Setup**\n\nRuns before every test in the module (equivalent to `beforeEach()`).\nIgnored during `flame run` and `flame build`.",
     ),
     (
         "Cleanup",
-        "```flame\n@Cleanup\n```\n**Annotated Function**\nRuns after every test in the module (equivalent to `afterEach()`).\nIgnored during `flame run` and `flame build`.",
+        "```flame\nannotation @Cleanup\n```\n**Test Cleanup**\n\nRuns after every test in the module (equivalent to `afterEach()`).\nIgnored during `flame run` and `flame build`.",
     ),
     (
         "BeforeAll",
-        "```flame\n@BeforeAll\n```\n**Annotated Function**\nRuns exactly once before any test executes (e.g., database connection setup).\nIgnored during `flame run` and `flame build`.",
+        "```flame\nannotation @BeforeAll\n```\n**Module Initialization**\n\nRuns exactly once before any test executes (e.g., database connection setup).\nIgnored during `flame run` and `flame build`.",
     ),
     (
         "AfterAll",
-        "```flame\n@AfterAll\n```\n**Annotated Function**\nRuns exactly once after all tests complete (e.g., closing servers or cleaning temp files).\nIgnored during `flame run` and `flame build`.",
+        "```flame\nannotation @AfterAll\n```\n**Module Teardown**\n\nRuns exactly once after all tests complete (e.g., closing servers or cleaning temp files).\nIgnored during `flame run` and `flame build`.",
     ),
     (
         "Ignore",
-        "```flame\n@Ignore\n```\n**Annotated Function**\nSkips test execution when running `flame test`.",
+        "```flame\nannotation @Ignore\n```\n**Skip Test**\n\nSkips test execution when running `flame test`.",
     ),
     (
         "Only",
-        "```flame\n@Only\n```\n**Annotated Function**\nRestricts test execution to ONLY functions marked with `@Only` during `flame test`.",
+        "```flame\nannotation @Only\n```\n**Focus Test**\n\nRestricts test execution to ONLY functions marked with `@Only` during `flame test`.",
     ),
     (
         "Parameterized",
-        "```flame\n@Parameterized(arguments: Vector<Tuple>)\n```\n**Annotated Function**\nExpands a test into multiple independent test cases, passing each tuple element as parameters to the test function.",
+        "```flame\nannotation @Parameterized(arguments: Vector<Tuple>)\n```\n**Parameterized Test**\n\nExpands a test into multiple independent test cases, passing each tuple element as parameters to the test function.",
     ),
     (
         "Embedded",
-        "```flame\n@Embedded(target: String = \"arduino-uno\", baud: Int = 115200)\n```\n**Embedded Hardware Loop Annotation**\nMarks a function as a continuous hardware execution loop (equivalent to Arduino's `void loop()`).\nDuring `flame build`, the compiler automatically extracts the target device (e.g., `\"arduino-uno\"`, `\"esp32\"`, `\"stm32\"`, `\"rp2040\"`) and transpiles the AST directly to freestanding zero-cost `#![no_std]` Rust firmware.",
+        "```flame\nannotation @Embedded(target: String)\n```\n**Embedded Target Definition**\n\nDirects the compiler to emit machine code tailored for a specific microcontroller architecture, such as `arduino-uno` or `rp2040`.\n\n**Parameters:**\n- `target: String`: The hardware architecture target name.",
     ),
     (
         "Benchmark",
-        "```flame\n@Benchmark\n```\n**Annotated Function**\nExecutes the function as a high-precision performance benchmark during `flame test`, reporting average, minimum, and maximum execution times.",
+        "```flame\nannotation @Benchmark\n```\n**Performance Benchmark**\n\nExecutes the function as a high-precision performance benchmark during `flame test`, reporting average, minimum, and maximum execution times.",
+    ),
+    (
+        "Requires",
+        "```flame\nannotation @Requires(String...)\n```\n**Dependency Requirement**\n\nSpecifies system, hardware, or module dependencies required by this function or module. The compiler makes the dependency visible inside the function scope without globally importing it. It is loaded when the function executes and safely unloaded afterwards.\n\n**Example:**\n```flame\n@Requires(\"std.fs\")\n```",
+    ),
+    (
+        "Permission",
+        "```flame\nannotation @Permission(String...)\n```\n**Access Permission**\n\nRequests specific runtime permissions (e.g., `\"net\"`, `\"fs\"`, `\"env\"`).\n\n**Rules:**\n- If no `@Permission` is specified anywhere in the project, permissions are auto-allowed.\n- If specified on any function, the user must explicitly allow all mentioned permissions at runtime (via terminal prompt or `flame.toml`), otherwise execution stops immediately.\n- When used on an `@Test` function, permissions are automatically granted.\n\n**Example:**\n```flame\n@Permission(\"net\", \"fs\")\n```",
     ),
     (
         "ExpectPanic",
-        "```flame\n@ExpectPanic\n```\n**Annotated Function**\nAsserts that the test function MUST terminate with a panic or error; fails if the function completes successfully.",
+        "```flame\nannotation @ExpectPanic\n```\n**Expected Failure**\n\nAsserts that the test function MUST terminate with a panic or error; fails if the function completes successfully.",
     ),
     (
         "toInt",
@@ -487,15 +503,36 @@ pub fn get_literal_completions(prefix: &str) -> Vec<JsonCompletion> {
         .collect()
 }
 
-pub fn get_keyword_completions(current_line: &str, raw_word: &str, prefix: &str) -> Vec<JsonCompletion> {
+pub fn get_keyword_completions(
+    current_line: &str,
+    raw_word: &str,
+    prefix: &str,
+    tc_opt: Option<&crate::typechecker::TypeChecker>,
+) -> Vec<JsonCompletion> {
     let mut comps = Vec::new();
 
     if raw_word.starts_with('@') {
-        let annotations = ["@Application", "@Test", "@Embedded", "@Cli", "@Command"];
+        let clean_prefix = prefix.trim_start_matches('@');
+        
+        // Workspace annotations first
+        if let Some(tc) = tc_opt {
+            for ann_name in &tc.annotations {
+                if ann_name.starts_with(clean_prefix) || clean_prefix.is_empty() {
+                    comps.push(JsonCompletion {
+                        sort_text: Some("0_".to_string()),
+                        label: format!("@{}", ann_name),
+                        kind: "annotation".to_string(),
+                        detail: "workspace annotation".to_string(),
+                        documentation: tc.hover_info.values().find(|doc| doc.contains(&format!("annotation {}", ann_name))).cloned(),
+                    });
+                }
+            }
+        }
+
+        let annotations = ["@Application", "@Test", "@Embedded", "@Cli", "@Command", "@Requires", "@Permission"];
         for ann in annotations {
             if ann.starts_with(raw_word) {
                 let label = ann.to_string();
-                let clean_prefix = prefix.trim_start_matches('@');
                 let clean_label = ann.trim_start_matches('@');
                 if clean_label.starts_with(clean_prefix) || clean_prefix.is_empty() {
                     comps.push(JsonCompletion { sort_text: Some("1_".to_string()),
@@ -510,7 +547,7 @@ pub fn get_keyword_completions(current_line: &str, raw_word: &str, prefix: &str)
         return comps;
     }
 
-    if current_line.contains("features") && current_line.contains('[') {
+    if current_line.contains("@Application") && current_line.contains("features") && current_line.contains('[') {
         let features = ["\"http\"", "\"tcp\"", "\"udp\"", "\"ws\"", "\"mqtt\"", "\"url\""];
         for feat in features {
             if feat.starts_with(prefix) || prefix.is_empty() || feat.contains(prefix) {
@@ -534,13 +571,14 @@ pub fn get_keyword_completions(current_line: &str, raw_word: &str, prefix: &str)
     comps.extend(KEYWORDS
         .iter()
         .filter(|(kw, _)| {
-            let is_alphabetic = kw.chars().all(|c| c.is_alphabetic() || c == '_');
+            let is_alphabetic = kw.chars().all(|c| c.is_alphabetic() || c == '_' || c == '@');
             is_alphabetic && (kw.starts_with(prefix) || prefix.is_empty())
         })
-        .map(|(kw, doc)| JsonCompletion { sort_text: None,
+        .map(|(kw, doc)| JsonCompletion {
+            sort_text: if kw.starts_with('@') { Some("2_".to_string()) } else { None },
             label: kw.to_string(),
-            kind: "keyword".to_string(),
-            detail: "keyword".to_string(),
+            kind: if kw.starts_with('@') { "annotation".to_string() } else { "keyword".to_string() },
+            detail: if kw.starts_with('@') { "built-in annotation".to_string() } else { "keyword".to_string() },
             documentation: Some(doc.to_string()),
         }));
 
@@ -562,7 +600,7 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
     let clean_word = word.trim_start_matches('@');
     let mut hover = KEYWORDS
         .iter()
-        .find(|(kw, _)| *kw == word || *kw == clean_word)
+        .find(|(kw, _)| *kw == word || kw.trim_start_matches('@') == clean_word)
         .map(|(kw, doc)| {
             let formatted_doc = if doc.starts_with("```") {
                 doc.to_string()
@@ -586,6 +624,8 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
                 format!("```flame\ntype {}\n```\n{}", kw, doc.trim())
             } else if doc.starts_with("Built-in Function:") || doc.starts_with("Built-in Method:") {
                 format!("```flame\nfn {}\n```\n{}", kw, doc.trim())
+            } else if kw.starts_with('@') {
+                format!("```flame\nannotation {}\n```\n{}", kw, doc.trim())
             } else {
                 format!("```flame\nkeyword {}\n```\n{}", kw, doc.trim())
             };
@@ -807,7 +847,8 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         r"(?:export\s+)?(?:async\s+)?(fn|annotation)\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)(?:\s*->\s*([a-zA-Z0-9_<>, \t]+))?",
     )
     .unwrap();
-    let arg_re = Regex::new(r"([a-zA-Z_]\w*)\s*:\s*([a-zA-Z_]\w*)").unwrap();
+
+    let mut annotation_returns = std::collections::HashMap::new();
     for cap in fn_decl_re.captures_iter(content) {
         let kind_kw = &cap[1];
         let name_str = &cap[2];
@@ -815,6 +856,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         let ret_str = cap.get(4).map_or("()", |m| m.as_str().trim());
 
         let sig = if kind_kw == "annotation" {
+            annotation_returns.insert(name_str.to_string(), ret_str.to_string());
             if ret_str == "()" {
                 format!("annotation {}({})", name_str, params_str)
             } else {
@@ -832,14 +874,24 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
             name: name_str.to_string(),
             typ: Some(sig),
         });
+    }
 
-        let args_body = &cap[3];
-        for arg_cap in arg_re.captures_iter(args_body) {
-            vars.push(ScannedVar {
-                name: arg_cap[1].to_string(),
-                typ: Some(arg_cap[2].to_string()),
-            });
-        }
+    // Scan for annotation usages: `@Component` -> injects `component: ReturnType`
+    let ann_usage_re = Regex::new(r"@([A-Z]\w*)").unwrap();
+    for cap in ann_usage_re.captures_iter(content) {
+        let ann_name = &cap[1];
+        let mut c = ann_name.chars();
+        let lower_name = match c.next() {
+            None => String::new(),
+            Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
+        };
+        
+        let typ = annotation_returns.get(ann_name).cloned().unwrap_or_else(|| ann_name.to_string());
+
+        vars.push(ScannedVar {
+            name: lower_name,
+            typ: Some(typ),
+        });
     }
 
     (vars, structs)
@@ -849,7 +901,17 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
     let mut parts = module.split('.');
     let base = parts.next()?;
 
-    let base_module = if base == "std" { parts.next()? } else { base };
+    let base_module = if base == "std" { 
+        match parts.next() {
+            Some(m) if !m.is_empty() => m,
+            _ => {
+                // If it's just "std" or "std.", suggest the standard modules
+                return Some(vec!["thread", "process", "fs", "byte", "net", "json", "math", "time", "os", "hardware", "desktop", "env", "hid", "camera", "bluetooth", "serial", "embedded"].into_iter().map(String::from).collect());
+            }
+        }
+    } else { 
+        base 
+    };
 
     let mut map = match base_module {
         "thread" => Some(crate::native_std::thread::init()),

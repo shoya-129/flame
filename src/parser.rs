@@ -1682,7 +1682,7 @@ impl Parser {
                     let key_tok =
                         self.consume(TokenKind::Identifier, "expected formula field key")?;
                     self.consume(TokenKind::Colon, "expected ':' separator")?;
-                    let mut val = self.parse_expr()?;
+                    let val = self.parse_expr()?;
                     mappings.push((key_tok.lexeme.clone(), val, key_tok.span.clone(), annotations));
                     self.match_token(TokenKind::Comma);
                 }

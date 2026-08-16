@@ -338,6 +338,27 @@ function activate(context) {
         }
     }));
 
+    context.subscriptions.push(vscode.languages.registerSignatureHelpProvider(['flame'], {
+        async provideSignatureHelp(document, position) {
+            const result = await runCheck(document, position);
+            if (!result || !result.signature_help) {
+                return null;
+            }
+
+            const signature = new vscode.SignatureInformation(
+                result.signature_help.label
+            );
+            signature.parameters = result.signature_help.parameters.map(p => new vscode.ParameterInformation(p));
+            
+            const help = new vscode.SignatureHelp();
+            help.signatures = [signature];
+            help.activeSignature = 0;
+            help.activeParameter = result.signature_help.active_parameter;
+            
+            return help;
+        }
+    }, '(', ','));
+
     context.subscriptions.push(vscode.languages.registerDocumentFormattingEditProvider(['flame'], {
         async provideDocumentFormattingEdits(document) {
             if (document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return [];

@@ -18,7 +18,9 @@ Flame features a comprehensive suite of **built-in PascalCase annotations** that
 | **`@Command`** | **CLI Builder** | `@Command(name: String, about: String)` | Marks a function as an executable CLI subcommand handler with auto-mapped flag parameters. |
 | **`@Docs`** | **Documentation** | `@Docs("Markdown string")` | Provides rich IDE hover documentation for functions, structs, and enums, supporting markdown syntax. |
 | **`@Embedded`**| **Embedded** | `@Embedded(target: String = "arduino-uno", baud: Int = 115200)` | Defines the infinite hardware loop (`void loop()`) for zero-cost bare-metal firmware compilation. |
-| **`@Platform`**| **Compilation** | `@Platform("target_substring")` | Conditionally compiles the annotated declaration only if the active build target matches the given substring. |
+| **`@Platform`**| **Compilation** | `@Platform("target_substring")` | Conditionally compiles the annotated declaration only if the active build target matches the given substring. Defaults to the host OS if no target is specified during compilation. |
+| **`@Requires`**| **Dependency** | `@Requires("module_name", ...)` | Performs a local, function-scoped module import. The module is only usable inside the annotated function (unlike global `import`). |
+| **`@Permission`**| **Security** | `@Permission("permission", ...)` | Requests runtime permissions exactly once at program startup. If denied, the program exits. Duplicate permissions across functions are prompted only once. |
 | **`@Test`** | **Testing** | `@Test(timeout: Int = 5000, skip: Bool = false, only: Bool = false, tags: Vector = [])` | Marks a function as an automated test case executed via `flame test`. Stripped in release builds. |
 | **`@Setup`** | **Testing** | `@Setup` | Runs before every test case in the current file. Stripped in release builds. |
 | **`@Cleanup`** | **Testing** | `@Cleanup` | Runs after every test case in the current file. Stripped in release builds. |
@@ -45,7 +47,20 @@ fn get_os_name() -> String {
     "Linux"
 }
 ```
-If the platform annotation does not match during `flame build`, the annotated code is entirely stripped from the AST and excluded from the final binary, speeding up compilation and ensuring compatibility.
+If the platform annotation does not match during `flame build`, the annotated code is entirely stripped from the AST and excluded from the final binary, speeding up compilation and ensuring compatibility. If no explicit target OS is specified during the build, the compiler will automatically default to using the current host operating system.
+
+### Dependency Loading and Runtime Permissions
+
+Flame utilizes a dynamic, scoped dependency loader alongside a strict runtime permission model. These features are controlled through built-in annotations:
+
+- **`@Requires("std.fs", "std.net", ...)`**: Performs a local, function-scoped module import. Unlike a global `import` statement, the compiler makes the dependency visible *only* inside the scope of the annotated function. It is securely loaded into memory precisely when the function executes and safely unloaded afterwards.
+- **`@Permission("fs", "net", ...)`**: Explicitly requests runtime execution permissions from the user.
+  - **Rules:** 
+    - Permissions are gathered and prompted **exactly once** at program startup. 
+    - If the user accepts, the program starts. If denied, execution stops immediately.
+    - If multiple functions request the same permission, the user is only asked once.
+    - If no `@Permission` is specified anywhere in the project, permissions are auto-allowed for convenience during prototyping. 
+    - When used on an `@Test` function, permissions are automatically granted.
 
 ### Rich IDE Documentation (`@Docs`)
 You can provide hover documentation for your types, functions, and variables using the `@Docs` annotation. The flame language server natively supports markdown formatting inside `@Docs`, meaning you can write rich text and code blocks!

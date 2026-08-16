@@ -14,8 +14,9 @@ developing native plugins.
 3. [How to Add Built-In Annotations in Flame](#how-to-add-built-in-annotations-in-flame)
 4. [Writing Custom Annotations in Flame (`annotation/` folder)](#writing-custom-annotations-in-flame-annotation-folder)
 5. [Native Plugins & `flame-macro`](#native-plugins--flame-macro)
-6. [IDE Extension (`flame-ide`) Integration](#ide-extension-flame-ide-integration)
-7. [Running Tests & Validating Changes](#running-tests--validating-changes)
+6. [Reproducible Builds & `flame.lock`](#reproducible-builds--flamelock)
+7. [IDE Extension (`flame-ide`) Integration](#ide-extension-flame-ide-integration)
+8. [Running Tests & Validating Changes](#running-tests--validating-changes)
 
 ---
 
@@ -117,6 +118,7 @@ match annotation.name.as_str() {
     }
     _ => {
         // Custom user-defined annotation fallback
+        // Lints check that custom annotations start with an uppercase letter!
     }
 }
 ```
@@ -219,6 +221,16 @@ impl FlameServer {
   instances.
 - `#[flame(skip)]`: Omits internal methods from the generated `.fmi` interface.
 - `#[flame(rename = "custom_name")]`: Renames the symbol exported to Flame.
+
+---
+
+## Reproducible Builds & `flame.lock`
+
+Flame's native dependency bridge leverages Cargo under the hood. To ensure all developers and CI systems build against identical dependency versions, Flame automatically hoists the underlying `Cargo.lock` to the project root as `flame.lock`.
+
+During `flame build`, if `flame.lock` is present, it is copied to the build cache so that Cargo uses the pinned versions. On success, the cache lock is mirrored back. 
+
+Additionally, Flame caches the `.fmi` JSON metadata in the `.flame/pkg` directory. This significantly speeds up subsequent build times by bypassing the heavy `rustdoc --output-format json` phase.
 
 ---
 

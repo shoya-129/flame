@@ -2,10 +2,6 @@ import native.bridge
 
 
 
-@Docs("hui")
-export annotation Component(id: String, ) -> Int {
-}
-
 @Test
 fn test_rust_add() {
     let result = bridge.rust_add(10, 20)
@@ -80,3 +76,11 @@ fn test_counter_struct() {
     counter.increment()
     assert_eq(counter.get(), 7, "Counter should be 7 after two increments")
 }
+
+// @Requires("std.fs")
+// @Permission("net", "fs")
+// fn ptest() {
+//     let result = fs.read("../flame.toml")
+//     println(result.len())
+// }
+// ptest()

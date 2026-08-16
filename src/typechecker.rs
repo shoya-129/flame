@@ -39,10 +39,10 @@ struct VarInfo {
 
 #[derive(Debug, Clone)]
 pub struct ParamInfo {
-    name: String,
-    ty: Type,
-    is_ref: bool,
-    is_mut: bool,
+    pub name: String,
+    pub ty: Type,
+    pub is_ref: bool,
+    pub is_mut: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -86,7 +86,7 @@ pub struct TypeChecker {
     filepath: String,
     diagnostics: Vec<Diagnostic>,
     scopes: Vec<HashMap<String, VarInfo>>,
-    functions: HashMap<String, FunctionSig>,
+    pub functions: HashMap<String, FunctionSig>,
     structs: HashMap<String, StructInfo>,
     enums: HashMap<String, EnumInfo>,
     pub methods: HashMap<String, HashMap<String, FunctionSig>>,
@@ -96,6 +96,7 @@ pub struct TypeChecker {
     pub modules: HashSet<String>,
     pub plugins: HashSet<String>,
     pub plugin_methods: HashMap<String, HashMap<String, Type>>,
+    pub annotations: HashSet<String>,
 }
 
 impl TypeChecker {
@@ -114,6 +115,7 @@ impl TypeChecker {
             modules: HashSet::new(),
             plugins: HashSet::new(),
             plugin_methods: HashMap::new(),
+            annotations: HashSet::new(),
         };
         checker.register_builtins();
         checker
@@ -134,7 +136,7 @@ impl TypeChecker {
     }
 
     fn process_annotations(&mut self, annotations: &[Annotation]) -> Option<String> {
-        let mut hover_doc = None;
+        let mut docs = Vec::new();
         for ann in annotations {
             if ann.name == "Docs" {
                 self.hover_info.insert(
@@ -149,16 +151,37 @@ impl TypeChecker {
                     }
                     let doc_str = raw.replace("\\n", "\n");
                     self.hover_info.insert(ann.span.clone(), format!("**Documentation**\n\n{}", doc_str));
-                    hover_doc = Some(doc_str);
+                    docs.push(doc_str);
                 }
             } else if ann.name == "Test" {
                 self.hover_info.insert(
                     ann.name_span.clone(),
                     "**@Test**\n\nMarks a function as a unit test. It will be executed by the test runner.".to_string()
                 );
+                docs.push("**@Test Function**\nThis function is a unit test case.".to_string());
+            } else if ann.name == "Requires" {
+                docs.push(format!("**Requires Dependencies:** `{}`", ann.args.join(", ")));
+            } else if ann.name == "Permission" {
+                docs.push(format!("**Required Permissions:** `{}`", ann.args.join(", ")));
+            } else if let Some(func) = self.functions.get(&ann.name).cloned() {
+                if let Some(doc) = func.hover_doc {
+                    let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
+                    let ret_str = format!(" -> {}", self.format_type(&func.return_type));
+                    self.hover_info.insert(
+                        ann.name_span.clone(),
+                        format!("```flame\nannotation {}({}){}\n```\n{}", ann.name, params_str, ret_str, doc)
+                    );
+                }
+                docs.push(format!("**@{}**", ann.name));
+            } else {
+                docs.push(format!("**@{}**", ann.name));
             }
         }
-        hover_doc
+        if docs.is_empty() {
+            None
+        } else {
+            Some(docs.join("\n\n---\n\n"))
+        }
     }
 
     fn register_builtins(&mut self) {
@@ -463,8 +486,11 @@ impl TypeChecker {
                     name,
                     params,
                     return_type,
+                    annotations,
                     ..
                 } => {
+                    let hover_doc = self.process_annotations(annotations);
+                    self.annotations.insert(name.clone());
                     self.functions.insert(
                         name.clone(),
                         FunctionSig {
@@ -477,7 +503,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
-                            hover_doc: None, return_type: return_type
+                            hover_doc, return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
                                 .unwrap_or(Type::Nil),
@@ -892,6 +918,31 @@ impl TypeChecker {
 
                 self.push_scope();
                 for anno in annotations {
+                    if let Some(func) = self.functions.get(&anno.name).cloned() {
+                        if let Some(doc) = &func.hover_doc {
+                            let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
+                            let ret_str = format!(" -> {}", self.format_type(&func.return_type));
+                            self.hover_info.insert(
+                                anno.name_span.clone(),
+                                format!("```flame\nannotation {}({}){}\n```\n{}", anno.name, params_str, ret_str, doc)
+                            );
+                        }
+                    }
+
+                    if anno.name == "Requires" {
+                        for arg in &anno.args {
+                            if arg.starts_with('"') && arg.ends_with('"') {
+                                let mod_name = arg[1..arg.len()-1].to_string();
+                                let parts: Vec<String> = mod_name.split('.').map(|s| s.to_string()).collect();
+                                self.check_stmt(&Stmt::ImportDecl {
+                                    path: parts,
+                                    glob: false,
+                                    span: anno.span.clone(),
+                                });
+                            }
+                        }
+                    }
+                    
                     let ret_ty = if let Some(sig) = self.functions.get(&anno.name) {
                         sig.return_type.clone()
                     } else {
@@ -941,9 +992,20 @@ impl TypeChecker {
                 return_type,
                 body,
                 annotations,
-                span: _,
+                span,
                 name_span,
             } => {
+                if let Some(first_char) = name.chars().next() {
+                    if !first_char.is_uppercase() {
+                        self.diagnostics.push(Diagnostic::new_error(
+                            format!("Annotation names should start with an uppercase letter, found '{}'", name),
+                            self.filepath.clone(),
+                            name_span.clone(),
+                            None,
+                            None
+                        ));
+                    }
+                }
                 let func_type = Type::Function(
                     params
                         .iter()
@@ -1295,11 +1357,9 @@ impl TypeChecker {
                 } else if self.modules.contains(name) {
                     "module".to_string()
                 } else {
-                    let mut is_enum_variant = false;
                     let mut variant_doc = None;
                     for (enum_name, enum_info) in &self.enums {
                         if let Some(variant) = enum_info.variants.get(name) {
-                            is_enum_variant = true;
                             if let Some(doc) = &variant.hover_doc {
                                 variant_doc = Some(format!("```flame\n{}::{}\n```\n{}", enum_name, name, doc));
                             } else {
@@ -2527,7 +2587,7 @@ impl TypeChecker {
         }
     }
 
-    fn format_type(&self, ty: &Type) -> String {
+    pub fn format_type(&self, ty: &Type) -> String {
         match ty {
             Type::Int => "Int".to_string(),
             Type::Float => "Float".to_string(),

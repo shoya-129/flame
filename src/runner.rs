@@ -18,6 +18,8 @@ pub struct Runner {
     pub current_span: Option<Span>,
     pub native_methods: HashMap<String, fn(*const CValue, usize) -> CValue>,
     pub test_mode: bool,
+    pub interactive: bool,
+    pub granted_permissions: std::collections::HashSet<String>,
 }
 
 impl Runner {
@@ -29,6 +31,8 @@ impl Runner {
             current_span: None,
             native_methods: HashMap::new(),
             test_mode: false,
+            interactive: true,
+            granted_permissions: std::collections::HashSet::new(),
         };
         crate::stdlib::register_global_builtins(runner.env.clone());
         runner
@@ -189,6 +193,38 @@ impl Runner {
             } => {
                 let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
                 for anno in annotations {
+                    if anno.name == "Requires" {
+                        for arg_str in &anno.args {
+                            if arg_str.starts_with('"') && arg_str.ends_with('"') {
+                                let mod_name = arg_str[1..arg_str.len()-1].to_string();
+                                let parts: Vec<String> = mod_name.split('.').map(|s| s.to_string()).collect();
+                                let _ = self.execute_statement(&Stmt::ImportDecl {
+                                    path: parts,
+                                    glob: false,
+                                    span: anno.span.clone(),
+                                }, child_env.clone());
+                            }
+                        }
+                    } else if anno.name == "Permission" {
+                        for arg_str in &anno.args {
+                            if arg_str.starts_with('"') && arg_str.ends_with('"') {
+                                let perm_name = arg_str[1..arg_str.len()-1].to_string();
+                                if !self.granted_permissions.contains(&perm_name) {
+                                    if !self.interactive {
+                                        return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                    } else {
+                                        println!("Function requires permission for: {}. Allow? [y/N]", perm_name);
+                                        let mut input = String::new();
+                                        if std::io::stdin().read_line(&mut input).is_ok() && input.trim().eq_ignore_ascii_case("y") {
+                                            self.granted_permissions.insert(perm_name);
+                                        } else {
+                                            return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if !matches!(
                         anno.name.as_str(),
                         "Test"
@@ -203,6 +239,12 @@ impl Runner {
                             | "Cli"
                             | "Command"
                             | "ExpectPanic"
+                            | "Requires"
+                            | "Permission"
+                            | "Docs"
+                            | "Platform"
+                            | "Application"
+                            | "Embedded"
                     ) {
                         let mut anno_func_opt = closure_env.lock().unwrap().get(&anno.name);
                         if anno_func_opt.is_none() {
@@ -3779,6 +3821,38 @@ impl Runner {
                     } => {
                         let child_env = Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
                         for anno in &annotations {
+                            if anno.name == "Requires" {
+                                for arg_str in &anno.args {
+                                    if arg_str.starts_with('"') && arg_str.ends_with('"') {
+                                        let mod_name = arg_str[1..arg_str.len()-1].to_string();
+                                        let parts: Vec<String> = mod_name.split('.').map(|s| s.to_string()).collect();
+                                        let _ = self.execute_statement(&Stmt::ImportDecl {
+                                            path: parts,
+                                            glob: false,
+                                            span: anno.span.clone(),
+                                        }, child_env.clone());
+                                    }
+                                }
+                            } else if anno.name == "Permission" {
+                                for arg_str in &anno.args {
+                                    if arg_str.starts_with('"') && arg_str.ends_with('"') {
+                                        let perm_name = arg_str[1..arg_str.len()-1].to_string();
+                                        if !self.granted_permissions.contains(&perm_name) {
+                                            if !self.interactive {
+                                                return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                            } else {
+                                                println!("Function requires permission for: {}. Allow? [y/N]", perm_name);
+                                                let mut input = String::new();
+                                                if std::io::stdin().read_line(&mut input).is_ok() && input.trim().eq_ignore_ascii_case("y") {
+                                                    self.granted_permissions.insert(perm_name);
+                                                } else {
+                                                    return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             if !matches!(
                                 anno.name.as_str(),
                                 "Test"
@@ -3793,6 +3867,12 @@ impl Runner {
                                     | "Cli"
                                     | "Command"
                                     | "ExpectPanic"
+                                    | "Requires"
+                                    | "Permission"
+                                    | "Docs"
+                                    | "Platform"
+                                    | "Application"
+                                    | "Embedded"
                             ) {
                                 let mut anno_func_opt = closure_env.lock().unwrap().get(&anno.name);
                                 if anno_func_opt.is_none() {
@@ -4421,6 +4501,8 @@ impl Runner {
             current_span: None,
             native_methods: self.native_methods.clone(),
             test_mode: self.test_mode,
+            interactive: self.interactive,
+            granted_permissions: self.granted_permissions.clone(),
         }
     }
 

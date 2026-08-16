@@ -56,6 +56,14 @@ Because Flame links directly with Rust, **the API you call in Flame is identical
 
 ---
 
+## 4. Reproducible Builds (`flame.lock`)
+
+When you build a Flame project with native dependencies, the underlying Cargo lockfile is automatically hoisted to the root of your project as `flame.lock`.
+
+You should commit `flame.lock` to your version control system. This ensures that every developer and CI pipeline builds against the exact same versions of native dependencies, guaranteeing **reproducible builds** and heavily reducing compilation time.
+
+---
+
 ## Under the Hood: The Static Bridge Pipeline
 
 ```

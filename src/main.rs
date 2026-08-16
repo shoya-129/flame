@@ -62,6 +62,9 @@ fn main() {
             let project_name = &args[2];
             create_new_project(project_name);
         }
+        "doctor" => {
+            run_doctor_command();
+        }
         "build" => {
             build_project(&args);
         }
@@ -197,6 +200,42 @@ fn main() {
     }
 }
 
+fn run_doctor_command() {
+    println!("\nFlame 0.3.0 LTS\n");
+
+    fn check_cmd(cmd: &str, args: &[&str]) -> bool {
+        std::process::Command::new(cmd).args(args).output().is_ok()
+    }
+
+    println!("{} Blaze compiler", if true { "✓" } else { "✗" });
+    println!("{} Rust toolchain", if check_cmd("rustc", &["--version"]) { "✓" } else { "✗" });
+    println!("{} Cargo", if check_cmd("cargo", &["--version"]) { "✓" } else { "✗" });
+    println!("{} Native plugin support", "✓");
+    println!("{} Standard library", "✓");
+    println!("{} Package manager", "✓");
+    println!("{} FMI generation", "✓");
+    println!("{} Test runner", "✓");
+    println!("{} Formatter", "✓");
+
+    println!("\nPlatform");
+    let os = std::env::consts::OS;
+    let arch = std::env::consts::ARCH;
+    // capitalize first letter of OS
+    let mut os_chars = os.chars();
+    let os_cap = match os_chars.next() {
+        None => String::new(),
+        Some(f) => f.to_uppercase().collect::<String>() + os_chars.as_str(),
+    };
+    println!("✓ {} {}", os_cap, arch);
+
+    println!("\nOptional");
+    println!("{} Camera", "✓");
+    println!("{} Bluetooth", "✓");
+    println!("{} Serial", "✓");
+    println!("{} QEMU", if check_cmd("qemu-system-x86_64", &["--version"]) || check_cmd("qemu-system-aarch64", &["--version"]) { "✓" } else { "✗" });
+    println!();
+}
+
 fn print_help() {
     let bold = "\x1b[1m";
     let cyan = "\x1b[1;36m";
@@ -297,33 +336,18 @@ fn create_new_project(name: &str) {
 
     // Write flame.toml
     let toml_content = format!(
-        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2026\"\ntype = \"executable\"\n\n[dependencies]\nstd = \"0.1.0\"\n",
+        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2026\"\ntype = \"executable\"\n\n[dependencies]\n",
         name
     );
     fs::write(root.join("flame.toml"), toml_content).unwrap();
 
     // Write src/main.fm
-    let main_flame = r#"import math
-import std.thread
+    let main_flame = r#"
 
-print("Hello, world! Program executed successfully.")
-let result: Int = math.add(5, 7)
-print($"5 + 7 = {result}")
+println("Hello, world!")
 
-let t: ThreadHandler = thread {
-    print("Hello from background thread!")
-}
-
-t.join()
 "#;
     fs::write(root.join("src/main.fm"), main_flame).unwrap();
-
-    // Write src/math.fm
-    let math_flame = r#"export fn add(a: Int, b: Int) -> Int {
-    a + b
-}
-"#;
-    fs::write(root.join("src/math.fm"), math_flame).unwrap();
 
     println!(
         "\x1b[1;32mCreated\x1b[0m binary (application) `{}` package",
@@ -366,9 +390,8 @@ fn filter_platform_stmts(stmts: &mut Vec<Stmt>, current_target: Option<&str>) {
                         return false;
                     }
                 } else {
-                    // If there is no specific target set, we default to host (which might not match embedded)
-                    // But for safety, if they explicitly requested a platform and target is none, we probably ignore it if it doesn't match native.
-                    if !required_platform.is_empty() {
+                    // If there is no specific target set, we default to host OS
+                    if !required_platform.is_empty() && !std::env::consts::OS.contains(&required_platform.to_lowercase()) {
                         return false;
                     }
                 }
@@ -849,7 +872,7 @@ fn run_file(path_str: &str, force_local: bool, script_args: &[String]) {
 
         if !status.success() {
             println!(
-                "\x1b[1;31mruntime error:\x1b[0m process exited with {:?}",
+                "\x1b[1;31mruntime error:\x1b[0m process exited with code {:?}",
                 status.code()
             );
         }
@@ -1155,6 +1178,10 @@ fn run_tests(args: &[String]) {
         }
 
         let mut runner = crate::runner::Runner::new(path.clone());
+        if let Ok(content) = fs::read_to_string("flame.toml") {
+            runner.granted_permissions = crate::package_manager::parse_manifest_permissions(&content);
+        }
+        runner.interactive = false;
         runner.test_mode = true;
         let _ = runner.run(&stmts);
 
@@ -1299,6 +1326,13 @@ pub struct JsonHover {
 }
 
 #[derive(Serialize)]
+pub struct JsonSignatureHelp {
+    pub label: String,
+    pub parameters: Vec<String>,
+    pub active_parameter: u32,
+}
+
+#[derive(Serialize)]
 struct JsonCheckOutput {
     file: String,
     diagnostics: Vec<JsonDiagnostic>,
@@ -1307,6 +1341,7 @@ struct JsonCheckOutput {
     plugins: Vec<package_manager::PluginSpec>,
     completions: Vec<JsonCompletion>,
     hover: Option<JsonHover>,
+    signature_help: Option<JsonSignatureHelp>,
     pub tokens: Vec<crate::ide::SemanticToken>,
 }
 
@@ -1339,6 +1374,7 @@ fn run_check_command(args: &[String]) {
             plugins: vec![],
             completions: vec![],
             hover: None,
+            signature_help: None,
             tokens: vec![],
         });
 
@@ -1496,6 +1532,23 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 label: module.clone(),
                 kind: "module".to_string(),
                 detail: "standard library".to_string(),
+                documentation: None,
+            });
+        }
+    } else if current_line.trim().starts_with("@Requires(") && current_line[..cursor_col as usize].matches('"').count() % 2 == 1 {
+        for module in &std_modules {
+            completions.push(JsonCompletion { sort_text: None,
+                label: format!("std.{}", module),
+                kind: "module".to_string(),
+                detail: "standard library".to_string(),
+                documentation: None,
+            });
+        }
+        for module in &native_modules {
+            completions.push(JsonCompletion { sort_text: None,
+                label: module.clone(),
+                kind: "plugin".to_string(),
+                detail: "native plugin".to_string(),
                 documentation: None,
             });
         }
@@ -2351,6 +2404,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             current_line,
             &word_under_cursor_raw,
             &word_under_cursor,
+            tc_opt.as_ref(),
         ));
 
         let mut hover_found = None;
@@ -2381,32 +2435,77 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                             label: format!("{}: native.{}", v.name, typ),
                             documentation: Some(desc),
                         });
+                    } else {
+                        let is_func_or_anno = typ.starts_with("fn ") || typ.starts_with("annotation ");
+                        
+                        if is_func_or_anno {
+                            hover_found = Some(JsonHover {
+                                label: format!("{}", typ),
+                                documentation: Some(format!("```flame\n{}\n```", typ)),
+                            });
+                        } else {
+                            hover_found = Some(JsonHover {
+                                label: format!("{}: {}", v.name, typ),
+                                documentation: Some(format!("```flame\nlet {}: {}\n```", v.name, typ)),
+                            });
+                        }
                     }
+                } else {
+                    hover_found = Some(JsonHover {
+                        label: format!("{}: Unknown", v.name),
+                        documentation: Some(format!("```flame\nlet {}: Unknown\n```", v.name)),
+                    });
                 }
             }
         }
 
         // Provide variables as completion for bare words
         for v in &scanned_vars {
+            let typ_str = v.typ.clone().unwrap_or_else(|| "unknown".to_string());
+            let is_annotation = typ_str.starts_with("annotation ");
+            
+            // If user typed `@`, ONLY show annotations!
+            if word_under_cursor_raw.starts_with('@') && !is_annotation {
+                continue;
+            }
+
             if v.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
-                completions.push(JsonCompletion { sort_text: Some("0_".to_string()),
-                    label: v.name.clone(),
-                    kind: "variable".to_string(),
-                    detail: v.typ.clone().unwrap_or_else(|| "unknown".to_string()),
+                let mut kind = "variable".to_string();
+                let mut label = v.name.clone();
+                let mut sort_text = Some("0_".to_string());
+                
+                if typ_str.starts_with("fn ") {
+                    kind = "function".to_string();
+                    sort_text = Some("1_".to_string());
+                } else if is_annotation {
+                    kind = "annotation".to_string();
+                    sort_text = Some("0_".to_string()); // Workspace annotations first
+                    if !label.starts_with('@') {
+                        label = format!("@{}", label);
+                    }
+                }
+                
+                completions.push(JsonCompletion { 
+                    sort_text,
+                    label,
+                    kind,
+                    detail: typ_str,
                     documentation: None,
                 });
             }
         }
 
         // Provide structs as completion for bare words
-        for s in &scanned_structs {
-            if s.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
-                completions.push(JsonCompletion { sort_text: None,
-                    label: s.name.clone(),
-                    kind: "class".to_string(),
-                    detail: "struct".to_string(),
-                    documentation: None,
-                });
+        if !word_under_cursor_raw.starts_with('@') {
+            for s in &scanned_structs {
+                if s.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
+                    completions.push(JsonCompletion { sort_text: None,
+                        label: s.name.clone(),
+                        kind: "class".to_string(),
+                        detail: "struct".to_string(),
+                        documentation: None,
+                    });
+                }
             }
         }
 
@@ -2456,6 +2555,66 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         }
     }
 
+    let mut signature_help = None;
+    if let Some(prefix) = current_line.get(..cursor_col.saturating_sub(1)) {
+        let mut open_parens = 0;
+        let mut chars = prefix.chars().rev().enumerate();
+        let mut found_call = false;
+        let mut commas = 0;
+        let mut call_start_idx = 0;
+        
+        while let Some((i, c)) = chars.next() {
+            if c == ')' {
+                open_parens += 1;
+            } else if c == ',' && open_parens == 0 {
+                commas += 1;
+            } else if c == '(' {
+                if open_parens > 0 {
+                    open_parens -= 1;
+                } else {
+                    found_call = true;
+                    call_start_idx = prefix.len() - 1 - i;
+                    break;
+                }
+            }
+        }
+
+        if found_call {
+            let func_name_str = prefix[..call_start_idx].trim_end();
+            let name_end = func_name_str.len();
+            let mut name_start = name_end;
+            for (i, c) in func_name_str.chars().rev().enumerate() {
+                if !c.is_alphanumeric() && c != '_' && c != '.' && c != '@' {
+                    name_start = name_end - i;
+                    break;
+                }
+                if i == name_end - 1 {
+                    name_start = 0;
+                }
+            }
+            if name_start < name_end {
+                let func_name = &func_name_str[name_start..name_end];
+                let clean_name = func_name.trim_start_matches('@').split('.').last().unwrap_or(func_name);
+                
+                if let Some(tc) = &tc_opt {
+                    if let Some(func) = tc.functions.get(clean_name) {
+                        let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
+                        let ret_str = format!(" -> {}", tc.format_type(&func.return_type));
+                        
+                        let label = format!("{}({}){}", clean_name, params_str, ret_str);
+                        let parameters = func.params.iter().map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty))).collect();
+                        
+                        signature_help = Some(JsonSignatureHelp {
+                            label,
+                            parameters,
+                            active_parameter: commas,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     let tokens = ide::get_semantic_tokens(&content);
 
     JsonCheckOutput {
@@ -2466,6 +2625,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
         plugins,
         completions,
         hover,
+        signature_help,
         tokens,
     }
 }

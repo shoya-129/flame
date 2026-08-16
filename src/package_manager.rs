@@ -34,6 +34,10 @@ pub struct FlameFunctionMeta {
     pub receiver: Option<String>,
     #[serde(default)]
     pub docs: Option<String>,
+    #[serde(default)]
+    pub requires: Vec<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -93,6 +97,35 @@ fn parse_section_entries(content: &str, section_name: &str) -> Vec<(String, Stri
 
 fn parse_plugin_entries(content: &str) -> Vec<(String, String)> {
     parse_section_entries(content, "[plugins]")
+}
+
+pub fn parse_manifest_permissions(content: &str) -> std::collections::HashSet<String> {
+    let mut perms = std::collections::HashSet::new();
+    let mut in_section = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[permissions]" {
+            in_section = true;
+            continue;
+        }
+        if trimmed.starts_with('[') {
+            in_section = false;
+            continue;
+        }
+        if !in_section || trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(eq_idx) = trimmed.find('=') {
+            let key = trimmed[..eq_idx].trim().to_string();
+            let val = trimmed[eq_idx+1..].trim();
+            if val == "true" {
+                perms.insert(key);
+            }
+        } else {
+            perms.insert(trimmed.to_string());
+        }
+    }
+    perms
 }
 
 pub fn list_plugins() -> Vec<PluginSpec> {
@@ -254,26 +287,29 @@ pub fn add_package(args: &[String]) {
             let _ = fs::write(toml_path, content);
         }
     }
-    
+
     // Perform git cloning for github.com URLs
     if !is_plugin && manifest_value.starts_with("github.com/") {
         let mut parts = manifest_value.split('@');
         let repo_url = format!("https://{}", parts.next().unwrap());
         let version = parts.next();
-        
+
         let pkg_dir = Path::new(".flame").join("pkg").join(&manifest_key);
         if pkg_dir.exists() {
             println!("\x1b[1;33m   Warning:\x1b[0m package '{}' is already downloaded. To update, remove it first.", manifest_key);
         } else {
-            println!("\x1b[1;36m   Fetching\x1b[0m {} from {}...", manifest_key, repo_url);
+            println!(
+                "\x1b[1;36m   Fetching\x1b[0m {} from {}...",
+                manifest_key, repo_url
+            );
             let _ = fs::create_dir_all(".flame/pkg");
-            
+
             let mut cmd = std::process::Command::new("git");
             cmd.arg("clone").arg(&repo_url).arg(&pkg_dir);
             if let Some(tag) = version {
                 cmd.arg("--branch").arg(tag);
             }
-            
+
             let result = cmd.output();
             if let Ok(output) = result {
                 if !output.status.success() {
@@ -739,6 +775,8 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                 is_generic,
                                 is_async,
                                 is_constructor,
+                                requires: vec![],
+                                permissions: vec![],
                                 persistent_runtime: false,
                                 receiver: None,
                                 params: param_types
@@ -1005,6 +1043,8 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                                                                             is_generic,
                                                                             is_async,
                                                                             is_constructor,
+                                                                            requires: vec![],
+                                                                            permissions: vec![],
                                                                             persistent_runtime: false,
                                                                             receiver,
                                                                             params: m_param_types.iter().enumerate().map(|(idx, pt)| FlameParamMeta {
@@ -1168,6 +1208,8 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                     return_type,
                                     is_static: true,
                                     is_generic: !fn_item.sig.generics.params.is_empty(),
+                                    requires: vec![],
+                                    permissions: vec![],
                                     is_async,
                                     is_constructor,
                                     persistent_runtime,
@@ -1275,6 +1317,8 @@ pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
                                                     .generics
                                                     .params
                                                     .is_empty(),
+                                                requires: vec![],
+                                                permissions: vec![],
                                                 is_async,
                                                 is_constructor,
                                                 persistent_runtime,

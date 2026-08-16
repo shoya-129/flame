@@ -234,6 +234,18 @@ panic = "abort"
                 }
             }
         }
+        let json_path = build_cache
+            .join("target/doc")
+            .join(format!("{}.json", name.replace("-", "_")));
+        let meta_dir = Path::new(".flame").join("pkg").join(name);
+        fs::create_dir_all(&meta_dir).unwrap();
+        let meta_path = meta_dir.join(format!("{}.fmi", name));
+
+        if meta_path.exists() {
+            // Already generated FMI, skip rustdoc to drastically decrease build time
+            continue;
+        }
+
         let mut retry = true;
 
         while retry {
@@ -279,13 +291,6 @@ panic = "abort"
                 }
             }
         }
-
-        let json_path = build_cache
-            .join("target/doc")
-            .join(format!("{}.json", name.replace("-", "_")));
-        let meta_dir = Path::new(".flame").join("pkg").join(name);
-        fs::create_dir_all(&meta_dir).unwrap();
-        let meta_path = meta_dir.join(format!("{}.fmi", name));
 
         if json_path.exists() {
             let mut meta = crate::package_manager::parse_rustdoc_json(&json_path, name);
@@ -547,6 +552,19 @@ panic = "abort"
     main_rs.push_str("fn main() {\n");
     main_rs.push_str("    let handle = std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {\n");
     main_rs.push_str("    let mut runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
+    
+    let mut perms = std::collections::HashSet::new();
+    if Path::new("flame.toml").exists() {
+        if let Ok(content) = fs::read_to_string("flame.toml") {
+            perms = crate::package_manager::parse_manifest_permissions(&content);
+        }
+    }
+    for p in perms {
+        main_rs.push_str(&format!("    runner.granted_permissions.insert(\"{}\".to_string());\n", p));
+    }
+    if is_test_mode {
+        main_rs.push_str("    runner.interactive = false;\n");
+    }
 
     for (name, _) in native_deps {
         let meta_path = Path::new(".flame")
@@ -639,13 +657,28 @@ panic = "abort"
 
     fs::write(build_cache.join("src/main.rs"), main_rs).unwrap();
 
+    let root_lockfile = Path::new("flame.lock");
+    let cache_lockfile = build_cache.join("Cargo.lock");
+    if root_lockfile.exists() {
+        let _ = fs::copy(root_lockfile, &cache_lockfile);
+    }
+
     let mut cmd = Command::new("cargo");
     cmd.arg("build");
     if profile == "release" {
         cmd.arg("--release");
     }
     cmd.current_dir(&build_cache);
-    let output = cmd.output();
+
+    let status = cmd.status().expect("Failed to execute cargo build");
+
+    if status.success() {
+        if cache_lockfile.exists() {
+            let _ = fs::copy(&cache_lockfile, root_lockfile);
+        }
+    } else {
+        std::process::exit(status.code().unwrap_or(1));
+    }
 
     let target_dir = Path::new("target").join(profile);
     fs::create_dir_all(&target_dir).unwrap();
@@ -656,29 +689,23 @@ panic = "abort"
     };
     let target_exe = target_dir.join(&exe_name);
 
-    if let Ok(out) = output {
-        if out.status.success() {
-            let compiled_exe_name = format!("{}_aot{}", pkg_name, std::env::consts::EXE_SUFFIX);
-            let compiled_exe = build_cache
-                .join("target")
-                .join(if profile == "release" {
-                    "release"
-                } else {
-                    "debug"
-                })
-                .join(&compiled_exe_name);
-            if let Err(e) = fs::copy(&compiled_exe, &target_exe) {
-                eprintln!("\x1b[1;31m     Error\x1b[0m failed to copy native executable: {}", e);
-                std::process::exit(1);
-            }
-            println!("\x1b[1;32m     Finished\x1b[0m building native executable!");
-        } else {
-            eprintln!("\x1b[1;31m     Error\x1b[0m failed to build native executable.");
-            eprintln!("{}", String::from_utf8_lossy(&out.stderr));
+    if status.success() {
+        let compiled_exe_name = format!("{}_aot{}", pkg_name, std::env::consts::EXE_SUFFIX);
+        let compiled_exe = build_cache
+            .join("target")
+            .join(if profile == "release" {
+                "release"
+            } else {
+                "debug"
+            })
+            .join(&compiled_exe_name);
+        if let Err(e) = fs::copy(&compiled_exe, &target_exe) {
+            eprintln!("\x1b[1;31m     Error\x1b[0m failed to copy native executable: {}", e);
             std::process::exit(1);
         }
+        println!("\x1b[1;32m     Finished\x1b[0m building native executable!");
     } else {
-        eprintln!("\x1b[1;31m     Error\x1b[0m could not invoke cargo build.");
+        eprintln!("\x1b[1;31m     Error\x1b[0m failed to build native executable.");
         std::process::exit(1);
     }
 }

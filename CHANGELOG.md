@@ -3,6 +3,38 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.0] - 2026-08-16 (Codename: *Second Spark*)
+
+### ✨ New Features & Enhancements
+- **`flame doctor` Command**: Added a new CLI command `flame doctor` to diagnose environment health, check toolchain installations, standard libraries, plugins, AOT compiler status, and platform configuration.
+- **Reproducible Builds (`flame.lock`)**: Implemented `flame.lock` for the AOT compiler. The lockfile is correctly mirrored to the build cache to ensure perfectly reproducible builds across environments.
+- **IDE Signature Help (`->`)**: Implemented native VS Code Signature Help! When typing `(` or `,`, developers will now see an interactive parameter hint popup natively rendering function signatures (e.g. `add(a: Int, b: Int) -> Int`), resolving beautifully for workspace functions, closures, and annotations.
+
+### ⚡ Performance Optimizations
+- **`.fmi` Caching (AOT Compiler)**: Drastically reduced subsequent compilation times. `flame build` now intelligently caches `.fmi` native dependency interface files in `.flame/pkg`, completely bypassing the heavy `rustdoc --output-format json` phase once generated.
+
+### 🐛 IDE & Tooling Fixes
+- **`@Platform` Host OS Fallback**: Fixed an issue where the IDE would hide OS-specific `@Platform` functions. If no explicit target is specified (like inside the language server), the compiler now correctly defaults to the current host OS, ensuring accurate completion suggestions.
+- **Annotation Autocomplete Priority**: Upgraded IDE completion ordering so workspace-declared annotations are correctly prioritized and suggested before built-ins.
+- **Custom Annotation Lints**: Introduced a `TypeChecker` lint rule enforcing that all custom user annotations must start with an uppercase letter to better distinguish them from regular functions.
+- **Hover Docs for Annotations**: Fixed a bug where hover documentation (`@Docs`) was failing for annotations. Hovering over `@Annotation` will now perfectly render its rich markdown documentation.
+- **`features` Keyword Scope**: Corrected the IDE to restrict the `features` keyword completion strictly to the interior body of the `@Application` annotation block.
+- **`std.` Submodule Autocomplete**: Enhanced language server parsing so typing `std.` correctly displays available standard library submodules (`std.net`, `std.byte`, `std.json`, etc.) instantly.
+- **Runtime Error Exits**: Standardized runtime execution errors to reliably and consistently exit with `process exited with code 1`.
+
+### 📚 Documentation & Built-in Annotations
+- **`@Requires` Annotation**: Implemented lexical dependency injection. The compiler dynamically makes the specified standard module (or native plugin) visible inside the annotated function scope without globally importing it. Safely unloaded from memory after execution to optimize resource usage. IDE autocomplete now automatically suggests standard library modules and plugins when typing inside `@Requires("...`.
+- **`@Permission` Annotation**: Introduced a robust runtime capability model.
+  - If used on a function, the user must explicitly allow the permissions via terminal prompt or `flame.toml`, otherwise execution stops instantly.
+  - If no `@Permission` is specified project-wide, execution is auto-allowed.
+  - Permissions are automatically granted when used on `@Test` functions.
+- **Enhanced IDE Annotations**:
+  - Annotations now correctly display with the `@` prefix and the proper "annotation" icon in autocompletion, preventing them from being mistakenly suggested as variables.
+  - Hovering over an `@Test` annotated function now properly highlights its test-case status in the IDE.
+  - Hover text dynamically concatenates all annotations applied to a function for rich contextual documentation.
+
+---
+
 ## [0.2.9] - 2026-08-15 (Codename: *Second Spark*)
 
 ### 🐛 IDE & Syntax Highlighting
