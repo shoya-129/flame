@@ -462,6 +462,15 @@ impl TypeChecker {
                     if let Some(cmd_info) = self.parse_command_annotation(name, annotations, params, span) {
                         self.commands.insert(cmd_info.name.clone(), cmd_info);
                     }
+                    if self.functions.contains_key(name) {
+                        self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                            format!("Duplicate function definition: '{}' is already defined", name),
+                            self.filepath.clone(),
+                            span.clone(),
+                            None,
+                            None,
+                        ));
+                    }
                     self.functions.insert(
                         name.clone(),
                         FunctionSig {
@@ -865,7 +874,7 @@ impl TypeChecker {
                 return_type,
                 body,
                 annotations,
-                span,
+                span: _span,
                 name_span,
                 ..
             } => {
@@ -992,7 +1001,7 @@ impl TypeChecker {
                 return_type,
                 body,
                 annotations,
-                span,
+                span: _span,
                 name_span,
             } => {
                 if let Some(first_char) = name.chars().next() {

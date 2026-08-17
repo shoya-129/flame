@@ -4,7 +4,7 @@ import native.bridge
 
 @Test
 fn test_rust_add() {
-    let result = add(10, 20)
+    let result = bridge.rust_add(10, 20)
 
     assert_eq(result, 30, "10 + 20 should be 30")
 }

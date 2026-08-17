@@ -11,7 +11,7 @@ pub fn build_aot_project(
     is_pkg: bool,
     is_test_mode: bool,
 ) {
-    println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
+
 
     let build_cache = Path::new(".flame").join("build-cache");
     let _ = fs::create_dir_all(&build_cache);
@@ -250,6 +250,32 @@ panic = "abort"
 
         while retry {
             retry = false;
+            use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+            let done = Arc::new(AtomicBool::new(false));
+            let done_clone = done.clone();
+            use std::io::Write;
+            print!("\x1b[1;36m   Extracting\x1b[0m bindings for {}...  ", package_spec);
+            let _ = std::io::stdout().flush();
+            let spinner_thread = std::thread::spawn(move || {
+                let chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                let colors = ["\x1b[37m", "\x1b[33m", "\x1b[38;2;255;0;104m"]; // white, yellow, flame
+                let mut i = 0;
+                let mut color_idx = 0;
+                use std::io::Write;
+                while !done_clone.load(Ordering::SeqCst) {
+                    if i > 0 && i % chars.len() == 0 {
+                        color_idx = (color_idx + 1) % colors.len();
+                    }
+                    let color = colors[color_idx];
+                    print!("\x08{}{}\x1b[0m", color, chars[i % chars.len()]);
+                    let _ = std::io::stdout().flush();
+                    i += 1;
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                print!("\x08 \n");
+                let _ = std::io::stdout().flush();
+            });
+
             let output = Command::new("cargo")
                 .args([
                     "+nightly",
@@ -263,6 +289,9 @@ panic = "abort"
                 ])
                 .current_dir(&build_cache)
                 .output();
+
+            done.store(true, Ordering::SeqCst);
+            let _ = spinner_thread.join();
 
             if let Ok(out) = output {
                 if !out.status.success() {
@@ -627,7 +656,8 @@ panic = "abort"
         "    let mut parser = flamelang::parser::Parser::new(tokens, \"src/main.fm\".to_string());\n",
     );
     main_rs.push_str("    match parser.parse() {\n");
-    main_rs.push_str("        Ok(stmts) => {\n");
+    main_rs.push_str("        Ok(mut stmts) => {\n");
+    main_rs.push_str("            flamelang::parser::filter_platform_stmts(&mut stmts, Some(std::env::consts::OS));\n");
     if is_test_mode {
         main_rs.push_str("            runner.test_mode = true;\n");
         main_rs.push_str("            let _ = runner.run(&stmts);\n");
@@ -670,13 +700,44 @@ panic = "abort"
     }
     cmd.current_dir(&build_cache);
 
-    let status = cmd.status().expect("Failed to execute cargo build");
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    let done = Arc::new(AtomicBool::new(false));
+    let done_clone = done.clone();
+    use std::io::Write;
+    print!("\x1b[1;36m     Linking\x1b[0m native static object files...  ");
+    let _ = std::io::stdout().flush();
+    let spinner_thread = std::thread::spawn(move || {
+        let chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        let colors = ["\x1b[37m", "\x1b[33m", "\x1b[38;2;255;0;104m"]; // white, yellow, flame
+        let mut i = 0;
+        let mut color_idx = 0;
+        use std::io::Write;
+        while !done_clone.load(Ordering::SeqCst) {
+            if i > 0 && i % chars.len() == 0 {
+                color_idx = (color_idx + 1) % colors.len();
+            }
+            let color = colors[color_idx];
+            print!("\x08{}{}\x1b[0m", color, chars[i % chars.len()]);
+            let _ = std::io::stdout().flush();
+            i += 1;
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        print!("\x08 \n");
+        let _ = std::io::stdout().flush();
+    });
+
+    let output = cmd.output().expect("Failed to execute cargo build");
+    done.store(true, Ordering::SeqCst);
+    let _ = spinner_thread.join();
+
+    let status = output.status;
 
     if status.success() {
         if cache_lockfile.exists() {
             let _ = fs::copy(&cache_lockfile, root_lockfile);
         }
     } else {
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
         std::process::exit(status.code().unwrap_or(1));
     }
 

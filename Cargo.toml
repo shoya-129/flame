@@ -1,6 +1,6 @@
 [package]
 name = "flamelang"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 description = "A statically typed, fast, and modern programming language built in Rust."
 license = "ISC"
@@ -41,7 +41,7 @@ sysinfo = "=0.30.0"
 hidapi = "2"
 serialport = "4"
 nokhwa = { version = "0.10", features = ["input-native"] }
-image = { version = "0.25", default-features = false }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
 btleplug = "0.12.0"
 futures = { version = "0.3", default-features = false, features = ["executor"] }
 once_cell = "1.21"

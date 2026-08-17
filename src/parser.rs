@@ -2195,3 +2195,33 @@ pub fn is_test_statement(stmt: &Stmt) -> bool {
         _ => false,
     }
 }
+
+pub fn filter_platform_stmts(stmts: &mut Vec<Stmt>, current_target: Option<&str>) {
+    stmts.retain(|stmt| {
+        let annotations = match stmt {
+            Stmt::FuncDecl { annotations, .. } => annotations,
+            Stmt::StructDecl { annotations, .. } => annotations,
+            Stmt::EnumDecl { annotations, .. } => annotations,
+            Stmt::LetDecl { annotations, .. } => annotations,
+            Stmt::ConstDecl { annotations, .. } => annotations,
+            _ => return true,
+        };
+
+        for ann in annotations {
+            if ann.name == "Platform" && !ann.args.is_empty() {
+                let required_platform = ann.args[0].trim_matches('"');
+                if let Some(target) = current_target {
+                    if !target.contains(required_platform) {
+                        return false;
+                    }
+                } else {
+                    if !required_platform.is_empty() && !std::env::consts::OS.contains(&required_platform.to_lowercase()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    });
+}
+

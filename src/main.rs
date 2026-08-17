@@ -165,7 +165,7 @@ fn main() {
             init_native_bridge(plugin_name);
         }
         "version" | "--version" | "-version" | "--v" | "-v" | "-V" => {
-            println!("Flame {} (Second Spark)", env!("CARGO_PKG_VERSION"));
+            println!("Flame {} (Third Spark)", env!("CARGO_PKG_VERSION"));
         }
         "help" | "--help" | "-h" => {
             print_help();
@@ -371,35 +371,6 @@ fn parse_file_stmts(path: &Path, content: &str) -> Result<Vec<Stmt>, Diagnostic>
     parser.parse()
 }
 
-fn filter_platform_stmts(stmts: &mut Vec<Stmt>, current_target: Option<&str>) {
-    stmts.retain(|stmt| {
-        let annotations = match stmt {
-            Stmt::FuncDecl { annotations, .. } => annotations,
-            Stmt::StructDecl { annotations, .. } => annotations,
-            Stmt::EnumDecl { annotations, .. } => annotations,
-            Stmt::LetDecl { annotations, .. } => annotations,
-            Stmt::ConstDecl { annotations, .. } => annotations,
-            _ => return true,
-        };
-
-        for ann in annotations {
-            if ann.name == "Platform" && !ann.args.is_empty() {
-                let required_platform = ann.args[0].trim_matches('"');
-                if let Some(target) = current_target {
-                    if !target.contains(required_platform) {
-                        return false;
-                    }
-                } else {
-                    // If there is no specific target set, we default to host OS
-                    if !required_platform.is_empty() && !std::env::consts::OS.contains(&required_platform.to_lowercase()) {
-                        return false;
-                    }
-                }
-            }
-        }
-        true
-    });
-}
 
 fn typecheck_file_stmts(path: &Path, stmts: &[Stmt]) -> Result<(), Vec<Diagnostic>> {
     TypeChecker::new(path.to_string_lossy().to_string())
@@ -458,8 +429,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     package_manager::ensure_dependencies_installed(is_release);
 
     println!("\x1b[1;36m    Building\x1b[0m dependency graph...");
-    println!("\x1b[1;36m   Compiling\x1b[0m std standard library (Flame interfaces)...");
-    println!("\x1b[1;36m   Compiling\x1b[0m standard library Rust bridges (std_bridge)...");
+    println!("\x1b[1;36m   Compiling\x1b[0m std standard library...");
 
     let src_dir = Path::new("src");
     let has_source_files = if src_dir.exists() {
@@ -487,7 +457,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                                 if fpath.is_file() && fpath.extension().map_or(false, |e| e == "fm") {
                                     let content = fs::read_to_string(&fpath).unwrap_or_default();
                                     if let Ok(mut stmts) = parse_file_stmts(&fpath, &content) {
-                                        filter_platform_stmts(&mut stmts, target.as_deref());
+                                        crate::parser::filter_platform_stmts(&mut stmts, target.as_deref());
                                         all_stmts.extend(stmts);
                                     }
                                 }
@@ -506,7 +476,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                     let content = fs::read_to_string(&path).unwrap_or_default();
                     let stmts = match parse_file_stmts(&path, &content) {
                         Ok(mut stmts) => {
-                            filter_platform_stmts(&mut stmts, target.as_deref());
+                            crate::parser::filter_platform_stmts(&mut stmts, target.as_deref());
                             stmts
                         },
                         Err(diag) => {
@@ -549,7 +519,6 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             }
         }
 
-        println!("\x1b[1;36m     Linking\x1b[0m native static object files...");
 
         let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
         let mut native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
@@ -804,7 +773,7 @@ fn flash_project(args: &[String]) {
 
     let stmts = match parse_file_stmts(main_path, &content) {
         Ok(mut s) => {
-            filter_platform_stmts(&mut s, target.as_deref());
+            crate::parser::filter_platform_stmts(&mut s, target.as_deref());
             s
         },
         Err(e) => {
@@ -1449,7 +1418,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     }
                 }
             }
-            filter_platform_stmts(&mut stmts, target.as_deref());
+            crate::parser::filter_platform_stmts(&mut stmts, target.as_deref());
             let (res, tc) = TypeChecker::new(file.to_string()).check_program(&stmts);
             tc_opt = Some(tc);
             if let Err(diags) = res {

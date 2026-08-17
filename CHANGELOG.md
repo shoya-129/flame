@@ -3,6 +3,16 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [3.1.0] - 2026-08-17 (Codename: *Third Spark*)
+
+### ✨ New Features & Enhancements
+- **Refined Build CLI**: Overhauled `cargo build` logs and outputs during `flame build`. Suppressed redundant rustc outputs and integrated a clean, in-place animating spinner (White -> Yellow -> Flame Pink) utilizing true terminal escape sequences for smooth cross-platform compatibility.
+
+### 🐛 Bug Fixes
+- **`@Platform` Compilation Filtering**: Resolved an issue where conditional compilation tags (e.g. `@Platform("windows")`) incorrectly resolved to `Linux` on Windows platforms. The platform filtering logic was moved natively into the parser.
+- **Strict Duplicate Function Checking**: The TypeChecker now accurately catches identically named functions declared in the same scope without a disambiguating `@Platform` tag, emitting a proper compiler error instead of silently passing duplicate Rust bindings.
+- **`std.camera` Image Format Fix**: Patched a fatal runtime error (`The image format Jpeg is not supported`) when pulling frames from standard hardware interfaces by correctly bootstrapping image decoding features (`jpeg`, `png`, `bmp`) into the underlying Cargo crate dependencies.
+
 ## [0.3.0] - 2026-08-16 (Codename: *Second Spark*)
 
 ### ✨ New Features & Enhancements
