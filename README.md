@@ -27,7 +27,7 @@ Flame avoids the slow, bottlenecked single-threaded event loops common in legacy
 Install the Flame toolchain directly using Cargo:
 
 ```bash
-cargo install flamelang
+cargo install --force flamelang
 ```
 or using npm
 
