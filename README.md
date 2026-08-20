@@ -87,7 +87,7 @@ flame check automation/src/main.fm --json --line 47 --col 18
 ### 4. Package & Plugin Management
 - **`flame new <name>`**: Initialize a new Flame workspace directory with a ready-to-run manifest and directory structure.
 - **`flame add <url_or_name>`**: Download and register external Flame modules or repositories.
-- **`flame add --plugin <path_to_plugin> [--name <plugin_name>]`** (or `flame add @plugin <path>`): Register a local or external native Rust plugin inside your `flame.toml` manifest. If `--name` is omitted, Flame automatically discovers the plugin name by inspecting its `Cargo.toml` or extracting the directory name!
+- **`flame add --plugin <path_to_plugin> [--name <plugin_name>]`**: Register a local or external native Rust plugin inside your `flame.toml` manifest. If `--name` is omitted, Flame automatically discovers the plugin name by inspecting its `Cargo.toml` or extracting the directory name!
 - **`flame native init [plugin_name]`**: Initialize a native Rust plugin workspace (`./native`) inside your current Flame project, generating a starter `Cargo.toml`, bridge code, and automatically registering the specified plugin name in your `flame.toml`.
 
 ---
@@ -99,6 +99,6 @@ Dive into the `docs` folder for detailed guides on language syntax, multithreade
 - [Developing Local Plugins & FFI](https://flamelang.vercel.app/packages-and-native/native-plugins/)
 - [Using Native Rust Crates](https://flamelang.vercel.app/packages-and-native/native-rust-crates/)
 - [Changelog & Version Codenames](./CHANGELOG.md)
-
+  
 ## License
 ISC
