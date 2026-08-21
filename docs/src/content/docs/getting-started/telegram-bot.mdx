@@ -5,7 +5,6 @@ description: A step-by-step tutorial on building a long-polling Telegram Bot usi
 
 import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 
-# Building a Telegram Bot
 
 In this tutorial, we will walk through how to build a fully functional Telegram Bot using **Flame** and the **Flamer** backend framework.
 
@@ -44,13 +43,13 @@ Before starting, ensure you have:
    Add `flamer` as a dependency by using the `flame add` command:
    
    ```powershell
-   flame add flamer
+   flame add https://github.com/shoya-129/flamer
    ```
    
    Alternatively, manually add it to your `flame.toml`:
    ```toml
    [dependencies]
-   flamer = "0.1.0"
+   flamer = "https://github.com/shoya-129/flamer"
    ```
 
 3. ### Setup the Application Entry Point
