@@ -1,13 +1,14 @@
 target/
-Cargo.lock
-Cargo.toml
+*.lock
+*.toml
 bin/
 
 .vscode/
 .flame/
-
+.env
 *.vsix
 src/
 examples
-wren-vscode-extension
 docs/
+flame-ide/
+flame-macro/

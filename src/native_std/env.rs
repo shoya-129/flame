@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use std::env;
 
 pub fn init() -> HashMap<String, Value> {
+    // Attempt to load .env file silently
+    let _ = dotenvy::dotenv();
+    
     let mut m = HashMap::new();
 
     m.insert(

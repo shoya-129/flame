@@ -1,27 +1,45 @@
-
 import std.net.http
-import flamer
-import std.time
 import std.json
+import std.env
+import flamer
 
 
 
-let bot_token = "8975410427:AAHKXcYlPm9imIfTQmt6YkX9c3rRfv9fpcs"
+let bot_token = env.get("BOT_TOKEN")
+let news_api_key = "[API_KEY]"
+println(bot_token)
+
+async fn get_news() -> String {
+    let url = $"https://gnews.io/api/v4/top-headlines?category=general&lang=en&country=in&max=10&apikey={news_api_key}"
+    let response = await http.get(url)
+    let data = await response.json()
+    let mut result = "📰 <b>Top News</b>\n\n"
+    let mut index = 1
+
+    for article in data.articles {
+        let title = article.title
+        let link = article.url
+
+        result = $"{result}{index}. <a href='{link}'>{title}</a>\n\n"
+        index = index + 1
+    }
+
+    return result
+}
 
 async fn webhook(body: Formula) -> Formula {
-    println($"WEBHOOK BODY: {body}")
-
     let data = json.parse(body)
     let chat_id = data.message.chat.id
     let text = data.message.text
 
-    println($"CHAT ID: {chat_id}")
-    println($"TEXT: {text}")
+    println($"Received from {chat_id}: {text}")
 
     let mut reply_text = ""
 
     if text == "/start" {
         reply_text = "Welcome to Flame Bot! Send me a message."
+    } else if text == "/news" {
+        reply_text = await get_news()
     } else {
         reply_text = $"You said: {text}"
     }
@@ -30,12 +48,13 @@ async fn webhook(body: Formula) -> Formula {
     let payload = {
 
         chat_id: chat_id,
-        text: reply_text
+        text: reply_text,
+        parse_mode: "HTML"
     }
 
     let send_res = await http.post(send_url, payload)
 
-    println($"Telegram response: {send_res.text()}")
+    println($"Bot response: {send_res.text()}")
 
     return {
         ok: true
@@ -47,24 +66,10 @@ async fn webhook(body: Formula) -> Formula {
 async fn main() {
     println("--- Flame Telegram Bot Webhook Server ---")
     println("Server listening on port 3000.")
-    println("Don't forget to set your Telegram webhook to point to this server: /webhook")
+    println("Point your Telegram webhook to: /webhook")
 
-    flamer.get(
-        "/", 
-        () -> String {
-            "hello"
-        }
-    )
     flamer.post("/webhook", webhook)
     await flamer.listen()
 }
 
 await main()
-// @Permission("net", "fs")
-// @Requires("std.fs")
-// @Docs("## hello\nworld")
-// fn ptest() {
-//     let result = fs.read("../flame.toml")
-//     println(result.len())
-// }
-// ptest()

@@ -3,6 +3,16 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.3] - 2026-08-21 (Codename: *Third Spark*)
+
+### ✨ New Features & Enhancements
+- **`.env` Auto-loading**: Native standard library integration with `dotenvy`. The `std.env` module now automatically scans the workspace root for `.env` files and silently injects them during initialization. Calls to `env.get("FOO")` will effortlessly fetch variables from local environment configurations out of the box.
+
+### 🐛 IDE & Tooling Fixes
+- **Lexer UTF-8 Span Tracking**: Resolved a severe parsing bug inside the compiler's lexical analyzer where multibyte non-ASCII characters (e.g., emojis) in string literals caused token span offsets to wildly desynchronize. Spans are now accurately tracked by byte-index instead of character-index, completely stopping the `flame format` tool from irreversibly mangling source code.
+
+---
+
 ## [0.3.2] - 2026-08-21 (Codename: *Third Spark*)
 
 ### ✨ New Features & Enhancements
