@@ -143,11 +143,11 @@ Before starting, ensure you have:
    Start your application:
    
    ```powershell
-   flame run src/main.fm
+   flame run
    ```
    
    <Aside type="caution" title="Security Warning">
-   Ensure that you never commit your raw `bot_token` to public repositories. Consider loading it via an environment variable (`std.os.getenv`) in production!
+   Ensure that you never commit your raw `bot_token` to public repositories. Consider loading it via an environment variable (`std.env`) in production!
    </Aside>
 
 </Steps>

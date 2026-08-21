@@ -168,11 +168,11 @@ When compiled or executed with `flame run`, your Flame program instantly becomes
 
 ```bash
 # Execute build subcommand with flag overrides
-flame run src/main.fm -- build --release --target production
+flame run -- build --release --target production
 # Output: Building target 'production', release mode engaged: true
 
 # Launch web server on custom HTTP port
-flame run src/main.fm -- serve --port 8080
+flame run -- serve --port 8080
 # Output: Starting web server on port 8080...
 ```
 
@@ -182,15 +182,3 @@ To learn how to write your own custom annotations that inject variables like `@L
 
 ---
 
-## 4. Flame Toolchain Command Reference
-
-While building your own CLI utilities is effortless, the built-in `flame` binary manages your complete language lifecycle:
-
-| Command / Flag | Usage | Description |
-| :--- | :--- | :--- |
-| **`flame run <file>`** | `flame run src/main.fm [args]` | Fast development execution engine. |
-| **`flame build`** | `flame build [--release]` | Compiles workspace into standalone native binary. |
-| **`flame test`** | `flame test` | Scans workspace and runs all `@Test` test cases. |
-| **`flame check`** | `flame check src/main.fm --json` | IDE static analyzer and diagnostics engine. |
-| **`flame format`** | `flame format src/main.fm --stdout`| Auto-formats Flame code syntax cleanly. |
-| **`flame --version`**| `flame --v` / `flame -version` | Displays installed Flame toolchain version (`Flame 0.1.6`). |
