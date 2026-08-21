@@ -39,8 +39,8 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                     "AfterAll" => after_all.push(name.clone()),
                     "Setup" => setup.push(name.clone()),
                     "Cleanup" => cleanup.push(name.clone()),
-                    "Test" | "Benchmark" | "Parameterized" | "ExpectPanic" | "Ignore"
-                    | "Only" => {
+                    "Test" | "test" | "Benchmark" | "benchmark" | "Parameterized" | "parameterized" | "ExpectPanic" | "expect_panic" | "Ignore" | "ignore"
+                    | "Only" | "only" => {
                         if !test_cases.contains(&name.clone()) {
                             test_cases.push(name.clone());
                         }
@@ -88,16 +88,16 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                 if name == func_name {
                     for anno in annotations {
                         match anno.name.as_str() {
-                            "Ignore" => is_ignore = true,
-                            "Only" => is_only = true,
-                            "Benchmark" => is_benchmark = true,
-                            "ExpectPanic" => is_expect_panic = true,
-                            "Parameterized" => {
+                            "Ignore" | "ignore" => is_ignore = true,
+                            "Only" | "only" => is_only = true,
+                            "Benchmark" | "benchmark" => is_benchmark = true,
+                            "ExpectPanic" | "expect_panic" => is_expect_panic = true,
+                            "Parameterized" | "parameterized" => {
                                 if !anno.args.is_empty() {
                                     parameterized_args = Some(anno.args[0].clone());
                                 }
                             }
-                            "Test" => {
+                            "Test" | "test" => {
                                 if anno.args.iter().any(|arg| arg.contains("skip: true")) {
                                     is_ignore = true;
                                 }

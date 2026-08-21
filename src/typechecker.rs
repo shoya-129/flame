@@ -35,6 +35,7 @@ pub enum Type {
 struct VarInfo {
     ty: Type,
     is_mut: bool,
+    hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,6 +51,7 @@ pub struct FunctionSig {
     pub params: Vec<ParamInfo>,
     pub return_type: Type,
     pub hover_doc: Option<String>,
+    pub is_static: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +98,7 @@ pub struct TypeChecker {
     pub modules: HashSet<String>,
     pub plugins: HashSet<String>,
     pub plugin_methods: HashMap<String, HashMap<String, Type>>,
+    pub plugin_functions: HashMap<String, HashMap<String, FunctionSig>>,
     pub annotations: HashSet<String>,
 }
 
@@ -115,6 +118,7 @@ impl TypeChecker {
             modules: HashSet::new(),
             plugins: HashSet::new(),
             plugin_methods: HashMap::new(),
+            plugin_functions: HashMap::new(),
             annotations: HashSet::new(),
         };
         checker.register_builtins();
@@ -141,7 +145,7 @@ impl TypeChecker {
             if ann.name == "Docs" {
                 self.hover_info.insert(
                     ann.name_span.clone(),
-                    "```flame\n@Docs\n```\n\nAdds documentation to declarations. This documentation will appear when hovering over the declared item.\n\n**Example:**\n```flame\n@Docs(\"Adds two numbers\")\nfn add(a: Int, b: Int) -> Int {\n    return a + b\n}\n```".to_string()
+                    "```flame\n@Docs(text: String)\n```\n\nAdds documentation to declarations. This documentation will appear when hovering over the declared item.\n\n**Example:**\n```flame\n@Docs(\"Adds two numbers\")\nfn add(a: Int, b: Int) -> Int {\n    return a + b\n}\n```".to_string()
                 );
                 
                 if !ann.args.is_empty() {
@@ -156,21 +160,24 @@ impl TypeChecker {
             } else if ann.name == "Test" {
                 self.hover_info.insert(
                     ann.name_span.clone(),
-                    "**@Test**\n\nMarks a function as a unit test. It will be executed by the test runner.".to_string()
+                    "```flame\n@Test\n```\n\nMarks a function as a unit test. It will be executed by the test runner.".to_string()
                 );
                 docs.push("**@Test Function**\nThis function is a unit test case.".to_string());
             } else if ann.name == "Requires" {
+                self.hover_info.insert(
+                    ann.name_span.clone(),
+                    "```flame\n@Requires(...modules: String)\n```\n\nSpecifies module dependencies required by this function.".to_string()
+                );
                 docs.push(format!("**Requires Dependencies:** `{}`", ann.args.join(", ")));
             } else if ann.name == "Permission" {
+                self.hover_info.insert(
+                    ann.name_span.clone(),
+                    "```flame\n@Permission(...permissions: String)\n```\n\nRequests specific runtime permissions for this function.".to_string()
+                );
                 docs.push(format!("**Required Permissions:** `{}`", ann.args.join(", ")));
             } else if let Some(func) = self.functions.get(&ann.name).cloned() {
                 if let Some(doc) = func.hover_doc {
-                    let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                    let ret_str = format!(" -> {}", self.format_type(&func.return_type));
-                    self.hover_info.insert(
-                        ann.name_span.clone(),
-                        format!("```flame\nannotation {}({}){}\n```\n{}", ann.name, params_str, ret_str, doc)
-                    );
+                    self.hover_info.insert(ann.name_span.clone(), doc);
                 }
                 docs.push(format!("**@{}**", ann.name));
             } else {
@@ -187,7 +194,7 @@ impl TypeChecker {
     fn register_builtins(&mut self) {
         self.functions.insert(
             "print".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "value".to_string(),
                     ty: Type::Unknown,
@@ -199,7 +206,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "eprint".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "value".to_string(),
                     ty: Type::Unknown,
@@ -211,7 +218,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "println".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "value".to_string(),
                     ty: Type::Unknown,
@@ -223,7 +230,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "panic".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "message".to_string(),
                     ty: Type::Unknown,
@@ -235,7 +242,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "assert".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "condition".to_string(),
                     ty: Type::Bool,
@@ -247,7 +254,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "RustServer".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "value".to_string(),
                     ty: Type::Unknown,
@@ -259,7 +266,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "input".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![ParamInfo {
                     name: "prompt".to_string(),
                     ty: Type::String,
@@ -271,7 +278,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "assert_eq".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![
                     ParamInfo { name: "actual".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
                     ParamInfo { name: "expected".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
@@ -282,7 +289,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "assert_ne".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![
                     ParamInfo { name: "actual".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
                     ParamInfo { name: "expected".to_string(), ty: Type::Unknown, is_ref: false, is_mut: false },
@@ -293,7 +300,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "assert_true".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![
                     ParamInfo { name: "cond".to_string(), ty: Type::Bool, is_ref: false, is_mut: false },
                     ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
@@ -303,7 +310,7 @@ impl TypeChecker {
         );
         self.functions.insert(
             "assert_false".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![
                     ParamInfo { name: "cond".to_string(), ty: Type::Bool, is_ref: false, is_mut: false },
                     ParamInfo { name: "msg".to_string(), ty: Type::String, is_ref: false, is_mut: false },
@@ -313,21 +320,21 @@ impl TypeChecker {
         );
         self.functions.insert(
             "mock_api".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![],
                 hover_doc: None, return_type: Type::Unknown,
             },
         );
         self.functions.insert(
             "mock_data".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![],
                 hover_doc: None, return_type: Type::Unknown,
             },
         );
         self.functions.insert(
             "mock_function".to_string(),
-            FunctionSig {
+            FunctionSig { is_static: false,
                 params: vec![],
                 hover_doc: None, return_type: Type::Nil,
             },
@@ -441,24 +448,34 @@ impl TypeChecker {
                     span,
                     ..
                 } => {
-                    let mut hover_doc = None;
-                    for a in annotations {
-                        if a.name == "Docs" && !a.args.is_empty() {
-                            // Unescape the string and remove surrounding quotes
-                            let raw = a.args[0].trim_matches('"').replace("\\n", "\n").replace("\\t", "\t");
-                            hover_doc = Some(raw);
-                            break;
-                        }
+                    let hover_doc = self.process_annotations(annotations);
+
+                    let mut hover_str = format!("```flame\nfn {}(", name);
+                    for (i, p) in params.iter().enumerate() {
+                        if i > 0 { hover_str.push_str(", "); }
+                        let ref_mut = match (p.is_ref, p.is_mut) {
+                            (true, true) => "ref mut ",
+                            (true, false) => "ref ",
+                            (false, true) => "mut ",
+                            _ => "",
+                        };
+                        hover_str.push_str(&format!("{}{}: {}", ref_mut, p.name, p.type_name));
                     }
+                    hover_str.push_str(")");
+                    if let Some(ret) = return_type {
+                        hover_str.push_str(&format!(" -> {}", ret));
+                    }
+                    hover_str.push_str("\n```");
 
                     if let Some(doc) = &hover_doc {
-                        // Estimate the span of the function name
-                        let mut name_span = span.clone();
-                        name_span.col += 3; // 'fn ' length
-                        name_span.end = name_span.start + name.len();
-                        self.hover_info.insert(name_span, doc.clone());
+                        hover_str.push_str(&format!("\n\n{}", doc));
                     }
 
+                    // Estimate the span of the function name
+                    let mut name_span = span.clone();
+                    name_span.col += 3; // 'fn ' length
+                    name_span.end = name_span.start + name.len();
+                    self.hover_info.insert(name_span, hover_str.clone());
                     if let Some(cmd_info) = self.parse_command_annotation(name, annotations, params, span) {
                         self.commands.insert(cmd_info.name.clone(), cmd_info);
                     }
@@ -473,7 +490,7 @@ impl TypeChecker {
                     }
                     self.functions.insert(
                         name.clone(),
-                        FunctionSig {
+                        FunctionSig { is_static: false,
                             params: params
                                 .iter()
                                 .map(|param| ParamInfo {
@@ -483,7 +500,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
-                            hover_doc,
+                            hover_doc: Some(hover_str),
                             return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
@@ -496,13 +513,37 @@ impl TypeChecker {
                     params,
                     return_type,
                     annotations,
+                    span: _,
+                    name_span,
                     ..
                 } => {
+                    let mut hover_str = format!("```flame\nannotation @{}(", name);
+                    for (i, p) in params.iter().enumerate() {
+                        if i > 0 { hover_str.push_str(", "); }
+                        let ref_mut = match (p.is_ref, p.is_mut) {
+                            (true, true) => "ref mut ",
+                            (true, false) => "ref ",
+                            (false, true) => "mut ",
+                            _ => "",
+                        };
+                        hover_str.push_str(&format!("{}{}: {}", ref_mut, p.name, p.type_name));
+                    }
+                    if let Some(ret) = return_type {
+                        hover_str.push_str(&format!(") -> {}\n```", ret));
+                    } else {
+                        hover_str.push_str(")\n```");
+                    }
+
                     let hover_doc = self.process_annotations(annotations);
+                    if let Some(doc) = &hover_doc {
+                        hover_str.push_str(&format!("\n\n{}", doc));
+                    }
+                    self.hover_info.insert(name_span.clone(), hover_str.clone());
+
                     self.annotations.insert(name.clone());
                     self.functions.insert(
                         name.clone(),
-                        FunctionSig {
+                        FunctionSig { is_static: false,
                             params: params
                                 .iter()
                                 .map(|param| ParamInfo {
@@ -512,7 +553,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
-                            hover_doc, return_type: return_type
+                            hover_doc: Some(hover_str), return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
                                 .unwrap_or(Type::Nil),
@@ -562,7 +603,7 @@ impl TypeChecker {
 
                             self.methods.entry(target_type.clone()).or_default().insert(
                                 name.clone(),
-                                FunctionSig {
+                                FunctionSig { is_static: false,
                                     params: params_info,
                                     hover_doc: None, return_type: ret_type,
                                 },
@@ -577,33 +618,154 @@ impl TypeChecker {
                             self.modules.insert(mod_name.clone());
                             if path.first().map_or(false, |p| p == "native") {
                                 let mut methods = HashMap::new();
-                                let p = std::path::Path::new(&self.filepath);
-                                if let Some(parent) = p.parent() {
-                                    if let Some(root) = parent.parent() {
-                                        let lib_rs = root.join("native").join("src").join("lib.rs");
-                                        if let Ok(content) = std::fs::read_to_string(&lib_rs) {
-                                            for line in content.lines() {
-                                                let line = line.trim();
-                                                if line.starts_with("pub fn ") {
-                                                    let rest = &line["pub fn ".len()..];
-                                                    if let Some(paren) = rest.find('(') {
-                                                        let name = rest[..paren].trim().to_string();
-                                                        let mut ret_ty = Type::Unknown;
-                                                        if let Some(arrow) = rest.find("->") {
-                                                            let after_arrow = rest[arrow + 2..].trim();
-                                                            let end = after_arrow.find('{').unwrap_or(after_arrow.len());
-                                                            let ret_str = after_arrow[..end].trim();
-                                                            if ret_str == "i64" || ret_str == "i32" || ret_str == "usize" {
-                                                                ret_ty = Type::Int;
-                                                            } else if ret_str == "f64" || ret_str == "f32" {
-                                                                ret_ty = Type::Float;
-                                                            } else if ret_str == "bool" {
-                                                                ret_ty = Type::Bool;
-                                                            } else if ret_str == "String" {
-                                                                ret_ty = Type::String;
+                                let mut p = std::path::Path::new(&self.filepath);
+                                let mut fmi_path = None;
+                                while let Some(parent) = p.parent() {
+                                    let candidate = parent.join(".flame").join("pkg").join(mod_name).join(format!("{}.fmi", mod_name));
+                                    if candidate.exists() {
+                                        fmi_path = Some(candidate);
+                                        break;
+                                    }
+                                    p = parent;
+                                }
+
+                                if let Some(fmi) = fmi_path {
+                                    if let Ok(content) = std::fs::read_to_string(&fmi) {
+                                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                                            let mut p_funcs = HashMap::new();
+                                            if let Some(funcs) = json.get("functions").and_then(|f| f.as_array()) {
+                                                for func in funcs {
+                                                    if let (Some(name), Some(ret_str)) = (
+                                                        func.get("flame_name").and_then(|n| n.as_str()).or(func.get("name").and_then(|n| n.as_str())),
+                                                        func.get("return_type").and_then(|r| r.as_str())
+                                                    ) {
+                                                        let ret_ty = self.parse_type_name(ret_str);
+                                                        methods.insert(name.to_string(), ret_ty.clone());
+                                                        
+                                                        let mut params = Vec::new();
+                                                        if let Some(ps) = func.get("params").and_then(|p| p.as_array()) {
+                                                            for p in ps {
+                                                                if let (Some(p_name), Some(p_ty_str)) = (p.get("name").and_then(|n| n.as_str()), p.get("type_name").and_then(|t| t.as_str())) {
+                                                                    params.push(ParamInfo {
+                                                                        name: p_name.to_string(),
+                                                                        ty: self.parse_type_name(p_ty_str),
+                                                                        is_ref: p.get("is_ref").and_then(|r| r.as_bool()).unwrap_or(false),
+                                                                        is_mut: p.get("is_mut").and_then(|m| m.as_bool()).unwrap_or(false),
+                                                                    });
+                                                                }
                                                             }
                                                         }
-                                                        methods.insert(name, ret_ty);
+                                                        
+                                                        let mut sig_str = format!("```flame\nfn {}(", name);
+                                                        let param_strs: Vec<String> = params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect();
+                                                        sig_str.push_str(&param_strs.join(", "));
+                                                        sig_str.push_str(&format!(") -> {}\n```", self.format_type(&ret_ty)));
+                                                        
+                                                        p_funcs.insert(name.to_string(), FunctionSig {
+                                                            is_static: true,
+                                                            params,
+                                                            return_type: ret_ty,
+                                                            hover_doc: Some(sig_str),
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            self.plugin_functions.insert(mod_name.clone(), p_funcs);
+                                            if let Some(structs) = json.get("structs").and_then(|s| s.as_array()) {
+                                                for s in structs {
+                                                    if let Some(struct_name) = s.get("name").and_then(|n| n.as_str()) {
+                                                        methods.insert(struct_name.to_string(), Type::Struct(struct_name.to_string()));
+                                                        
+                                                        self.structs.insert(struct_name.to_string(), StructInfo {
+                                                            fields: Vec::new(),
+                                                            hover_doc: Some(format!("```flame\nstruct {}\n```\n**Native Plugin Struct**", struct_name)),
+                                                        });
+                                                        
+                                                        if let Some(s_methods) = s.get("methods").and_then(|m| m.as_array()) {
+                                                            let mut struct_methods = HashMap::new();
+                                                            for m in s_methods {
+                                                                if let (Some(m_name), Some(ret_str)) = (
+                                                                    m.get("flame_name").and_then(|n| n.as_str()).or(m.get("name").and_then(|n| n.as_str())),
+                                                                    m.get("return_type").and_then(|r| r.as_str())
+                                                                ) {
+                                                                    let is_static = m.get("is_static").and_then(|s| s.as_bool()).unwrap_or(false);
+                                                                    let mut params = Vec::new();
+                                                                    if !is_static {
+                                                                        params.push(ParamInfo {
+                                                                            name: "self".to_string(),
+                                                                            ty: Type::Unknown,
+                                                                            is_ref: true,
+                                                                            is_mut: true,
+                                                                        });
+                                                                    }
+                                                                    if let Some(ps) = m.get("params").and_then(|p| p.as_array()) {
+                                                                        for p in ps {
+                                                                            if let (Some(p_name), Some(p_ty_str)) = (p.get("name").and_then(|n| n.as_str()), p.get("type_name").and_then(|t| t.as_str())) {
+                                                                                params.push(ParamInfo {
+                                                                                    name: p_name.to_string(),
+                                                                                    ty: self.parse_type_name(p_ty_str),
+                                                                                    is_ref: p.get("is_ref").and_then(|r| r.as_bool()).unwrap_or(false),
+                                                                                    is_mut: p.get("is_mut").and_then(|m| m.as_bool()).unwrap_or(false),
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    
+
+                                                                    let mut sig_str = format!("```flame\nfn {}(", m_name);
+                                                                    if !is_static {
+                                                                        sig_str.push_str("self");
+                                                                        if !params.is_empty() { sig_str.push_str(", "); }
+                                                                    }
+                                                                    let param_strs: Vec<String> = params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect();
+                                                                    sig_str.push_str(&param_strs.join(", "));
+                                                                    sig_str.push_str(&format!(") -> {}\n```", self.format_type(&self.parse_type_name(ret_str))));
+
+                                                                    struct_methods.insert(m_name.to_string(), FunctionSig {
+                                                                        is_static,
+                                                                        params,
+                                                                        return_type: self.parse_type_name(ret_str),
+                                                                        hover_doc: Some(sig_str),
+                                                                    });
+                                                                }
+                                                            }
+                                                            self.methods.insert(struct_name.to_string(), struct_methods);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Fallback to parsing native/src/lib.rs if .fmi not found
+                                    let p = std::path::Path::new(&self.filepath);
+                                    if let Some(parent) = p.parent() {
+                                        if let Some(root) = parent.parent() {
+                                            let lib_rs = root.join("native").join("src").join("lib.rs");
+                                            if let Ok(content) = std::fs::read_to_string(&lib_rs) {
+                                                for line in content.lines() {
+                                                    let line = line.trim();
+                                                    if line.starts_with("pub fn ") {
+                                                        let rest = &line["pub fn ".len()..];
+                                                        if let Some(paren) = rest.find('(') {
+                                                            let name = rest[..paren].trim().to_string();
+                                                            let mut ret_ty = Type::Unknown;
+                                                            if let Some(arrow) = rest.find("->") {
+                                                                let after_arrow = rest[arrow + 2..].trim();
+                                                                let end = after_arrow.find('{').unwrap_or(after_arrow.len());
+                                                                let ret_str = after_arrow[..end].trim();
+                                                                if ret_str == "i64" || ret_str == "i32" || ret_str == "usize" {
+                                                                    ret_ty = Type::Int;
+                                                                } else if ret_str == "f64" || ret_str == "f32" {
+                                                                    ret_ty = Type::Float;
+                                                                } else if ret_str == "bool" {
+                                                                    ret_ty = Type::Bool;
+                                                                } else if ret_str == "String" {
+                                                                    ret_ty = Type::String;
+                                                                }
+                                                            }
+                                                            methods.insert(name, ret_ty);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -649,20 +811,83 @@ impl TypeChecker {
         }
     }
 
+    fn get_std_module_type(&self, mod_name: &str) -> Type {
+        match mod_name {
+            "time" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+                
+                let mut ts_map = HashMap::new();
+                ts_map.insert("millis".to_string(), Type::Int);
+                ts_map.insert("toMillis".to_string(), Type::Function(vec![], Box::new(Type::Int)));
+                ts_map.insert("toSeconds".to_string(), Type::Function(vec![], Box::new(Type::Int)));
+                ts_map.insert("toString".to_string(), Type::Function(vec![], Box::new(Type::String)));
+                let ts_ty = Type::Formula(ts_map, HashMap::new());
+
+                map.insert("now".to_string(), Type::Function(vec![], Box::new(ts_ty)));
+                if let Some(doc) = crate::std_docs::get_std_function_doc("std.time", "now") {
+                    docs.insert("now".to_string(), doc.to_string());
+                }
+
+                Type::Formula(map, docs)
+            }
+            "http" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+                
+                let mut resp_map = HashMap::new();
+                resp_map.insert("status".to_string(), Type::Int);
+                resp_map.insert("ok".to_string(), Type::Bool);
+                resp_map.insert("text".to_string(), Type::Function(vec![], Box::new(Type::String)));
+                resp_map.insert("json".to_string(), Type::Function(vec![], Box::new(Type::Unknown)));
+                let resp_ty = Type::Formula(resp_map, HashMap::new());
+
+                map.insert("get".to_string(), Type::Function(vec![Type::String], Box::new(resp_ty.clone())));
+                if let Some(doc) = crate::std_docs::get_std_function_doc("std.http", "get") {
+                    docs.insert("get".to_string(), doc.to_string());
+                }
+                map.insert("post".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(resp_ty.clone())));
+                if let Some(doc) = crate::std_docs::get_std_function_doc("std.http", "post") {
+                    docs.insert("post".to_string(), doc.to_string());
+                }
+                Type::Formula(map, docs)
+            }
+            _ => Type::Named(format!("module:{}", mod_name)),
+        }
+    }
+
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::ImportDecl { path, .. } => {
                 if let Some(last) = path.last() {
-                    let kind_str = if path.first().map_or(false, |p| p == "native") {
+                    let is_native = path.first().map_or(false, |p| p == "native");
+                    let kind_str = if is_native {
                         format!("plugin:{}", last)
                     } else {
-                        "module".to_string()
+                        format!("module:{}", last)
                     };
+                    
+                    let path_str = path.join(".");
+                    let hover_str = if is_native {
+                        format!("```flame\nimport {}\n```\n**Native Plugin**", path_str)
+                    } else if path.first().map_or(false, |p| p == "std") {
+                        format!("```flame\nimport {}\n```\n**Standard Library Module**", path_str)
+                    } else {
+                        format!("```flame\nimport {}\n```\n**Local Module**", path_str)
+                    };
+
+                    let ty = if path.first().map_or(false, |p| p == "std") {
+                        self.get_std_module_type(last)
+                    } else {
+                        Type::Named(kind_str)
+                    };
+
                     self.define_var(
                         last.clone(),
                         VarInfo {
-                            ty: Type::Named(kind_str),
+                            ty,
                             is_mut: false,
+                            hover_doc: Some(hover_str),
                         },
                     );
                     if !path.first().map_or(false, |p| p == "native" || p == "std") {
@@ -696,6 +921,7 @@ impl TypeChecker {
                                                     VarInfo {
                                                         ty: Type::Unknown,
                                                         is_mut: false,
+                                                        hover_doc: None,
                                                     },
                                                 );
                                             }
@@ -767,13 +993,14 @@ impl TypeChecker {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
 
-                    self.hover_info.insert(name_span.clone(), hover_str);
+                    self.hover_info.insert(name_span.clone(), hover_str.clone());
 
                     self.define_var(
                         name.clone(),
                         VarInfo {
                             ty: stored_ty,
                             is_mut: *is_mut,
+                            hover_doc: Some(hover_str.clone()),
                         },
                     );
                 } else if name.starts_with('(') && name.ends_with(')') {
@@ -787,12 +1014,13 @@ impl TypeChecker {
                             }
                             // Handle "(b: 1)" style destructuring
                             let actual_name = inner_name.split(':').next().unwrap().trim();
-                            let _v_ty = types.get(i).cloned().unwrap_or(Type::Unknown);
+                            let v_ty = types.get(i).cloned().unwrap_or(Type::Unknown);
                             self.define_var(
                                 actual_name.to_string(),
                                 VarInfo {
-                                    ty: value_ty.clone(), // Provide whole tuple type for hover
+                                    ty: v_ty,
                                     is_mut: *is_mut,
+                                    hover_doc: None,
                                 },
                             );
                         }
@@ -808,6 +1036,7 @@ impl TypeChecker {
                                 VarInfo {
                                     ty: value_ty.clone(),
                                     is_mut: *is_mut,
+                                    hover_doc: None,
                                 },
                             );
                         }
@@ -830,6 +1059,7 @@ impl TypeChecker {
                                     VarInfo {
                                         ty: v_ty,
                                         is_mut: *is_mut,
+                                        hover_doc: None,
                                     },
                                 );
                             }
@@ -848,6 +1078,7 @@ impl TypeChecker {
                                     VarInfo {
                                         ty: field_ty,
                                         is_mut: *is_mut,
+                                        hover_doc: None,
                                     },
                                 );
                             }
@@ -861,6 +1092,7 @@ impl TypeChecker {
                                     VarInfo {
                                         ty: Type::Unknown,
                                         is_mut: *is_mut,
+                                        hover_doc: None,
                                     },
                                 );
                             }
@@ -914,6 +1146,7 @@ impl TypeChecker {
                     VarInfo {
                         ty: func_type,
                         is_mut: false,
+                        hover_doc: None,
                     },
                 );
 
@@ -927,16 +1160,7 @@ impl TypeChecker {
 
                 self.push_scope();
                 for anno in annotations {
-                    if let Some(func) = self.functions.get(&anno.name).cloned() {
-                        if let Some(doc) = &func.hover_doc {
-                            let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                            let ret_str = format!(" -> {}", self.format_type(&func.return_type));
-                            self.hover_info.insert(
-                                anno.name_span.clone(),
-                                format!("```flame\nannotation {}({}){}\n```\n{}", anno.name, params_str, ret_str, doc)
-                            );
-                        }
-                    }
+
 
                     if anno.name == "Requires" {
                         for arg in &anno.args {
@@ -962,6 +1186,7 @@ impl TypeChecker {
                         VarInfo {
                             ty: ret_ty.clone(),
                             is_mut: true,
+                            hover_doc: None,
                         },
                     );
                     self.define_var(
@@ -969,6 +1194,7 @@ impl TypeChecker {
                         VarInfo {
                             ty: ret_ty,
                             is_mut: true,
+                            hover_doc: None,
                         },
                     );
                 }
@@ -984,6 +1210,7 @@ impl TypeChecker {
                         VarInfo {
                             ty: self.parse_type_name(type_name),
                             is_mut: *is_mut,
+                            hover_doc: None,
                         },
                     );
                 }
@@ -1033,12 +1260,11 @@ impl TypeChecker {
                     .map(|p| format!("{}: {}", p.name, p.type_name))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let ret_str = if let Some(ret) = &return_type {
-                    format!(" -> {}", ret)
+                let mut hover_str = if let Some(ret) = &return_type {
+                    format!("```flame\nannotation @{}({}) -> {}\n```", name, params_str, ret)
                 } else {
-                    "".to_string()
+                    format!("```flame\nannotation @{}({})\n```", name, params_str)
                 };
-                let mut hover_str = format!("```flame\nannotation {}({}){}\n```", name, params_str, ret_str);
                 let hover_doc = self.process_annotations(annotations);
                 
                 if let Some(doc) = hover_doc {
@@ -1052,6 +1278,7 @@ impl TypeChecker {
                     VarInfo {
                         ty: func_type,
                         is_mut: false,
+                        hover_doc: None,
                     },
                 );
 
@@ -1076,6 +1303,7 @@ impl TypeChecker {
                         VarInfo {
                             ty: self.parse_type_name(type_name),
                             is_mut: *is_mut,
+                            hover_doc: None,
                         },
                     );
                 }
@@ -1134,6 +1362,7 @@ impl TypeChecker {
                     VarInfo {
                         ty: item_ty,
                         is_mut: false,
+                        hover_doc: None,
                     },
                 );
                 for stmt in body {
@@ -1195,9 +1424,9 @@ impl TypeChecker {
                             self.push_scope();
                             for field in &arm.destructure {
                                 if let Some(param) = cmd.params.iter().find(|p| &p.name == field) {
-                                    self.define_var(field.clone(), VarInfo { ty: param.ty.clone(), is_mut: false });
+                                    self.define_var(field.clone(), VarInfo { ty: param.ty.clone(), is_mut: false, hover_doc: None });
                                 } else {
-                                    self.define_var(field.clone(), VarInfo { ty: Type::Unknown, is_mut: false });
+                                    self.define_var(field.clone(), VarInfo { ty: Type::Unknown, is_mut: false, hover_doc: None });
                                 }
                             }
                             self.infer_expr_type(&arm.body);
@@ -1212,7 +1441,7 @@ impl TypeChecker {
                             );
                             self.push_scope();
                             for field in &arm.destructure {
-                                self.define_var(field.clone(), VarInfo { ty: Type::Unknown, is_mut: false });
+                                self.define_var(field.clone(), VarInfo { ty: Type::Unknown, is_mut: false, hover_doc: None });
                             }
                             self.infer_expr_type(&arm.body);
                             self.pop_scope();
@@ -1222,7 +1451,7 @@ impl TypeChecker {
                     for arm in arms {
                         self.push_scope();
                         for field in &arm.destructure {
-                            self.define_var(field.clone(), VarInfo { ty: Type::Unknown, is_mut: false });
+                            self.define_var(field.clone(), VarInfo { ty: Type::Unknown, is_mut: false, hover_doc: None });
                         }
                         self.infer_expr_type(&arm.body);
                         self.pop_scope();
@@ -1301,9 +1530,10 @@ impl TypeChecker {
                     };
                     Type::Named(format!("fn({}) -> {}", params_str.join(", "), ret_str))
                 } else if self.plugins.contains(name) {
+                    self.hover_info.insert(span.clone(), format!("```flame\nplugin {}\n```\n**Native Plugin**", name));
                     Type::Named(format!("plugin:{}", name))
                 } else if self.modules.contains(name) {
-                    Type::Named("module".to_string())
+                    Type::Named(format!("module:{}", name))
                 } else {
                     let mut found_variant = None;
                     for (enum_name, enum_info) in &self.enums {
@@ -1340,31 +1570,33 @@ impl TypeChecker {
                 };
 
                 let hover_str = if let Some(var) = self.lookup_var(name) {
-                    if let (Type::Function(_, _), Some(func_sig)) = (&var.ty, self.functions.get(name)) {
+                    if let Some(doc) = &var.hover_doc {
+                        doc.clone()
+                    } else if let (Type::Function(_, _), Some(func_sig)) = (&var.ty, self.functions.get(name)) {
                         let mut params_str = Vec::new();
                         for p in &func_sig.params {
                             let ty_str = self.format_type(&p.ty);
                             params_str.push(format!("{}: {}", p.name, ty_str));
                         }
-                        let ret_ty_str = self.format_type(&func_sig.return_type);
-                        let sig_str = format!("```flame\nfn {}({}) -> {}\n```", name, params_str.join(", "), ret_ty_str);
                         if let Some(doc) = &func_sig.hover_doc {
-                            format!("{}\n{}", sig_str, doc)
+                            doc.clone()
                         } else {
-                            sig_str
+                            let ret_ty_str = self.format_type(&func_sig.return_type);
+                            format!("```flame\nfn {}({}) -> {}\n```", name, params_str.join(", "), ret_ty_str)
                         }
                     } else {
                         let type_str = self.format_type(&inferred);
-                        if var.is_mut {
-                            format!("mut {}", type_str)
+                        let sig_str = if var.is_mut {
+                            format!("```flame\nlet mut {}: {}\n```", name, type_str)
                         } else {
-                            type_str
-                        }
+                            format!("```flame\nlet {}: {}\n```", name, type_str)
+                        };
+                        sig_str
                     }
                 } else if self.plugins.contains(name) {
                     "plugin".to_string()
                 } else if self.modules.contains(name) {
-                    "module".to_string()
+                    format!("module:{}", name)
                 } else {
                     let mut variant_doc = None;
                     for (enum_name, enum_info) in &self.enums {
@@ -1558,20 +1790,15 @@ impl TypeChecker {
 
                 self.push_scope();
                 let mut param_types = Vec::new();
-                for Param {
-                    name,
-                    type_name,
-                    is_mut,
-                    ..
-                } in params
-                {
-                    let p_ty = self.parse_type_name(type_name);
+                for param in params {
+                    let p_ty = self.parse_type_name(&param.type_name);
                     param_types.push(p_ty.clone());
                     self.define_var(
-                        name.clone(),
+                        param.name.clone(),
                         VarInfo {
-                            ty: p_ty,
-                            is_mut: *is_mut,
+                            ty: p_ty.clone(),
+                            is_mut: param.is_mut,
+                            hover_doc: None,
                         },
                     );
                 }
@@ -1789,11 +2016,20 @@ impl TypeChecker {
                 return Type::Vector(Box::new(Type::Unknown));
             }
             "clone" => return inner_ty.clone(),
+            "assert_eq" => return Type::Nil,
             _ => {}
         }
         match inner_ty {
             Type::Named(name) if name.starts_with("plugin:") => {
                 let plugin_name = &name["plugin:".len()..];
+                if let Some(funcs) = self.plugin_functions.get(plugin_name) {
+                    if let Some(sig) = funcs.get(member).cloned() {
+                        if let Some(doc) = sig.hover_doc {
+                            self.hover_info.insert(span.clone(), doc);
+                        }
+                        return Type::Named("Function".into());
+                    }
+                }
                 if let Some(methods) = self.plugin_methods.get(plugin_name) {
                     if let Some(ty) = methods.get(member) {
                         return ty.clone();
@@ -2109,16 +2345,43 @@ impl TypeChecker {
                 "toBool" | "to_bool" | "tryBool" | "try_bool" => return Type::Bool,
                 "toChar" | "to_char" => return Type::String,
                 "toByte" | "to_byte" => return Type::Byte,
+                "assert_eq" => return Type::Nil,
                 _ => {}
             }
 
             if let Type::Named(name) = &inner_ty {
                 if name.starts_with("plugin:") {
                     let plugin_name = &name["plugin:".len()..];
+                    if let Some(funcs) = self.plugin_functions.get(plugin_name) {
+                        if let Some(sig) = funcs.get(member).cloned() {
+                            self.check_call_args(&sig.params, args, span, member);
+                            if let Some(doc) = &sig.hover_doc {
+                                self.hover_info.insert(span.clone(), doc.clone());
+                            }
+                            return sig.return_type.clone();
+                        }
+                    }
                     if let Some(methods) = self.plugin_methods.get(plugin_name) {
                         if let Some(ty) = methods.get(member) {
                             return ty.clone();
                         }
+                    }
+                } else if name.starts_with("module:") {
+                    let module_name = &name["module:".len()..];
+                    let ret_ty = match (module_name, member.as_str()) {
+                        ("fs", "read") => Type::String,
+                        ("fs", "read_dir") => Type::Vector(Box::new(Type::String)),
+                        ("fs", "readBytes") => Type::Byte,
+                        ("fs", "open") => Type::Unknown,
+                        ("thread", "sleep") => Type::Nil,
+                        ("thread", "channel") => Type::Tuple(vec![Type::Unknown, Type::Unknown]),
+                        ("byte", "readBytes") => Type::Byte,
+                        ("byte", "readByte") => Type::Byte,
+                        ("byte", "readByteAt") => Type::Byte,
+                        _ => Type::Unknown,
+                    };
+                    if !matches!(ret_ty, Type::Unknown) {
+                        return ret_ty;
                     }
                 }
             }
@@ -2131,7 +2394,9 @@ impl TypeChecker {
                     .cloned();
 
                 if let Some(sig) = sig_opt {
-                    let params_to_check = if !sig.params.is_empty() {
+                    let params_to_check = if sig.is_static {
+                        &sig.params[..]
+                    } else if !sig.params.is_empty() {
                         &sig.params[1..]
                     } else {
                         &[]
@@ -2315,6 +2580,7 @@ impl TypeChecker {
         name: &str,
     ) {
         if name != "print" && name != "eprint" && args.len() != params.len() {
+            println!("DEBUG check_call_args: name={}, params.len()={}, args.len()={}", name, params.len(), args.len());
             self.error(
                 format!(
                     "function '{}' expects {} argument(s), got {}",
@@ -2475,6 +2741,8 @@ impl TypeChecker {
 
         match (expected, actual) {
             (Type::Float, Type::Int) => true,
+            (Type::Byte, Type::Int) => true,
+            (Type::Int, Type::Byte) => true,
             (Type::Enum(expected_name), Type::EnumVariant { enum_name, .. }) => {
                 expected_name == enum_name
             }
@@ -2533,6 +2801,9 @@ impl TypeChecker {
 
     fn parse_type_name(&self, type_name: &str) -> Type {
         let trimmed = type_name.trim();
+        if trimmed == "&str" || trimmed == "&'static str" || trimmed == "str" || trimmed == "'static str" {
+            return Type::String;
+        }
         if let Some(rest) = trimmed.strip_prefix("&mut ") {
             return Type::Reference {
                 inner: Box::new(self.parse_type_name(rest)),
@@ -2549,13 +2820,14 @@ impl TypeChecker {
             return self.parse_type_name(rest);
         }
         match trimmed {
-            "Int" | "I32" | "I64" | "U32" | "U64" => Type::Int,
-            "Float" | "F32" | "F64" => Type::Float,
-            "String" => Type::String,
-            "Bool" => Type::Bool,
+            "Int" | "I32" | "I64" | "U32" | "U64" | "i32" | "i64" | "u32" | "u64" => Type::Int,
+            "Float" | "F32" | "F64" | "f32" | "f64" => Type::Float,
+            "String" | "string" | "str" | "'static str" => Type::String,
+            "Bool" | "bool" => Type::Bool,
             "Nil" | "nil" => Type::Nil,
-            "Byte" | "Bytes" => Type::Byte,
+            "Byte" | "Bytes" | "u8" | "U8" => Type::Byte,
             "Formula" | "Object" => Type::Formula(HashMap::new(), HashMap::new()),
+            _ if trimmed.len() == 1 && trimmed.chars().next().unwrap().is_uppercase() => Type::Unknown,
             _ if trimmed.contains("->") => {
                 if let Some((left, right)) = trimmed.split_once("->") {
                     let left_type = self.parse_type_name(left.trim());

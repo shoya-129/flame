@@ -11,3 +11,4 @@ pub mod vm;
 pub mod native_std;
 pub mod embedded;
 pub mod test_engine;
+pub mod std_docs;

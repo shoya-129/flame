@@ -5,6 +5,7 @@ use embedded_hal::digital::{
 use embedded_hal::i2c::{ErrorType as I2cErrorType, I2c, Operation};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(feature = "os")]
 use sysinfo::System;
 
 #[derive(Default)]
@@ -963,22 +964,32 @@ fn init_system_module() -> HashMap<String, Value> {
     m.insert(
         "board".to_string(),
         Value::Formula({
-            let mut sys = System::new_all();
-            sys.refresh_cpu();
-            sys.refresh_memory();
+            #[cfg(feature = "os")]
+            let (board_name, cpu_info, mem_string) = {
+                let mut sys = System::new_all();
+                sys.refresh_cpu();
+                sys.refresh_memory();
 
-            let board_name = System::host_name()
-                .or_else(|| System::name())
-                .unwrap_or_else(|| "Unknown Target Hardware".to_string());
+                let board_name = System::host_name()
+                    .or_else(|| System::name())
+                    .unwrap_or_else(|| "Unknown Target Hardware".to_string());
 
-            let cpu_info = sys
-                .cpus()
-                .first()
-                .map(|c| c.brand().trim().to_string())
-                .unwrap_or_else(|| "Unknown CPU Architecture".to_string());
+                let cpu_info = sys
+                    .cpus()
+                    .first()
+                    .map(|c| c.brand().trim().to_string())
+                    .unwrap_or_else(|| "Unknown CPU Architecture".to_string());
 
-            let mem_total_kb = sys.total_memory() / 1024;
-            let mem_string = format!("{} KB RAM ({} MB)", mem_total_kb, mem_total_kb / 1024);
+                let mem_total_kb = sys.total_memory() / 1024;
+                let mem_string = format!("{} KB RAM ({} MB)", mem_total_kb, mem_total_kb / 1024);
+                (board_name, cpu_info, mem_string)
+            };
+            #[cfg(not(feature = "os"))]
+            let (board_name, cpu_info, mem_string) = (
+                "Unknown Target Hardware".to_string(),
+                "Unknown CPU Architecture".to_string(),
+                "Unknown Memory".to_string(),
+            );
 
             let mut b = HashMap::new();
             b.insert("name".to_string(), Value::String(board_name));
@@ -1051,6 +1062,7 @@ pub fn init() -> HashMap<String, Value> {
     );
 
     // Physical Serial Port Discovery for flashing firmware, device discovery, and REPL debugging
+    #[cfg(feature = "hardware")]
     root.insert(
         "detect_ports".to_string(),
         Value::NativeCallback(|_| match serialport::available_ports() {
@@ -1087,6 +1099,11 @@ pub fn init() -> HashMap<String, Value> {
                 e
             )),
         }),
+    );
+    #[cfg(not(feature = "hardware"))]
+    root.insert(
+        "detect_ports".to_string(),
+        Value::NativeCallback(|_| Err("Hardware features are disabled in this build".to_string())),
     );
 
     // Modular Sub-namespaces

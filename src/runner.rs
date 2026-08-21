@@ -1952,7 +1952,7 @@ impl Runner {
                         if let Some(val) = map.get(member) {
                             Ok(val.clone())
                         } else {
-                            Err(format!("member '{}' not found", member))
+                            Err(format!("Property '{}' does not exist on dynamic API JSON/Object.", member))
                         }
                     }
                     Value::EnumMeta(enum_name, variants) => {
@@ -2013,10 +2013,15 @@ impl Runner {
                             enum_name, variant_name
                         )),
                     },
-                    _ => Err(format!(
-                        "cannot access member '{}' on non-namespace",
-                        member
-                    )),
+                    _ => {
+                        println!("DEBUG [runner:2017]: Expr::Dot evaluated directly! left = {:?}, member = {:?}", left, member);
+                        let bt = std::backtrace::Backtrace::force_capture();
+                        println!("Backtrace: {:#?}", bt);
+                        Err(format!(
+                            "cannot access member '{}' on non-namespace",
+                            member
+                        ))
+                    },
                 }
             }
             Expr::Call(callee, args, _) => {
@@ -2027,7 +2032,7 @@ impl Runner {
                             let val = self.eval_expr(arg, env.clone())?;
                             let val_str = match val {
                                 Value::String(ref s) => s.clone(),
-                                _ => val.to_string(),
+                                _ => crate::native_std::fmt::stringify_value(&val),
                             };
                             parts.push(val_str);
                         }
@@ -2050,7 +2055,7 @@ impl Runner {
                             let val = self.eval_expr(arg, env.clone())?;
                             let val_str = match val {
                                 Value::String(ref s) => s.clone(),
-                                _ => val.to_string(),
+                                _ => crate::native_std::fmt::stringify_value(&val),
                             };
                             parts.push(val_str);
                         }
@@ -3312,6 +3317,21 @@ impl Runner {
                         };
                         return Ok(Value::String(type_name));
                     } else if member == "toString" {
+                        if let Value::Object(map) | Value::Formula(map) = &receiver_val {
+                            if map.contains_key("toString") {
+                                let func_val = self.eval_expr(callee, env.clone())?;
+                                match func_val {
+                                    Value::NativeClosure(crate::vm::NativeClosureType(cb)) => {
+                                        let mut evaled_args = Vec::new();
+                                        for (_, arg_expr) in args {
+                                            evaled_args.push(self.eval_expr(arg_expr, env.clone())?);
+                                        }
+                                        return cb(evaled_args);
+                                    }
+                                    _ => return Ok(Value::String(receiver_val.to_string())),
+                                }
+                            }
+                        }
                         return Ok(Value::String(receiver_val.to_string()));
                     } else if member == "toInt" {
                         if let Ok(i) = receiver_val.as_int() {
@@ -3392,13 +3412,17 @@ impl Runner {
                             return Ok(Value::String(hex));
                         }
                         return Err(format!("toHex is only supported on Bytes, found {}", receiver_val.type_name()));
-                    } else if member == "toBase64" {
+                    }
+                    #[cfg(feature = "base64")]
+                    if member == "toBase64" {
                         if let Value::Bytes(b) = receiver_val {
                             use base64::{Engine as _, engine::general_purpose};
                             return Ok(Value::String(general_purpose::STANDARD.encode(&b)));
                         }
                         return Err(format!("toBase64 is only supported on Bytes, found {}", receiver_val.type_name()));
-                    } else if member == "concat" {
+                    } 
+                    
+                    if member == "concat" {
                         if args.is_empty() { return Err("concat expects 1 argument".to_string()); }
                         let other = self.eval_expr(&args[0].1, env.clone())?;
                         if let Value::Bytes(b1) = receiver_val {
@@ -3503,51 +3527,55 @@ impl Runner {
                         let min_f = if let Value::Float(f) = min_val { f } else { min_val.as_int().unwrap_or(0) as f64 };
                         let max_f = if let Value::Float(f) = max_val { f } else { max_val.as_int().unwrap_or(0) as f64 };
                         return Ok(Value::Float(v_f.max(min_f).min(max_f)));
-
-                    } else if member == "year" {
-                        if let Value::Int(timestamp) = receiver_val {
-                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
-                                return Ok(Value::Int(chrono::Datelike::year(&dt) as i64));
-                            }
-                        }
-                        return Err("year requires a valid timestamp".to_string());
-                    } else if member == "month" {
-                        if let Value::Int(timestamp) = receiver_val {
-                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
-                                return Ok(Value::Int(chrono::Datelike::month(&dt) as i64));
-                            }
-                        }
-                        return Err("month requires a valid timestamp".to_string());
-                    } else if member == "day" {
-                        if let Value::Int(timestamp) = receiver_val {
-                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
-                                return Ok(Value::Int(chrono::Datelike::day(&dt) as i64));
-                            }
-                        }
-                        return Err("day requires a valid timestamp".to_string());
-                    } else if member == "addDays" {
-                        if args.len() < 1 { return Err("addDays requires 1 argument".to_string()); }
-                        let other = self.eval_expr(&args[0].1, env.clone())?;
-                        if let (Value::Int(timestamp), Value::Int(days)) = (&receiver_val, &other) {
-                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
-                                if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::days(*days)) {
-                                    return Ok(Value::Int(new_dt.timestamp_millis()));
+                    }
+                    #[cfg(feature = "time")]
+                    {
+                        if member == "year" {
+                            if let Value::Int(timestamp) = receiver_val {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                    return Ok(Value::Int(chrono::Datelike::year(&dt) as i64));
                                 }
                             }
-                        }
-                        return Err("addDays requires a valid timestamp and an integer".to_string());
-                    } else if member == "addHours" {
-                        if args.len() < 1 { return Err("addHours requires 1 argument".to_string()); }
-                        let other = self.eval_expr(&args[0].1, env.clone())?;
-                        if let (Value::Int(timestamp), Value::Int(hours)) = (&receiver_val, &other) {
-                            if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
-                                if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::hours(*hours)) {
-                                    return Ok(Value::Int(new_dt.timestamp_millis()));
+                            return Err("year requires a valid timestamp".to_string());
+                        } else if member == "month" {
+                            if let Value::Int(timestamp) = receiver_val {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                    return Ok(Value::Int(chrono::Datelike::month(&dt) as i64));
                                 }
                             }
+                            return Err("month requires a valid timestamp".to_string());
+                        } else if member == "day" {
+                            if let Value::Int(timestamp) = receiver_val {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                    return Ok(Value::Int(chrono::Datelike::day(&dt) as i64));
+                                }
+                            }
+                            return Err("day requires a valid timestamp".to_string());
+                        } else if member == "addDays" {
+                            if args.len() < 1 { return Err("addDays requires 1 argument".to_string()); }
+                            let other = self.eval_expr(&args[0].1, env.clone())?;
+                            if let (Value::Int(timestamp), Value::Int(days)) = (&receiver_val, &other) {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
+                                    if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::days(*days)) {
+                                        return Ok(Value::Int(new_dt.timestamp_millis()));
+                                    }
+                                }
+                            }
+                            return Err("addDays requires a valid timestamp and an integer".to_string());
+                        } else if member == "addHours" {
+                            if args.len() < 1 { return Err("addHours requires 1 argument".to_string()); }
+                            let other = self.eval_expr(&args[0].1, env.clone())?;
+                            if let (Value::Int(timestamp), Value::Int(hours)) = (&receiver_val, &other) {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
+                                    if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::hours(*hours)) {
+                                        return Ok(Value::Int(new_dt.timestamp_millis()));
+                                    }
+                                }
+                            }
+                            return Err("addHours requires a valid timestamp and an integer".to_string());
                         }
-                        return Err("addHours requires a valid timestamp and an integer".to_string());
-                    } else if member == "toJson" {
+                    }
+                    if member == "toJson" {
                         // Very simple JSON serializer
                         fn to_json(val: &Value) -> String {
                             match val {

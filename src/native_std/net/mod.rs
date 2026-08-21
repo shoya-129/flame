@@ -10,8 +10,15 @@ pub mod dns;
 pub mod url;
 pub mod interface;
 
-use crate::vm::Value;
+use crate::vm::{Value, NativeModuleDef};
 use std::collections::HashMap;
+
+pub fn get_module_defs() -> Vec<NativeModuleDef> {
+    vec![
+        #[cfg(feature = "http")]
+        http::def(),
+    ]
+}
 
 pub fn init(submodule: &str) -> HashMap<String, Value> {
     match submodule {

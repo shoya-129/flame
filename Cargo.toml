@@ -1,6 +1,6 @@
 [package]
 name = "flamelang"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "A statically typed, fast, and modern programming language built in Rust."
 license = "ISC"
@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [features]
-default = ["cli", "net", "http", "ws", "mqtt"]
+default = ["cli", "net", "http", "ws", "mqtt", "time", "os", "regex", "robot", "hardware", "camera", "bluetooth", "base64", "gpio"]
 cli = ["dep:reqwest", "dep:zip"]
 avr = []
 esp32 = []
@@ -27,6 +27,15 @@ net = ["dep:tokio", "dep:reqwest", "dep:tungstenite", "dep:url", "dep:default-ne
 mqtt = ["net", "dep:rumqttc"]
 http = ["net"]
 ws = ["net"]
+time = ["dep:chrono"]
+os = ["dep:sysinfo"]
+regex = ["dep:regex"]
+robot = ["dep:enigo"]
+hardware = ["dep:hidapi", "dep:serialport", "dep:btleplug"]
+camera = ["dep:nokhwa", "dep:image"]
+bluetooth = ["dep:btleplug", "dep:futures"]
+base64 = ["dep:base64"]
+gpio = ["dep:rppal"]
 
 [dependencies]
 tokio = { version = "1", optional = true, features = ["rt", "macros", "net", "time", "sync", "io-util", "rt-multi-thread"] }
@@ -36,16 +45,16 @@ url = { version = "2.5", optional = true }
 default-net = { version = "0.22", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-enigo = "0.6.1"
-sysinfo = "=0.30.0"
-hidapi = "2"
-serialport = "4"
-nokhwa = { version = "0.10", features = ["input-native"] }
-image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"] }
-btleplug = "0.12.0"
-futures = { version = "0.3", default-features = false, features = ["executor"] }
+enigo = { version = "0.6.1", optional = true }
+sysinfo = { version = "=0.30.0", optional = true }
+hidapi = { version = "2", optional = true }
+serialport = { version = "4", optional = true }
+nokhwa = { version = "0.10", features = ["input-native"], optional = true }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp"], optional = true }
+btleplug = { version = "0.12.0", optional = true }
+futures = { version = "0.3", default-features = false, features = ["executor"], optional = true }
 once_cell = "1.21"
-regex = "1.13.1"
+regex = { version = "1.13.1", optional = true }
 reqwest = { version = "0.13.4", optional = true, default-features = false, features = ["default-tls", "json", "multipart", "blocking"] }
 zip = { version = "8.6.0", optional = true }
 syn = { version = "3.0.0", features = ["full"] }
@@ -55,11 +64,11 @@ embedded-hal = "1.0"
 embedded-io = "0.7.1"
 embedded-storage = "0.3"
 ctrlc = "3.5.2"
-chrono = "0.4.45"
-base64 = "0.23.1"
+chrono = { version = "0.4.45", optional = true }
+base64 = { version = "0.23.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-rppal = "0.22"
+rppal = { version = "0.22", optional = true }
 
 [profile.dev]
 opt-level = 0

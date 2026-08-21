@@ -40,7 +40,7 @@ assert_ne(10, 20)
     Read, write, append, and seek raw binary byte streams directly from the filesystem.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
-  <Card title="Network Toolkit (std.net)" icon="globe">
+  <Card title="Network Toolkit (std.net)" icon="internet">
     Complete async networking (TCP, UDP, HTTP, WebSockets, MQTT), DNS resolution, and native JSON parsing/serialization capabilities.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
@@ -58,6 +58,10 @@ assert_ne(10, 20)
   </Card>
   <Card title="Platform Devices (std.camera, std.bluetooth, std.hid, std.serial)" icon="star">
     Webcam frame capture, Bluetooth LE scanning, raw USB HID streams, and serial port device listing.
+    <br/><Badge text="Production Ready" variant="success" />
+  </Card>
+  <Card title="Formatting (std.fmt)" icon="pencil">
+    String formatting and manipulation utilities including positional and keyword arguments.
     <br/><Badge text="Production Ready" variant="success" />
   </Card>
 </CardGrid>
@@ -79,6 +83,7 @@ import std.math
 import std.time
 import std.hardware
 import std.desktop
+import std.fmt
 
 println($"Running Flame on {os.name()} ({os.arch()})")
 ```

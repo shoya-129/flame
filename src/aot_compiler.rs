@@ -10,6 +10,7 @@ pub fn build_aot_project(
     force_local: bool,
     is_pkg: bool,
     is_test_mode: bool,
+    files_to_test: Option<Vec<PathBuf>>,
 ) {
 
 
@@ -69,20 +70,37 @@ pub fn build_aot_project(
                     scan_imports(&path, features);
                 } else if path.extension().and_then(|s| s.to_str()) == Some("fm") {
                     if let Ok(content) = fs::read_to_string(&path) {
-                        // Scan for basic imports as a fallback
-                        for line in content.lines() {
-                            let line = line.trim();
-                            if line.starts_with("import std.net.http") {
-                                features.insert("\"http\"".to_string());
-                            }
-                            if line.starts_with("import std.net.ws") {
-                                features.insert("\"ws\"".to_string());
-                            }
-                            if line.starts_with("import std.net.mqtt") {
-                                features.insert("\"mqtt\"".to_string());
-                            }
-                            if line.starts_with("import std.net") {
-                                features.insert("\"net\"".to_string());
+                        // Map imports to features for AOT compilation
+                        let import_re = regex::Regex::new(r"import\s+([a-zA-Z0-9_\.]+)").unwrap();
+                        for cap in import_re.captures_iter(&content) {
+                            let mod_name = &cap[1];
+                            let search = if mod_name.starts_with("std.") {
+                                mod_name.to_string()
+                            } else {
+                                format!("std.{}", mod_name)
+                            };
+                            
+                            // Map standard libraries to their Cargo features
+                            let module_features = match search.as_str() {
+                                "std.time" => vec!["time"],
+                                "std.os" => vec!["os"],
+                                "std.regex" => vec!["regex"],
+                                "std.robot" => vec!["robot"],
+                                "std.hardware" => vec!["hardware"],
+                                "std.camera" => vec!["camera"],
+                                "std.bluetooth" => vec!["bluetooth"],
+                                "std.base64" => vec!["base64"],
+                                "std.hid" => vec!["hardware"],
+                                "std.serial" => vec!["hardware"],
+                                "std.net.tcp" | "std.net.udp" | "std.net.dns" | "std.net.url" | "std.net.interface" | "std.net" => vec!["net"],
+                                "std.net.http" => vec!["net", "http"],
+                                "std.net.ws" => vec!["net", "ws"],
+                                "std.net.mqtt" => vec!["net", "mqtt"],
+                                _ => vec![],
+                            };
+                            
+                            for feature in module_features {
+                                features.insert(format!("\"{}\"", feature));
                             }
                         }
                     }
@@ -92,6 +110,14 @@ pub fn build_aot_project(
     }
     
     scan_imports(&src_scan_dir, &mut features);
+    let tests_scan_dir = std::env::current_dir().unwrap().join("tests");
+    if tests_scan_dir.exists() {
+        scan_imports(&tests_scan_dir, &mut features);
+    }
+    let examples_tests_scan_dir = std::env::current_dir().unwrap().join("examples").join("tests");
+    if examples_tests_scan_dir.exists() {
+        scan_imports(&examples_tests_scan_dir, &mut features);
+    }
 
     // Also properly parse main.fm to extract @Application features
     let main_fm = std::env::current_dir().unwrap().join("src").join("main.fm");
@@ -145,6 +171,12 @@ pub fn build_aot_project(
     }
 
     let mut feature_list = features.into_iter().collect::<Vec<_>>().join(", ");
+    if is_test_mode && !feature_list.contains("\"base64\"") {
+        if !feature_list.is_empty() {
+            feature_list.push_str(", ");
+        }
+        feature_list.push_str("\"base64\"");
+    }
     if !feature_list.is_empty() {
         feature_list = format!(", features = [{}]", feature_list);
     }
@@ -580,7 +612,7 @@ panic = "abort"
 
     main_rs.push_str("fn main() {\n");
     main_rs.push_str("    let handle = std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {\n");
-    main_rs.push_str("    let mut runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
+    main_rs.push_str("    let mut base_runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
     
     let mut perms = std::collections::HashSet::new();
     if Path::new("flame.toml").exists() {
@@ -589,10 +621,10 @@ panic = "abort"
         }
     }
     for p in perms {
-        main_rs.push_str(&format!("    runner.granted_permissions.insert(\"{}\".to_string());\n", p));
+        main_rs.push_str(&format!("    base_runner.granted_permissions.insert(\"{}\".to_string());\n", p));
     }
     if is_test_mode {
-        main_rs.push_str("    runner.interactive = false;\n");
+        main_rs.push_str("    base_runner.interactive = false;\n");
     }
 
     for (name, _) in native_deps {
@@ -613,7 +645,7 @@ panic = "abort"
                         }
                         let f_name = &func.flame_name;
                         let sym = format!("flame_{}_{}", name, f_name);
-                        main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, f_name=f_name));
+                        main_rs.push_str(&format!("    base_runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, f_name=f_name));
                     }
                     for struct_meta in meta.structs {
                         let s_name = &struct_meta.name;
@@ -626,10 +658,10 @@ panic = "abort"
                                 continue;
                             }
                             let sym = format!("flame_{}_{}_{}", name, s_name, f_name);
-                            main_rs.push_str(&format!("    runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, s_name=s_name, f_name=f_name));
+                            main_rs.push_str(&format!("    base_runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, s_name=s_name, f_name=f_name));
                             if name.to_lowercase() == s_name.to_lowercase() {
                                 let alias_sym = format!("flame_{}_{}", name, f_name);
-                                main_rs.push_str(&format!("    runner.native_methods.insert(\"{alias_sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", alias_sym=alias_sym, name=name, s_name=s_name, f_name=f_name));
+                                main_rs.push_str(&format!("    base_runner.native_methods.insert(\"{alias_sym}\".to_string(), bridge_{name}::{s_name}_{f_name} as fn(*const CValue, usize) -> CValue);\n", alias_sym=alias_sym, name=name, s_name=s_name, f_name=f_name));
                             }
                         }
                     }
@@ -640,34 +672,82 @@ panic = "abort"
 
     // We don't have execute_source right now, so we need to run file
     main_rs.push_str("    // Since execute_source does not exist, we just run_file from main.rs if we had it, but here we can just parse and run\n");
-    main_rs
-        .push_str("    // Read the package's source at runtime from current working directory\n");
-    main_rs
-        .push_str("    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n");
-    main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
-    main_rs.push_str("    let mut tokens = Vec::new();\n");
-    main_rs.push_str("    loop {\n");
-    main_rs.push_str("        let tok = lexer.next_token();\n");
-    main_rs.push_str("        let is_eof = tok.kind == flamelang::lexer::TokenKind::EOF;\n");
-    main_rs.push_str("        tokens.push(tok);\n");
-    main_rs.push_str("        if is_eof { break; }\n");
-    main_rs.push_str("    }\n");
-    main_rs.push_str(
-        "    let mut parser = flamelang::parser::Parser::new(tokens, \"src/main.fm\".to_string());\n",
-    );
-    main_rs.push_str("    match parser.parse() {\n");
-    main_rs.push_str("        Ok(mut stmts) => {\n");
-    main_rs.push_str("            flamelang::parser::filter_platform_stmts(&mut stmts, Some(std::env::consts::OS));\n");
+    main_rs.push_str("    // Read the package's source at runtime from current working directory\n");
+    
     if is_test_mode {
-        main_rs.push_str("            runner.test_mode = true;\n");
-        main_rs.push_str("            let _ = runner.run(&stmts);\n");
-        main_rs.push_str("            let stats = flamelang::test_engine::execute_test_suite(&mut runner, &stmts, \"AOT Test Suite\");\n");
-        main_rs.push_str("            let result_str = if stats.failed == 0 { \"\\x1b[1;32mok.\\x1b[0m\" } else { \"\\x1b[1;31mFAILED.\\x1b[0m\" };\n");
-        main_rs.push_str("            println!(\"\\n\\x1b[1;32mtest result:\\x1b[0m {} {} passed; {} failed; {} ignored; {} measured; {} filtered out\", result_str, stats.passed, stats.failed, stats.ignored, stats.measured, stats.filtered);\n");
-        main_rs.push_str("            if stats.failed > 0 {\n");
-        main_rs.push_str("                std::process::exit(1);\n");
+        main_rs.push_str("    let mut files_to_test = vec![\n");
+        if let Some(files) = files_to_test {
+            for f in files {
+                main_rs.push_str(&format!("        PathBuf::from(\"{}\"),\n", f.to_string_lossy().replace("\\", "/")));
+            }
+        }
+        main_rs.push_str("    ];\n");
+        
+        main_rs.push_str("    let mut total_passed = 0;\n");
+        main_rs.push_str("    let mut total_failed = 0;\n");
+        main_rs.push_str("    let mut total_ignored = 0;\n");
+        main_rs.push_str("    let mut total_measured = 0;\n");
+        main_rs.push_str("    let mut total_filtered = 0;\n");
+        
+        main_rs.push_str("    for file_path in files_to_test {\n");
+        main_rs.push_str("        println!(\"\\nrunning tests in \\x1b[1m{}\\x1b[0m:\", file_path.display());\n");
+        main_rs.push_str("        let src = std::fs::read_to_string(&file_path).unwrap_or_default();\n");
+        main_rs.push_str("        let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
+        main_rs.push_str("        let mut tokens = Vec::new();\n");
+        main_rs.push_str("        loop {\n");
+        main_rs.push_str("            let tok = lexer.next_token();\n");
+        main_rs.push_str("            let is_eof = tok.kind == flamelang::lexer::TokenKind::EOF;\n");
+        main_rs.push_str("            tokens.push(tok);\n");
+        main_rs.push_str("            if is_eof { break; }\n");
+        main_rs.push_str("        }\n");
+        main_rs.push_str("        let mut parser = flamelang::parser::Parser::new(tokens, file_path.to_string_lossy().to_string());\n");
+        main_rs.push_str("        match parser.parse() {\n");
+        main_rs.push_str("            Ok(mut stmts) => {\n");
+        main_rs.push_str("                if !stmts.iter().any(|s| flamelang::parser::is_test_statement(s)) { continue; }\n");
+        main_rs.push_str("                flamelang::parser::filter_platform_stmts(&mut stmts, Some(std::env::consts::OS));\n");
+        main_rs.push_str("                let mut runner = Runner::new(file_path.clone());\n");
+        // copy native methods over
+        main_rs.push_str("                runner.native_methods = base_runner.native_methods.clone();\n");
+        main_rs.push_str("                runner.granted_permissions = base_runner.granted_permissions.clone();\n");
+        // We probably need to clone runner methods outside the loop
+        main_rs.push_str("                runner.test_mode = true;\n");
+        main_rs.push_str("                let _ = runner.run(&stmts);\n");
+        main_rs.push_str("                let stats = flamelang::test_engine::execute_test_suite(&mut runner, &stmts, \"AOT Test Suite\");\n");
+        main_rs.push_str("                total_passed += stats.passed;\n");
+        main_rs.push_str("                total_failed += stats.failed;\n");
+        main_rs.push_str("                total_ignored += stats.ignored;\n");
+        main_rs.push_str("                total_measured += stats.measured;\n");
+        main_rs.push_str("                total_filtered += stats.filtered;\n");
         main_rs.push_str("            }\n");
+        main_rs.push_str("            Err(diag) => {\n");
+        main_rs.push_str("                eprintln!(\"Parse error: {}\", diag.message);\n");
+        main_rs.push_str("            }\n");
+        main_rs.push_str("        }\n");
+        main_rs.push_str("    }\n");
+        
+        main_rs.push_str("    let result_str = if total_failed == 0 { \"\\x1b[1;32mok.\\x1b[0m\" } else { \"\\x1b[1;31mFAILED.\\x1b[0m\" };\n");
+        main_rs.push_str("    println!(\"\\n\\x1b[1;32mtest result:\\x1b[0m {} {} passed; {} failed; {} ignored; {} measured; {} filtered out\", result_str, total_passed, total_failed, total_ignored, total_measured, total_filtered);\n");
+        main_rs.push_str("    if total_failed > 0 {\n");
+        main_rs.push_str("        std::process::exit(1);\n");
+        main_rs.push_str("    }\n");
+        
     } else {
+        main_rs.push_str("    let mut runner = base_runner;\n");
+        main_rs.push_str("    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n");
+        main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
+        main_rs.push_str("    let mut tokens = Vec::new();\n");
+        main_rs.push_str("    loop {\n");
+        main_rs.push_str("        let tok = lexer.next_token();\n");
+        main_rs.push_str("        let is_eof = tok.kind == flamelang::lexer::TokenKind::EOF;\n");
+        main_rs.push_str("        tokens.push(tok);\n");
+        main_rs.push_str("        if is_eof { break; }\n");
+        main_rs.push_str("    }\n");
+        main_rs.push_str(
+            "    let mut parser = flamelang::parser::Parser::new(tokens, \"src/main.fm\".to_string());\n",
+        );
+        main_rs.push_str("    match parser.parse() {\n");
+        main_rs.push_str("        Ok(mut stmts) => {\n");
+        main_rs.push_str("            flamelang::parser::filter_platform_stmts(&mut stmts, Some(std::env::consts::OS));\n");
         main_rs.push_str("            let clean_stmts: Vec<_> = stmts.into_iter().filter(|stmt| !flamelang::parser::is_test_statement(stmt)).collect();\n");
         main_rs.push_str("            let result = runner.run(&clean_stmts);\n");
         main_rs.push_str("            vm::wait_for_all_threads();\n");
@@ -675,12 +755,12 @@ panic = "abort"
         main_rs.push_str("                eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m {}\", e);\n");
         main_rs.push_str("                std::process::exit(1);\n");
         main_rs.push_str("            }\n");
+        main_rs.push_str("        }\n");
+        main_rs.push_str("        Err(diag) => {\n");
+        main_rs.push_str("            eprintln!(\"Parse error: {}\", diag.message);\n");
+        main_rs.push_str("        }\n");
+        main_rs.push_str("    }\n");
     }
-    main_rs.push_str("        }\n");
-    main_rs.push_str("        Err(diag) => {\n");
-    main_rs.push_str("            eprintln!(\"Parse error: {}\", diag.message);\n");
-    main_rs.push_str("        }\n");
-    main_rs.push_str("    }\n");
     main_rs.push_str("    }).unwrap();\n");
     main_rs.push_str("    handle.join().unwrap();\n");
     main_rs.push_str("}\n");

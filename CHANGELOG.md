@@ -3,7 +3,24 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
-## [3.1.0] - 2026-08-17 (Codename: *Third Spark*)
+## [0.3.2] - 2026-08-21 (Codename: *Third Spark*)
+
+### ✨ New Features & Enhancements
+- **`std.time` Plugin Expansion**: Expanded the standard library `time` module with comprehensive natively-bound date and time utilities including `time.now()`, `time.parse()`, and `time.fromMillis()`.
+- **`std.fmt` Module**: Added a new native standard library module for advanced string and text formatting operations.
+
+### 📚 Documentation
+- **Telegram Bot Tutorial**: Added a comprehensive step-by-step guide (`docs/src/content/docs/getting-started/telegram-bot.mdx`) demonstrating how to build an asynchronous, long-polling Telegram bot using Flame's `flamer` web backend and `std.net.http`.
+
+### 🐛 Bug Fixes
+- **Tokio Async Panic in HTTP**: Patched a fatal runtime error (`Cannot drop a runtime in a context where blocking is not allowed`) when executing the `std.net.http` plugin (`http.get` and `http.post`) within asynchronous environments. The blocking I/O calls have been explicitly sandboxed onto dedicated OS threads (`std::thread::spawn`), making them perfectly safe to execute inside Tokio asynchronous tasks.
+- **Primitive Methods Strip Bug (AOT)**: Fixed a compiler conditional logic bug (`#[cfg(feature = "base64")]`) that unintentionally stripped out the entire native method resolution chain (`Expr::Dot`) for `Value::Int`, `Value::Float`, and `Value::Bytes`. Core intrinsic methods like `abs()`, `floor()`, `concat()`, and `toBase64()` now reliably execute in both interpreted mode and AOT test modes.
+- **Time Plugin Standardization**: Harmonized `std.time` output across the language implementation. Methods like `time.now()` and `time.fromMillis()` now return a standardized `Value::Int` epoch timestamp in both AOT compiler injection and the interpreted standard library, definitively resolving `expected Int, got Object` assertion failures when chaining methods like `.year()`.
+- **AOT Testing Environment Generation**: Hardened `aot_compiler.rs` to automatically discover and enforce compilation flags (like `base64`) during isolated testing, guaranteeing 1:1 runtime parity with standard execution.
+
+---
+
+## [0.3.1] - 2026-08-17 (Codename: *Third Spark*)
 
 ### ✨ New Features & Enhancements
 - **Refined Build CLI**: Overhauled `cargo build` logs and outputs during `flame build`. Suppressed redundant rustc outputs and integrated a clean, in-place animating spinner (White -> Yellow -> Flame Pink) utilizing true terminal escape sequences for smooth cross-platform compatibility.

@@ -55,7 +55,19 @@ async fn start() {
 
 ### HTTP Client (`std.net.http`)
 
-The `http` module is a powerful HTTP client supporting GET, POST, PUT, DELETE, PATCH, downloading, and uploading.
+The `http` module provides a powerful asynchronous HTTP client supporting GET, POST, PUT, DELETE, PATCH, downloading, and uploading.
+
+<Aside type="note" title="Async Execution Context">
+While AOT compilation requires the `@Application` macro to bootstrap the networking runtime, you can run HTTP methods in standard interpreted mode *without* `@Application`. However, the code **must** still reside within an `async fn` and be called using `await`.
+</Aside>
+
+When you make an HTTP request, Flame returns a special Response Object. If you try to print this response directly (`println(res)`), it will display its internal structure: `<object [text, json, status, ok]>`. 
+
+To access the actual data, you must call its methods or properties:
+- `res.status`: The integer HTTP status code (e.g., `200`, `404`).
+- `res.ok`: A boolean indicating if the status is successful (200-299).
+- `res.text()`: A closure returning the raw string body of the response.
+- `res.json()`: A closure returning the parsed JSON formula of the response.
 
 ```flame
 import std.net.http
@@ -63,17 +75,22 @@ import std.net.http
 @Application(features=["http"])
 async fn app() {
     let response = await http.get("https://api.github.com/users/shoya-129")
-    println(response.status)
-    println(await response.text())
+    
+    println(response.status) // Prints: 200
+    println(response.ok)     // Prints: true
+    
+    // You must call the .text() or .json() functions to extract the body
+    let raw_text = response.text()
+    println(raw_text)
 
     // Parsing JSON directly from GET
     let response2 = await http.get("https://api.github.com")
-    let user = await response2.json()
+    let user = response2.json()
 
     // Making a POST request with an auto-stringified JSON payload
     let postData = formula { title: "foo", body: "bar", userId: 1 }
     let post_res = await http.post("https://httpbin.org/post", postData)
-    println(await post_res.text())
+    println(post_res.text())
 }
 ```
 

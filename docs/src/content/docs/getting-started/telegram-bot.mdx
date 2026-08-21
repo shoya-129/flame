@@ -1,0 +1,157 @@
+---
+title: Building a Telegram Bot
+description: A step-by-step tutorial on building a long-polling Telegram Bot using Flame and the Flamer web framework.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+# Building a Telegram Bot
+
+In this tutorial, we will walk through how to build a fully functional Telegram Bot using **Flame** and the **Flamer** backend framework.
+
+You will learn how to:
+- Initialize a new Flame project.
+- Add external package dependencies (like `flamer`).
+- Set up an asynchronous web server.
+- Intercept incoming Telegram messages and respond via HTTP.
+
+---
+
+## Prerequisites
+
+Before starting, ensure you have:
+1. The **Flame toolchain** installed (`cargo run --bin flamelang` or `flame`).
+2. A Telegram Bot Token (obtained by talking to the [BotFather](https://t.me/botfather) on Telegram).
+
+---
+
+<Steps>
+
+1. ### Create a New Project
+
+   First, initialize a new Flame project using the CLI:
+   
+   ```powershell
+   flame new telegram_bot
+   cd telegram_bot
+   ```
+   
+   This will generate a standard `flame.toml` manifest file and a `src/main.fm` entry point.
+
+2. ### Add the Flamer Dependency
+
+   We need the **Flamer** web backend to handle asynchronous routing and listening.
+   Add `flamer` as a dependency by using the `flame add` command:
+   
+   ```powershell
+   flame add flamer
+   ```
+   
+   Alternatively, manually add it to your `flame.toml`:
+   ```toml
+   [dependencies]
+   flamer = "0.1.0"
+   ```
+
+3. ### Setup the Application Entry Point
+
+   Open `src/main.fm` and set up the foundation. We will import `std.net.http`, `std.json`, and our `flamer` package.
+   
+   ```flame
+   import std.net.http
+   import std.json
+   import flamer
+
+   // Replace with your actual Bot Token from BotFather
+   let bot_token = "YOUR_BOT_TOKEN_HERE"
+
+   @Flamer(port: 3000)
+   async fn main() {
+       println("--- Flame Telegram Bot Webhook Server ---")
+       println("Server listening on port 3000.")
+       println("Point your Telegram webhook to: /webhook")
+       
+       // Setup routing
+       flamer.post("/webhook", webhook)
+       
+       // Start listening asynchronously
+       await flamer.listen()
+   }
+
+   await main()
+   ```
+
+4. ### Write the Webhook Handler
+
+   Next, we will define our asynchronous `webhook` function. This function will be triggered by `flamer` every time Telegram sends a new message to our `/webhook` endpoint.
+   
+   ```flame
+   async fn webhook(body: Formula) -> Formula {
+       // Parse the incoming JSON request body from Telegram
+       let data = json.parse(body)
+       
+       // Extract the sender's Chat ID and the message text
+       let chat_id = data.message.chat.id
+       let text = data.message.text
+       
+       println($"Received from {chat_id}: {text}")
+       
+       let mut reply_text = ""
+       
+       // Simple command routing
+       if text == "/start" {
+           reply_text = "Welcome to Flame Bot! Send me a message."
+       } else {
+           reply_text = $"You said: {text}"
+       }
+       
+       // Build the Telegram API request url
+       let send_url = $"https://api.telegram.org/bot{bot_token}/sendMessage"
+       
+       // Prepare the JSON payload
+       let payload = {
+           chat_id: chat_id,
+           text: reply_text
+       }
+       
+       // Fire the HTTP POST request to Telegram!
+       let send_res = await http.post(send_url, payload)
+       
+       // Print the API response for debugging
+       println($"Telegram response: {send_res.text()}")
+       
+       // Return a successful HTTP 200 response
+       return {
+           ok: true
+       }
+   }
+   ```
+   
+   <Aside type="tip" title="No format strings needed!">
+   Notice how we use Flame's native interpolation syntax (`$"..."`) instead of clunky string formatting functions. Variables are automatically injected safely!
+   </Aside>
+
+5. ### Setup Webhooks
+
+   **Webhooks Setup (Production)**  
+   If you have a public IP or are using a tunnel (like `ngrok`), you can tell Telegram to push updates directly to your running server:
+   ```bash
+   curl -X POST https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook -d "url=https://your-ngrok-url.app/webhook"
+   ```
+
+6. ### Run the Bot
+
+   Start your application:
+   
+   ```powershell
+   flame run src/main.fm
+   ```
+   
+   <Aside type="caution" title="Security Warning">
+   Ensure that you never commit your raw `bot_token` to public repositories. Consider loading it via an environment variable (`std.os.getenv`) in production!
+   </Aside>
+
+</Steps>
+
+## Congratulations!
+You've successfully built a concurrent, native-speed Telegram Bot using Flame. Because Flame integrates with standard asynchronous paradigms (`tokio` under the hood) and native non-blocking HTTP clients, your webhook handler easily handles thousands of concurrent requests natively without skipping a beat!

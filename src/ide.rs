@@ -523,7 +523,7 @@ pub fn get_keyword_completions(
                         label: format!("@{}", ann_name),
                         kind: "annotation".to_string(),
                         detail: "workspace annotation".to_string(),
-                        documentation: tc.hover_info.values().find(|doc| doc.contains(&format!("annotation {}", ann_name))).cloned(),
+                        documentation: tc.hover_info.values().find(|doc| doc.contains(&format!("annotation @{}", ann_name))).cloned(),
                     });
                 }
             }
@@ -858,9 +858,9 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         let sig = if kind_kw == "annotation" {
             annotation_returns.insert(name_str.to_string(), ret_str.to_string());
             if ret_str == "()" {
-                format!("annotation {}({})", name_str, params_str)
+                format!("annotation @{}({})", name_str, params_str)
             } else {
-                format!("annotation {}({}) -> {}", name_str, params_str, ret_str)
+                format!("annotation @{}({}) -> {}", name_str, params_str, ret_str)
             }
         } else {
             if ret_str == "()" {
@@ -897,6 +897,16 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
     (vars, structs)
 }
 
+pub fn get_native_module_def(module: &str) -> Option<crate::vm::NativeModuleDef> {
+    let defs = crate::native_std::get_module_defs();
+    let search = if module.starts_with("std.") {
+        module.to_string()
+    } else {
+        format!("std.{}", module)
+    };
+    defs.into_iter().find(|d| d.name == search || d.name == module)
+}
+
 pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
     let mut parts = module.split('.');
     let base = parts.next()?;
@@ -922,6 +932,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "json" => Some(crate::native_std::json::init()),
         "math" => Some(crate::native_std::math::init()),
         "time" => Some(crate::native_std::time::init()),
+        "fmt" => Some(crate::native_std::fmt::init()),
         "os" => Some(crate::native_std::os::init()),
         "hardware" => Some(crate::native_std::hardware::init()),
         "desktop" => Some(crate::native_std::desktop::init()),

@@ -1,7 +1,7 @@
 const vscode = require('vscode');
 const { existsSync, writeFileSync, unlinkSync, statSync } = require('fs');
 const { dirname, join, delimiter } = require('path');
-const { homedir } = require('os');
+const { homedir, tmpdir } = require('os');
 const { execFile } = require('child_process');
 
 function findWorkspaceRoot(documentPath) {
@@ -140,7 +140,7 @@ function findCompilerBinary(startPath) {
     return 'flame';
 }
 
-function execCompilerJson(args, cwd) {
+function execCompilerJson(args, cwd, input) {
     return new Promise((resolve) => {
         const compiler = findCompilerBinary(cwd);
         if (!compiler) {
@@ -153,7 +153,7 @@ function execCompilerJson(args, cwd) {
             options.shell = true;
         }
 
-        execFile(compiler, args, options, (error, stdout) => {
+        const child = execFile(compiler, args, options, (error, stdout) => {
             if (error && !stdout) {
                 resolve(null);
                 return;
@@ -165,6 +165,11 @@ function execCompilerJson(args, cwd) {
                 resolve(null);
             }
         });
+
+        if (input !== undefined) {
+            child.stdin.write(input);
+            child.stdin.end();
+        }
     });
 }
 
@@ -172,28 +177,12 @@ async function runCheck(document, position) {
     if (!document || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return null;
     const workspaceRoot = findWorkspaceRoot(document.uri.fsPath);
 
-    // Write unsaved content to a temporary file so the compiler sees exactly what the user is typing
-    const tempFilePath = document.uri.fsPath + '.tmp.fm';
-    try {
-        writeFileSync(tempFilePath, document.getText());
-    } catch (e) {
-        return null;
-    }
-
-    const args = ['check', tempFilePath, '--json'];
+    const args = ['check', document.uri.fsPath, '--json', '--stdin'];
     if (position) {
         args.push('--line', String(position.line + 1), '--col', String(position.character + 1));
     }
 
-    const result = await execCompilerJson(args, workspaceRoot);
-
-    // Clean up temporary file
-    try {
-        if (existsSync(tempFilePath)) {
-            unlinkSync(tempFilePath);
-        }
-    } catch (e) { }
-
+    const result = await execCompilerJson(args, workspaceRoot, document.getText());
     return result;
 }
 
@@ -364,14 +353,7 @@ function activate(context) {
             if (document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return [];
             const workspaceRoot = findWorkspaceRoot(document.uri.fsPath);
 
-            const tempFilePath = document.uri.fsPath + '.fmt.tmp.fm';
-            try {
-                writeFileSync(tempFilePath, document.getText());
-            } catch (e) {
-                return [];
-            }
-
-            const args = ['format', tempFilePath, '--stdout'];
+            const args = ['format', document.uri.fsPath, '--stdout', '--stdin'];
             const compiler = findCompilerBinary(workspaceRoot);
             if (!compiler) return [];
 
@@ -380,13 +362,7 @@ function activate(context) {
                 if (process.platform === 'win32' || !compiler.includes('\\') && !compiler.includes('/')) {
                     options.shell = true;
                 }
-                execFile(compiler, args, options, (error, stdout) => {
-                    try {
-                        if (existsSync(tempFilePath)) {
-                            unlinkSync(tempFilePath);
-                        }
-                    } catch (e) { }
-
+                const child = execFile(compiler, args, options, (error, stdout) => {
                     if (error) {
                         resolve([]);
                         return;
@@ -402,6 +378,9 @@ function activate(context) {
                         resolve([]);
                     }
                 });
+
+                child.stdin.write(document.getText());
+                child.stdin.end();
             });
         }
     }));

@@ -1,5 +1,63 @@
-use crate::vm::Value;
+use crate::vm::{Value, NativeModuleDef, NativeFunctionDef, NativeTypeDef};
 use std::collections::HashMap;
+
+#[cfg(feature = "http")]
+pub fn def() -> NativeModuleDef {
+    NativeModuleDef {
+        name: "std.net.http".to_string(),
+        description: "HTTP client for sending requests".to_string(),
+        features: vec!["http".to_string()],
+        functions: vec![
+            NativeFunctionDef {
+                name: "get".to_string(),
+                description: "Sends an HTTP GET request.".to_string(),
+                params: vec![("url".to_string(), "String".to_string())],
+                return_type: "Response".to_string(),
+            },
+            NativeFunctionDef {
+                name: "post".to_string(),
+                description: "Sends an HTTP POST request with a JSON body.".to_string(),
+                params: vec![("url".to_string(), "String".to_string()), ("body".to_string(), "Any".to_string())],
+                return_type: "Response".to_string(),
+            },
+        ],
+        types: vec![
+            NativeTypeDef {
+                name: "Response".to_string(),
+                description: "An HTTP response.".to_string(),
+                fields: vec![
+                    ("status".to_string(), "Int".to_string()),
+                    ("ok".to_string(), "Bool".to_string()),
+                ],
+                methods: vec![
+                    NativeFunctionDef {
+                        name: "text".to_string(),
+                        description: "Returns the response body as a string.".to_string(),
+                        params: vec![],
+                        return_type: "String".to_string(),
+                    },
+                    NativeFunctionDef {
+                        name: "json".to_string(),
+                        description: "Parses the response body as JSON.".to_string(),
+                        params: vec![],
+                        return_type: "Formula".to_string(),
+                    },
+                ],
+            }
+        ],
+    }
+}
+
+#[cfg(not(feature = "http"))]
+pub fn def() -> NativeModuleDef {
+    NativeModuleDef {
+        name: "std.net.http".to_string(),
+        description: "HTTP client (feature not enabled)".to_string(),
+        features: vec![],
+        functions: vec![],
+        types: vec![],
+    }
+}
 
 #[cfg(feature = "http")]
 pub fn init() -> HashMap<String, Value> {
@@ -12,14 +70,20 @@ pub fn init() -> HashMap<String, Value> {
                 return Err("http.get expects 1 argument (url)".to_string());
             }
             if let Value::String(url) = &args[0] {
-                let res = reqwest::blocking::get(url)
-                    .map_err(|e| format!("HTTP GET error: {}", e))?;
-                
-                let status = res.status().as_u16();
-                let text = res.text().unwrap_or_default();
+                let url_clone = url.clone();
+                let (status, text) = std::thread::spawn(move || {
+                    let res = reqwest::blocking::get(&url_clone)
+                        .map_err(|e| format!("HTTP GET error: {}", e))?;
+                    
+                    let status = res.status().as_u16();
+                    let text = res.text().unwrap_or_default();
+                    Ok::<_, String>((status, text))
+                }).join().map_err(|_| "Thread panicked during HTTP GET".to_string())??;
+
                 
                 let mut response_obj = HashMap::new();
                 response_obj.insert("status".to_string(), Value::Int(status as i64));
+                response_obj.insert("ok".to_string(), Value::Bool(status >= 200 && status < 300));
                 
                 let text_val = Value::String(text.clone());
                 response_obj.insert("text".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new({
@@ -55,17 +119,22 @@ pub fn init() -> HashMap<String, Value> {
                     crate::native_std::json::value_to_json(&args[1]).to_string()
                 };
                 
-                let client = reqwest::blocking::Client::new();
-                let res = client.post(url).body(body_str)
-                    .header("Content-Type", "application/json")
-                    .send()
-                    .map_err(|e| format!("HTTP POST error: {}", e))?;
-                
-                let status = res.status().as_u16();
-                let text = res.text().unwrap_or_default();
+                let url_clone = url.clone();
+                let (status, text) = std::thread::spawn(move || {
+                    let client = reqwest::blocking::Client::new();
+                    let res = client.post(&url_clone).body(body_str)
+                        .header("Content-Type", "application/json")
+                        .send()
+                        .map_err(|e| format!("HTTP POST error: {}", e))?;
+                    
+                    let status = res.status().as_u16();
+                    let text = res.text().unwrap_or_default();
+                    Ok::<_, String>((status, text))
+                }).join().map_err(|_| "Thread panicked during HTTP POST".to_string())??;
                 
                 let mut response_obj = HashMap::new();
                 response_obj.insert("status".to_string(), Value::Int(status as i64));
+                response_obj.insert("ok".to_string(), Value::Bool(status >= 200 && status < 300));
                 
                 let text_val = Value::String(text.clone());
                 response_obj.insert("text".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new({

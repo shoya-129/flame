@@ -17,34 +17,30 @@ Retrieve accurate system epoch timestamps in seconds or milliseconds:
 import std.time
 
 // Get current UNIX timestamp in seconds
-let secs = time.timestamp()
+let secs = time.now().toSeconds()
 println($"Current Seconds: {secs}")
 
-// Get current high-resolution UNIX timestamp in milliseconds
-let now_ms = time.now()
-println($"Timestamp in Milliseconds: {now_ms}")
+// Get current high-resolution UNIX timestamp object
+let now = time.now()
+println($"Timestamp in Milliseconds: {now.toMillis()}")
 
-// Parse an RFC3339 or RFC2822 date string into a UNIX timestamp (milliseconds)
-let parsed_ms = time.parse("2026-08-10T08:00:00Z")
-println($"Parsed Timestamp: {parsed_ms}")
+// Parse an RFC3339 or RFC2822 date string into a Timestamp
+let parsed = time.parse("2026-08-10T08:00:00Z")
+println($"Parsed Timestamp Millis: {parsed.toMillis()}")
 ```
 
 ### Timestamp Manipulation
-Since timestamps are stored as `Int` types (milliseconds), Flame provides native methods directly on integers to manipulate and extract date components intuitively.
+Since timestamps are returned as `Timestamp` objects in Flame, you can easily access milliseconds or string representations.
 
 ```flame
 import std.time
 
 let now = time.now()
 
-// Extract date components
-println($"Year: {now.year()}")
-println($"Month: {now.month()}")
-println($"Day: {now.day()}")
-
-// Date arithmetic 
-let future_days = now.addDays(5)
-let future_hours = now.addHours(2)
+// Extract components
+println($"Millis: {now.toMillis()}")
+println($"Seconds: {now.toSeconds()}")
+println($"String: {now.toString()}")
 ```
 
 
@@ -82,21 +78,21 @@ println($"Received: {received}")
 
 | Method | Arguments | Returns | Description |
 | :--- | :--- | :--- | :--- |
-| `time.now` | *None* | `Int` | Returns the current UNIX epoch timestamp in milliseconds. |
-| `time.timestamp` | *None* | `Int` | Returns the current UNIX epoch timestamp in seconds. |
-| `time.parse` | `date: String` | `Int` | Parses an RFC3339 or RFC2822 date string into a UNIX timestamp in milliseconds. |
+| `time.now` | *None* | `Timestamp` | Returns the current UTC time as a Timestamp object. |
+| `time.parse` | `date_string: String` | `Timestamp` | Parses an ISO-8601 or RFC-3339 string into a Timestamp. |
+| `time.fromMillis` | `milliseconds: Int` | `Timestamp` | Creates a Timestamp from Unix epoch milliseconds. |
+| `time.fromSeconds` | `seconds: Int` | `Timestamp` | Creates a Timestamp from Unix epoch seconds. |
+| `time.instant` | *None* | `Instant` | Returns a monotonic point in time suitable for measuring elapsed durations. |
 
-### Timestamp Methods (`Int`)
+### Timestamp Methods (`Timestamp`)
 
-Because timestamps are returned as milliseconds since epoch, Flame exposes native date methods on all integer primitives:
+The `Timestamp` object provides the following native methods:
 
 | Method | Arguments | Returns | Description |
 | :--- | :--- | :--- | :--- |
-| `.year()` | *None* | `Int` | Extracts the year from a valid UNIX millisecond timestamp. |
-| `.month()` | *None* | `Int` | Extracts the month (1-12) from the timestamp. |
-| `.day()` | *None* | `Int` | Extracts the day of the month (1-31) from the timestamp. |
-| `.addDays()` | `days: Int` | `Int` | Adds the specified number of days to the timestamp and returns the new value. |
-| `.addHours()` | `hours: Int` | `Int` | Adds the specified number of hours to the timestamp and returns the new value. |
+| `.toMillis()` | *None* | `Int` | Returns the UNIX epoch milliseconds. |
+| `.toSeconds()` | *None* | `Int` | Returns the UNIX epoch seconds. |
+| `.toString()` | *None* | `String` | Returns the human readable UTC date time string. |
 
 
 

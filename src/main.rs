@@ -81,14 +81,21 @@ fn main() {
                 return;
             }
             let filepath = &args[2];
-            let source = match fs::read_to_string(filepath) {
-                Ok(content) => content,
-                Err(err) => {
-                    println!(
-                        "\x1b[1;31merror:\x1b[0m failed to read '{}': {}",
-                        filepath, err
-                    );
-                    return;
+            let source = if args.contains(&"--stdin".to_string()) {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_to_string(&mut buf);
+                buf
+            } else {
+                match fs::read_to_string(filepath) {
+                    Ok(content) => content,
+                    Err(err) => {
+                        println!(
+                            "\x1b[1;31merror:\x1b[0m failed to read '{}': {}",
+                            filepath, err
+                        );
+                        return;
+                    }
                 }
             };
             let formatted = formatter::format_code(&source);
@@ -119,23 +126,27 @@ fn main() {
                 flash_project(&args);
                 return;
             }
-            if args.len() < 3 {
-                println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run");
-                println!("usage: flame run <file_path.fm>");
-                return;
-            }
             let force_local = args.contains(&"--local".to_string());
-            let filepath = if args[2] == "--local" {
-                if args.len() < 4 {
-                    println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run");
+            
+            let (filepath, script_args_start) = if args.len() > 2 {
+                let potential_file_idx = if args[2] == "--local" { 3 } else { 2 };
+                
+                if args.len() > potential_file_idx && (Path::new(&args[potential_file_idx]).exists() || args[potential_file_idx].ends_with(".fm")) {
+                    (args[potential_file_idx].clone(), potential_file_idx + 1)
+                } else if Path::new("src/main.fm").exists() {
+                    ("src/main.fm".to_string(), potential_file_idx)
+                } else {
+                    println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm");
                     return;
                 }
-                &args[3]
+            } else if Path::new("src/main.fm").exists() {
+                ("src/main.fm".to_string(), 2)
             } else {
-                &args[2]
+                println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm");
+                println!("usage: flame run [file_path.fm]");
+                return;
             };
-            
-            let script_args_start = if args[2] == "--local" { 4 } else { 3 };
+
             let mut filtered_script_args = Vec::new();
             for arg in args.iter().skip(script_args_start) {
                 if arg != "--local" {
@@ -143,7 +154,7 @@ fn main() {
                 }
             }
             
-            run_file(filepath, force_local, &filtered_script_args);
+            run_file(&filepath, force_local, &filtered_script_args);
         }
         "test" => {
             run_tests(&args);
@@ -618,6 +629,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             force_local,
             false,
             false,
+            None,
         );
 
         let ext = std::env::consts::EXE_SUFFIX;
@@ -958,6 +970,44 @@ fn run_tests(args: &[String]) {
         }
     }
 
+    let mut files_to_test = Vec::new();
+    if args.len() >= 3 && !args[2].starts_with('-') {
+        let p = PathBuf::from(&args[2]);
+        if p.exists() {
+            if p.is_dir() {
+                collect_fm_files(&p, &mut files_to_test, true);
+            } else {
+                files_to_test.push(p);
+            }
+        } else {
+            println!(
+                "\x1b[1;31merror:\x1b[0m test target '{}' does not exist.",
+                args[2]
+            );
+            return;
+        }
+    } else {
+        if Path::new("tests").exists() {
+            collect_fm_files(Path::new("tests"), &mut files_to_test, false);
+        }
+        if Path::new("examples/tests").exists() {
+            collect_fm_files(Path::new("examples/tests"), &mut files_to_test, false);
+        }
+        if Path::new("examples").exists() && !Path::new("examples/tests").exists() {
+            collect_fm_files(Path::new("examples"), &mut files_to_test, false);
+        }
+        if Path::new("src").exists() {
+            collect_fm_files(Path::new("src"), &mut files_to_test, false);
+        }
+        if files_to_test.is_empty() && Path::new("main.fm").exists() {
+            files_to_test.push(PathBuf::from("main.fm"));
+        }
+    }
+
+    // Deduplicate
+    let mut seen = std::collections::HashSet::new();
+    files_to_test.retain(|p| seen.insert(p.clone()));
+
     if !native_deps_raw.is_empty() || !plugins_raw.is_empty() {
         println!("\x1b[1;36m     AOT Testing\x1b[0m Native plugins detected. Compiling test suite natively...");
         let mut processed_native_deps = Vec::new();
@@ -1015,6 +1065,7 @@ fn run_tests(args: &[String]) {
             false,
             false,
             true, // is_test_mode
+            Some(files_to_test.clone()),
         );
 
         let exe_name = format!("{}_test{}", pkg_name, std::env::consts::EXE_SUFFIX);
@@ -1032,43 +1083,6 @@ fn run_tests(args: &[String]) {
         return;
     }
 
-    let mut files_to_test = Vec::new();
-    if args.len() >= 3 && !args[2].starts_with('-') {
-        let p = PathBuf::from(&args[2]);
-        if p.exists() {
-            if p.is_dir() {
-                collect_fm_files(&p, &mut files_to_test, true);
-            } else {
-                files_to_test.push(p);
-            }
-        } else {
-            println!(
-                "\x1b[1;31merror:\x1b[0m test target '{}' does not exist.",
-                args[2]
-            );
-            return;
-        }
-    } else {
-        if Path::new("tests").exists() {
-            collect_fm_files(Path::new("tests"), &mut files_to_test, false);
-        }
-        if Path::new("examples/tests").exists() {
-            collect_fm_files(Path::new("examples/tests"), &mut files_to_test, false);
-        }
-        if Path::new("examples").exists() && !Path::new("examples/tests").exists() {
-            collect_fm_files(Path::new("examples"), &mut files_to_test, false);
-        }
-        if Path::new("src").exists() {
-            collect_fm_files(Path::new("src"), &mut files_to_test, false);
-        }
-        if files_to_test.is_empty() && Path::new("main.fm").exists() {
-            files_to_test.push(PathBuf::from("main.fm"));
-        }
-    }
-
-    // Deduplicate
-    let mut seen = std::collections::HashSet::new();
-    files_to_test.retain(|p| seen.insert(p.clone()));
 
     if files_to_test.is_empty() {
         println!("No `.fm` test files found.");
@@ -1333,8 +1347,16 @@ fn run_check_command(args: &[String]) {
         .position(|arg| arg == "--col")
         .and_then(|idx| args.get(idx + 1))
         .and_then(|value| value.parse::<usize>().ok());
+    let stdin_content = if args.iter().any(|arg| arg == "--stdin") {
+        use std::io::Read;
+        let mut buf = String::new();
+        let _ = std::io::stdin().read_to_string(&mut buf);
+        Some(buf)
+    } else {
+        None
+    };
 
-    let output = std::panic::catch_unwind(|| analyze_file_for_json(file, line, col))
+    let output = std::panic::catch_unwind(|| analyze_file_for_json(file, line, col, stdin_content))
         .unwrap_or_else(|_| JsonCheckOutput {
             file: file.to_string(),
             diagnostics: vec![],
@@ -1383,8 +1405,8 @@ fn list_plugins_command(args: &[String]) {
     }
 }
 
-fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) -> JsonCheckOutput {
-    let content = fs::read_to_string(file).unwrap_or_default();
+fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, stdin_content: Option<String>) -> JsonCheckOutput {
+    let content = stdin_content.unwrap_or_else(|| fs::read_to_string(file).unwrap_or_default());
     let manifest_dir = find_manifest_root(Path::new(file)).unwrap_or_else(|| {
         Path::new(file)
             .parent()
@@ -1560,11 +1582,14 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 .map(|p| format!("{}: {}", p.name, p.type_name))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let ret_str = return_type.unwrap_or("Nil");
             let sig = if is_annotation {
-                format!("annotation {}({}) -> {}", name, params_str, ret_str)
+                if let Some(ret) = return_type {
+                    format!("annotation @{}({}) -> {}", name, params_str, ret)
+                } else {
+                    format!("annotation @{}({})", name, params_str)
+                }
             } else {
-                format!("fn {}({}) -> {}", name, params_str, ret_str)
+                format!("fn {}({}) -> {}", name, params_str, return_type.unwrap_or("Nil"))
             };
 
             scanned_vars.push(ide::ScannedVar {
@@ -1616,10 +1641,37 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     }
                 }
             }
+            
+            for struct_meta in &meta.structs {
+                for func in &struct_meta.methods {
+                    let pattern1 = format!("= {}.{}.{}(", mod_name, struct_meta.name, func.flame_name);
+                    let pattern2 = format!("= await {}.{}.{}(", mod_name, struct_meta.name, func.flame_name);
+                    for line in content.lines() {
+                        if line.contains(&pattern1) || line.contains(&pattern2) {
+                            if let Some(eq_idx) = line.find('=') {
+                                let left = &line[..eq_idx].trim();
+                                if let Some(var_name) = left.split_whitespace().last() {
+                                    if let Some(var) =
+                                        scanned_vars.iter_mut().find(|v| v.name == var_name)
+                                    {
+                                        var.typ = Some(func.return_type.clone());
+                                    } else {
+                                        scanned_vars.push(ide::ScannedVar {
+                                            name: var_name.to_string(),
+                                            typ: Some(func.return_type.clone()),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
     let (namespace, member_prefix) = extract_member_context(current_line, cursor_col);
+    eprintln!("DEBUG_CONTEXT: namespace={:?}, prefix={:?}, line='{}', col={}", namespace, member_prefix, current_line, cursor_col);
 
     let mut exact_ast_hover = None;
     if let Some(tc) = &tc_opt {
@@ -1645,6 +1697,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
             let mut best_span: Option<&crate::lexer::Span> = None;
             let mut best_ty_str = None;
+            eprintln!("DEBUG_HOVER: byte_idx={}, tc.hover_info keys: {:?}", cursor_byte_idx, tc.hover_info.keys());
 
             for (span, ty_str) in &tc.hover_info {
                 if cursor_byte_idx >= span.start && cursor_byte_idx <= span.end {
@@ -1758,8 +1811,20 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     });
                 }
             }
-            // Add struct methods that match the module name (e.g. Uuid inside uuid)
+            // Add struct names themselves as completions
             for struct_meta in &meta.structs {
+                if member_prefix
+                    .as_deref()
+                    .map_or(true, |prefix| struct_meta.name.starts_with(prefix))
+                {
+                    completions.push(JsonCompletion { sort_text: Some("2_".to_string()),
+                        label: struct_meta.name.clone(),
+                        kind: "class".to_string(),
+                        detail: format!("struct (from {})", namespace),
+                        documentation: struct_meta.docs.clone(),
+                    });
+                }
+                
                 if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
                     for function in &struct_meta.methods {
                         if member_prefix
@@ -1850,6 +1915,65 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         }
                     }
                 }
+                
+                if hover_found.is_none() {
+                    if let Some(struct_meta) = meta.structs.iter().find(|s| s.name == word_under_cursor) {
+                        let doc = struct_meta.docs.clone().unwrap_or_default();
+                        hover_found = Some(JsonHover {
+                            label: format!("{}::{}", namespace, struct_meta.name),
+                            documentation: Some(format!(
+                                "```flame\nstruct {}\n```\n{}",
+                                struct_meta.name, doc
+                            )),
+                        });
+                    }
+                }
+            }
+        } else if let Some(def) = ide::get_native_module_def(&namespace) {
+            for func in &def.functions {
+                if member_prefix.as_deref().map_or(true, |p| func.name.starts_with(p)) {
+                    completions.push(JsonCompletion {
+                        sort_text: None,
+                        label: func.name.clone(),
+                        kind: "function".to_string(),
+                        detail: format!("{}", func.return_type),
+                        documentation: Some(format!("```flame\nfn {}({}) -> {}\n```\n{}", 
+                            func.name, 
+                            func.params.iter().map(|(n, t)| format!("{}: {}", n, t)).collect::<Vec<_>>().join(", "),
+                            func.return_type,
+                            func.description)),
+                    });
+                }
+            }
+            for typ in &def.types {
+                if member_prefix.as_deref().map_or(true, |p| typ.name.starts_with(p)) {
+                    completions.push(JsonCompletion {
+                        sort_text: None,
+                        label: typ.name.clone(),
+                        kind: "class".to_string(),
+                        detail: "type".to_string(),
+                        documentation: Some(format!("```flame\ntype {}\n```\n{}", typ.name, typ.description)),
+                    });
+                }
+            }
+            
+            // For hover:
+            if !word_under_cursor.is_empty() {
+                if let Some(func) = def.functions.iter().find(|f| f.name == word_under_cursor) {
+                    hover_found = Some(JsonHover {
+                        label: format!("{}.{}()", def.name, func.name),
+                        documentation: Some(format!("```flame\nfn {}({}) -> {}\n```\n{}", 
+                            func.name, 
+                            func.params.iter().map(|(n, t)| format!("{}: {}", n, t)).collect::<Vec<_>>().join(", "),
+                            func.return_type,
+                            func.description)),
+                    });
+                } else if let Some(typ) = def.types.iter().find(|t| t.name == word_under_cursor) {
+                    hover_found = Some(JsonHover {
+                        label: format!("{}.{}", def.name, typ.name),
+                        documentation: Some(format!("```flame\ntype {}\n```\n{}", typ.name, typ.description)),
+                    });
+                }
             }
         } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {
             for method in &std_methods {
@@ -1895,23 +2019,25 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         name,
                         params,
                         return_type,
+                        annotations,
                         ..
-                    } => Some((name, params, return_type, false)),
+                    } => Some((name, params, return_type, false, annotations)),
                     crate::parser::Stmt::AnnotationDecl {
                         name,
                         params,
                         return_type,
                         ..
-                    } => Some((name, params, return_type, true)),
+                    } => Some((name, params, return_type, true, &vec![])),
                     crate::parser::Stmt::ExportDecl(inner, _) => {
                         if let crate::parser::Stmt::FuncDecl {
                             name,
                             params,
                             return_type,
+                            annotations,
                             ..
                         } = &**inner
                         {
-                            Some((name, params, return_type, false))
+                            Some((name, params, return_type, false, annotations))
                         } else if let crate::parser::Stmt::AnnotationDecl {
                             name,
                             params,
@@ -1919,7 +2045,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                             ..
                         } = &**inner
                         {
-                            Some((name, params, return_type, true))
+                            Some((name, params, return_type, true, &vec![]))
                         } else {
                             None
                         }
@@ -1927,7 +2053,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     _ => None,
                 };
 
-                if let Some((name, params, return_type, is_annotation)) = func_info {
+                if let Some((name, params, return_type, is_annotation, annotations)) = func_info {
                     let param_strs = params
                         .iter()
                         .map(|p| {
@@ -1940,8 +2066,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                         })
                         .collect::<Vec<_>>()
                         .join(", ");
-                    let ret_str = return_type.as_deref().unwrap_or("Nil");
-                    let sig = format!("fn {}({}) -> {}", name, param_strs, ret_str);
+                    let sig = if is_annotation {
+                        if let Some(ret) = return_type.as_deref() {
+                            format!("annotation @{}({}) -> {}", name, param_strs, ret)
+                        } else {
+                            format!("annotation @{}({})", name, param_strs)
+                        }
+                    } else {
+                        format!("fn {}({}) -> {}", name, param_strs, return_type.as_deref().unwrap_or("Nil"))
+                    };
 
                     let actual_label = if is_annotation {
                         format!("@{}", name)
@@ -1981,11 +2114,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             }
         } else {
             let mut var_type = None;
+            let mut is_instance = false;
             if let Some(first_part) = namespace.split('.').next() {
                 var_type = scanned_vars
                     .iter()
                     .find(|v| v.name == first_part)
-                    .and_then(|v| v.typ.clone());
+                    .and_then(|v| {
+                        is_instance = true;
+                        v.typ.clone()
+                    });
                 
                 for part in namespace.split('.').skip(1) {
                     if let Some(vt) = var_type {
@@ -2001,10 +2138,22 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
 
             // If not found as a variable, maybe it's a struct name directly?
             if var_type.is_none() {
+                is_instance = false;
                 if scanned_structs.iter().any(|s| s.name == namespace) {
                     var_type = Some(namespace.to_string());
+                } else if let Some(dot_idx) = namespace.find('.') {
+                    let mod_name = &namespace[..dot_idx];
+                    let struct_name = &namespace[dot_idx + 1..];
+                    if native_modules.contains(&mod_name.to_string()) {
+                        if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+                            if meta.structs.iter().any(|s| s.name == struct_name) {
+                                var_type = Some(struct_name.to_string());
+                            }
+                        }
+                    }
                 }
             }
+            eprintln!("DEBUG_COMPLETIONS_PRE: namespace={}, var_type={:?}", namespace, var_type);
 
             let mut provided_completions = false;
 
@@ -2092,11 +2241,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     }
                     
                     for struct_meta in &meta.structs {
+                        eprintln!("DEBUG_COMPLETIONS: Checking struct: {}", struct_meta.name);
                         if member_prefix
                             .as_deref()
                             .map(|p| struct_meta.name.starts_with(p))
                             .unwrap_or(true)
                         {
+                            eprintln!("DEBUG_COMPLETIONS: Adding struct: {}", struct_meta.name);
                             completions.push(JsonCompletion {
                                 sort_text: Some("2_".to_string()),
                                 label: struct_meta.name.clone(),
@@ -2123,7 +2274,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 }
             }
 
-            if let Some(t) = var_type {
+            if let Some(t) = &var_type {
+                eprintln!("DEBUG_COMPLETIONS: namespace={}, var_type={:?}, t={}, is_instance={}", namespace, var_type, t, is_instance);
                 // If it's a known struct, suggest its fields and methods
                 if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
                     for field in &struct_def.fields {
@@ -2167,11 +2319,20 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                     };
                     for mod_name in modules_to_check {
                         if let Some(meta) = load_meta_from_project(&manifest_dir, &mod_name) {
+                            eprintln!("DEBUG_COMPLETIONS: loaded meta for {}", mod_name);
                             for struct_meta in &meta.structs {
                                 if struct_meta.name == *t
                                     || struct_meta.name.to_lowercase() == t.to_lowercase()
                                 {
+                                    eprintln!("DEBUG_COMPLETIONS: matched struct {}", struct_meta.name);
                                     for function in &struct_meta.methods {
+                                        if is_instance && function.is_static {
+                                            continue;
+                                        }
+                                        if !is_instance && !function.is_static {
+                                            continue;
+                                        }
+
                                         if member_prefix
                                             .as_deref()
                                             .map(|p| function.flame_name.starts_with(p))
@@ -2478,11 +2639,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
             }
         }
 
-        if let Some(kw_hover) = ide::get_keyword_hover(&word_under_cursor) {
-            hover = Some(kw_hover);
-        } else if let Some(hf) = hover_found {
-            hover = Some(hf);
-        } else if !word_under_cursor.is_empty() {
+        hover = exact_ast_hover
+            .or(hover_found)
+            .or(scanned_var_hover)
+            .or_else(|| ide::get_keyword_hover(&word_under_cursor));
+
+        if hover.is_none() && !word_under_cursor.is_empty() {
             // Check if the bare word is a function/annotation from any native module
             for mod_name in &native_modules {
                 if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
@@ -2515,14 +2677,6 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
     };
 
     // Prioritize rich documentation (keywords, built-ins, standard library, decorators, native docs).
-    // If no rich doc exists, fall back to exact AST hover from typechecker, then scanned var hover.
-    if hover.is_none() {
-        if let Some(ast) = exact_ast_hover {
-            hover = Some(ast);
-        } else {
-            hover = scanned_var_hover;
-        }
-    }
 
     let mut signature_help = None;
     if let Some(prefix) = current_line.get(..cursor_col.saturating_sub(1)) {
@@ -2566,11 +2720,35 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>) ->
                 let clean_name = func_name.trim_start_matches('@').split('.').last().unwrap_or(func_name);
                 
                 if let Some(tc) = &tc_opt {
-                    if let Some(func) = tc.functions.get(clean_name) {
+                    let mut found_sig = tc.functions.get(clean_name);
+                    
+                    if found_sig.is_none() {
+                        for (_, methods) in &tc.methods {
+                            if let Some(sig) = methods.get(clean_name) {
+                                found_sig = Some(sig);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if found_sig.is_none() {
+                        for (_, funcs) in &tc.plugin_functions {
+                            if let Some(sig) = funcs.get(clean_name) {
+                                found_sig = Some(sig);
+                                break;
+                            }
+                        }
+                    }
+
+                    if let Some(func) = found_sig {
                         let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
                         let ret_str = format!(" -> {}", tc.format_type(&func.return_type));
                         
-                        let label = format!("{}({}){}", clean_name, params_str, ret_str);
+                        let label = if func_name.starts_with('@') {
+                            format!("@{}({})", clean_name, params_str)
+                        } else {
+                            format!("{}({}){}", clean_name, params_str, ret_str)
+                        };
                         let parameters = func.params.iter().map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty))).collect();
                         
                         signature_help = Some(JsonSignatureHelp {
@@ -2657,7 +2835,17 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
 }
 
 fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<String>) {
-    let upto = line.chars().take(col.saturating_sub(1)).collect::<String>();
+    let mut end = col.min(line.len());
+    let upto = line.chars().take(end).collect::<String>();
+    
+    // If the character just after the extracted part is a dot (meaning the cursor is exactly ON the dot),
+    // we should include it to properly trigger member completions.
+    let upto = if end < line.len() && line[end..].starts_with('.') {
+        line.chars().take(end + 1).collect::<String>()
+    } else {
+        upto
+    };
+
     if let Some(dot_index) = upto.rfind('.') {
         let after_dot = &upto[dot_index + 1..];
         if !after_dot.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {

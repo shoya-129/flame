@@ -1,0 +1,33 @@
+---
+title: Formatting (std.fmt)
+description: String formatting and interpolation utilities in Flame.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The `fmt` module provides utilities for advanced string formatting and manipulation.
+
+---
+
+## String Formatting
+
+You can format strings using positional or named arguments via `fmt.format`.
+
+```flame
+import std.fmt
+
+// Positional formatting
+let greeting = fmt.format("Hello, {0}! Welcome to {1}.", ["Alice", "Flame"])
+println(greeting) // "Hello, Alice! Welcome to Flame."
+
+// Named formatting (using an object/formula)
+let welcome = fmt.format("Welcome, {name}! Your role is {role}.", { name: "Bob", role: "Admin" })
+println(welcome) // "Welcome, Bob! Your role is Admin."
+```
+
+## API Summary Table
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `fmt.format` | `template: String, args: Any` | `String` | Formats a template string using either a vector of positional arguments or a formula of named arguments. |
+

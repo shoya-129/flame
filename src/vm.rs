@@ -93,6 +93,31 @@ pub enum CValueTag {
     Array,
 }
 
+#[derive(Debug, Clone)]
+pub struct NativeModuleDef {
+    pub name: String,
+    pub description: String,
+    pub functions: Vec<NativeFunctionDef>,
+    pub types: Vec<NativeTypeDef>,
+    pub features: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeFunctionDef {
+    pub name: String,
+    pub description: String,
+    pub params: Vec<(String, String)>, // (name, type)
+    pub return_type: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeTypeDef {
+    pub name: String,
+    pub description: String,
+    pub fields: Vec<(String, String)>,
+    pub methods: Vec<NativeFunctionDef>,
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FlameCallback {

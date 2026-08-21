@@ -42,6 +42,7 @@ export default defineConfig({
 						{ label: 'Introduction', slug: 'getting-started/introduction' },
 						{ label: 'Installation & Toolchain', slug: 'getting-started/installation' },
 						{ label: 'Architecture & Analysis', slug: 'getting-started/architecture' },
+						{ label: 'Tutorial: Telegram Bot', slug: 'getting-started/telegram-bot' },
 					],
 				},
 				{
