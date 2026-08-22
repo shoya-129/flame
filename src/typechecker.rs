@@ -100,9 +100,16 @@ pub struct TypeChecker {
     pub plugin_methods: HashMap<String, HashMap<String, Type>>,
     pub plugin_functions: HashMap<String, HashMap<String, FunctionSig>>,
     pub annotations: HashSet<String>,
+    pub is_importing: bool,
 }
 
 impl TypeChecker {
+    pub fn insert_hover_info(&mut self, span: crate::lexer::Span, info: String) {
+        if !self.is_importing {
+            self.hover_info.insert(span, info);
+        }
+    }
+
     pub fn new(filepath: String) -> Self {
         let mut checker = Self {
             filepath,
@@ -120,6 +127,7 @@ impl TypeChecker {
             plugin_methods: HashMap::new(),
             plugin_functions: HashMap::new(),
             annotations: HashSet::new(),
+            is_importing: false,
         };
         checker.register_builtins();
         checker
@@ -143,7 +151,7 @@ impl TypeChecker {
         let mut docs = Vec::new();
         for ann in annotations {
             if ann.name == "Docs" {
-                self.hover_info.insert(
+                self.insert_hover_info(
                     ann.name_span.clone(),
                     "```flame\n@Docs(text: String)\n```\n\nAdds documentation to declarations. This documentation will appear when hovering over the declared item.\n\n**Example:**\n```flame\n@Docs(\"Adds two numbers\")\nfn add(a: Int, b: Int) -> Int {\n    return a + b\n}\n```".to_string()
                 );
@@ -154,30 +162,30 @@ impl TypeChecker {
                         raw = raw[1..raw.len() - 1].to_string();
                     }
                     let doc_str = raw.replace("\\n", "\n");
-                    self.hover_info.insert(ann.span.clone(), format!("**Documentation**\n\n{}", doc_str));
+                    self.insert_hover_info(ann.span.clone(), format!("**Documentation**\n\n{}", doc_str));
                     docs.push(doc_str);
                 }
             } else if ann.name == "Test" {
-                self.hover_info.insert(
+                self.insert_hover_info(
                     ann.name_span.clone(),
                     "```flame\n@Test\n```\n\nMarks a function as a unit test. It will be executed by the test runner.".to_string()
                 );
                 docs.push("**@Test Function**\nThis function is a unit test case.".to_string());
             } else if ann.name == "Requires" {
-                self.hover_info.insert(
+                self.insert_hover_info(
                     ann.name_span.clone(),
                     "```flame\n@Requires(...modules: String)\n```\n\nSpecifies module dependencies required by this function.".to_string()
                 );
                 docs.push(format!("**Requires Dependencies:** `{}`", ann.args.join(", ")));
             } else if ann.name == "Permission" {
-                self.hover_info.insert(
+                self.insert_hover_info(
                     ann.name_span.clone(),
                     "```flame\n@Permission(...permissions: String)\n```\n\nRequests specific runtime permissions for this function.".to_string()
                 );
                 docs.push(format!("**Required Permissions:** `{}`", ann.args.join(", ")));
             } else if let Some(func) = self.functions.get(&ann.name).cloned() {
                 if let Some(doc) = func.hover_doc {
-                    self.hover_info.insert(ann.name_span.clone(), doc);
+                    self.insert_hover_info(ann.name_span.clone(), doc);
                 }
                 docs.push(format!("**@{}**", ann.name));
             } else {
@@ -376,7 +384,7 @@ impl TypeChecker {
                     if let Some(doc) = &hover_doc {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
-                    self.hover_info.insert(name_span.clone(), hover_str);
+                    self.insert_hover_info(name_span.clone(), hover_str);
                     let fields = fields
                         .iter()
                         .map(|(field_name, type_name)| {
@@ -391,7 +399,7 @@ impl TypeChecker {
                     if let Some(doc) = &hover_doc {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
-                    self.hover_info.insert(name_span.clone(), hover_str);
+                    self.insert_hover_info(name_span.clone(), hover_str);
                     let mut map = HashMap::new();
                     for variant in variants {
                         match variant {
@@ -475,7 +483,7 @@ impl TypeChecker {
                     let mut name_span = span.clone();
                     name_span.col += 3; // 'fn ' length
                     name_span.end = name_span.start + name.len();
-                    self.hover_info.insert(name_span, hover_str.clone());
+                    self.insert_hover_info(name_span, hover_str.clone());
                     if let Some(cmd_info) = self.parse_command_annotation(name, annotations, params, span) {
                         self.commands.insert(cmd_info.name.clone(), cmd_info);
                     }
@@ -538,7 +546,7 @@ impl TypeChecker {
                     if let Some(doc) = &hover_doc {
                         hover_str.push_str(&format!("\n\n{}", doc));
                     }
-                    self.hover_info.insert(name_span.clone(), hover_str.clone());
+                    self.insert_hover_info(name_span.clone(), hover_str.clone());
 
                     self.annotations.insert(name.clone());
                     self.functions.insert(
@@ -577,7 +585,7 @@ impl TypeChecker {
                     if let Some(doc) = hover_doc {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
-                    self.hover_info.insert(name_span.clone(), hover_str);
+                    self.insert_hover_info(name_span.clone(), hover_str);
                     for method in methods {
                         if let Stmt::FuncDecl {
                             name,
@@ -796,7 +804,10 @@ impl TypeChecker {
                                         file_path.to_string_lossy().to_string(),
                                     );
                                     if let Ok(parsed_stmts) = parser.parse() {
+                                        let prev = self.is_importing;
+                                        self.is_importing = true;
                                         self.collect_top_level_declarations(&parsed_stmts);
+                                        self.is_importing = prev;
                                     }
                                 }
                             }
@@ -930,6 +941,8 @@ impl TypeChecker {
                                     file_path.to_string_lossy().to_string(),
                                 );
                                 if let Ok(parsed_stmts) = parser.parse() {
+                                    let prev = self.is_importing;
+                                    self.is_importing = true;
                                     for s in &parsed_stmts {
                                         if let Stmt::ExportDecl(inner, _) = s {
                                             if let Stmt::LetDecl { name, .. }
@@ -946,6 +959,7 @@ impl TypeChecker {
                                             }
                                         }
                                     }
+                                    self.is_importing = prev;
                                 }
                             }
                         }
@@ -1012,7 +1026,7 @@ impl TypeChecker {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
 
-                    self.hover_info.insert(name_span.clone(), hover_str.clone());
+                    self.insert_hover_info(name_span.clone(), hover_str.clone());
 
                     self.define_var(
                         name.clone(),
@@ -1158,7 +1172,7 @@ impl TypeChecker {
                     hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
                 
-                self.hover_info.insert(name_span.clone(), hover_str);
+                self.insert_hover_info(name_span.clone(), hover_str);
 
                 self.define_var(
                     name.clone(),
@@ -1290,7 +1304,7 @@ impl TypeChecker {
                     hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
                 
-                self.hover_info.insert(name_span.clone(), hover_str);
+                self.insert_hover_info(name_span.clone(), hover_str);
 
                 self.define_var(
                     name.clone(),
@@ -1424,7 +1438,7 @@ impl TypeChecker {
                     for arm in arms {
                         if arm.pattern == "_" {
                             let wildcard_doc = "```flame\n_ => ...\n```\n**Wildcard Match Arm**\nMatches any unrecognized CLI command.".to_string();
-                            self.hover_info.insert(arm.pattern_span.clone(), wildcard_doc);
+                            self.insert_hover_info(arm.pattern_span.clone(), wildcard_doc);
                             self.push_scope();
                             self.infer_expr_type(&arm.body);
                             self.pop_scope();
@@ -1434,12 +1448,12 @@ impl TypeChecker {
                             } else {
                                 "```flame\n@Command(name: \"help\", about: \"Print help message\")\n```\n**CLI Subcommand**: `help`\n\nPrint help message".to_string()
                             };
-                            self.hover_info.insert(arm.pattern_span.clone(), help_doc);
+                            self.insert_hover_info(arm.pattern_span.clone(), help_doc);
                             self.push_scope();
                             self.infer_expr_type(&arm.body);
                             self.pop_scope();
                         } else if let Some(cmd) = self.commands.get(&arm.pattern).cloned() {
-                            self.hover_info.insert(arm.pattern_span.clone(), cmd.hover_doc.clone());
+                            self.insert_hover_info(arm.pattern_span.clone(), cmd.hover_doc.clone());
                             self.push_scope();
                             for field in &arm.destructure {
                                 if let Some(param) = cmd.params.iter().find(|p| &p.name == field) {
@@ -1501,12 +1515,12 @@ impl TypeChecker {
                     var.ty.clone()
                 } else if let Some(struct_info) = self.structs.get(name).cloned() {
                     if let Some(doc) = struct_info.hover_doc {
-                        self.hover_info.insert(span.clone(), doc);
+                        self.insert_hover_info(span.clone(), doc);
                     }
                     Type::Named(name.clone())
                 } else if let Some(enum_info) = self.enums.get(name).cloned() {
                     if let Some(doc) = enum_info.hover_doc {
-                        self.hover_info.insert(span.clone(), doc);
+                        self.insert_hover_info(span.clone(), doc);
                     }
                     Type::Enum(name.clone())
                 } else if let Some(func) = self.functions.get(name) {
@@ -1549,7 +1563,7 @@ impl TypeChecker {
                     };
                     Type::Named(format!("fn({}) -> {}", params_str.join(", "), ret_str))
                 } else if self.plugins.contains(name) {
-                    self.hover_info.insert(span.clone(), format!("```flame\nplugin {}\n```\n**Native Plugin**", name));
+                    self.insert_hover_info(span.clone(), format!("```flame\nplugin {}\n```\n**Native Plugin**", name));
                     Type::Named(format!("plugin:{}", name))
                 } else if self.modules.contains(name) {
                     Type::Named(format!("module:{}", name))
@@ -1563,7 +1577,7 @@ impl TypeChecker {
                     }
                     if let Some((enum_name, variant)) = found_variant {
                         if let Some(doc) = &variant.hover_doc {
-                            self.hover_info.insert(span.clone(), doc.clone());
+                            self.insert_hover_info(span.clone(), doc.clone());
                         }
                         if variant.struct_fields.is_empty() && variant.tuple_items.is_empty() {
                             Type::EnumVariant {
@@ -1638,7 +1652,7 @@ impl TypeChecker {
                     }
                 };
 
-                self.hover_info.insert(span.clone(), hover_str);
+                self.insert_hover_info(span.clone(), hover_str);
                 inferred
             }
             Expr::Tuple(items, _) => Type::Tuple(
@@ -1692,7 +1706,7 @@ impl TypeChecker {
                     } else {
                         signature
                     };
-                    self.hover_info.insert(span.clone(), full_doc.clone());
+                    self.insert_hover_info(span.clone(), full_doc.clone());
                     docs.insert(k.clone(), full_doc);
                     map.insert(k.clone(), ty);
                 }
@@ -1799,7 +1813,7 @@ impl TypeChecker {
                     hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
                 
-                self.hover_info.insert(span.clone(), hover_str);
+                self.insert_hover_info(span.clone(), hover_str);
 
                 let prev_return = self.current_return_type.clone();
                 let ret_ty = return_type
@@ -2107,7 +2121,7 @@ impl TypeChecker {
                 if let Some(funcs) = self.plugin_functions.get(plugin_name) {
                     if let Some(sig) = funcs.get(member).cloned() {
                         if let Some(doc) = sig.hover_doc {
-                            self.hover_info.insert(span.clone(), doc);
+                            self.insert_hover_info(span.clone(), doc);
                         }
                         return Type::Named("Function".into());
                     }
@@ -2123,7 +2137,7 @@ impl TypeChecker {
                 if let Some(info) = self.enums.get(&enum_name) {
                     if let Some(variant) = info.variants.get(member) {
                         if let Some(doc) = &variant.hover_doc {
-                            self.hover_info.insert(span.clone(), doc.clone());
+                            self.insert_hover_info(span.clone(), doc.clone());
                         }
                         let struct_fields = variant
                             .struct_fields
@@ -2205,7 +2219,7 @@ impl TypeChecker {
             Type::Formula(ref fmap, ref docs) => {
                 let ty = fmap.get(member).cloned().unwrap_or(Type::Unknown);
                 if let Some(doc) = docs.get(member) {
-                    self.hover_info.insert(span.clone(), doc.clone());
+                    self.insert_hover_info(span.clone(), doc.clone());
                 }
                 ty
             }
@@ -2349,7 +2363,7 @@ impl TypeChecker {
             if let Some(sig) = self.functions.get(name).cloned() {
                 self.check_call_args(&sig.params, args, span, name);
                 if let Some(doc) = sig.hover_doc {
-                    self.hover_info.insert(id_span.clone(), doc);
+                    self.insert_hover_info(id_span.clone(), doc);
                 }
                 return sig.return_type;
             }
@@ -2357,7 +2371,7 @@ impl TypeChecker {
             if let Some(struct_info) = self.structs.get(name).cloned() {
                 self.check_struct_constructor_args(name, &struct_info, args, span);
                 if let Some(doc) = struct_info.hover_doc {
-                    self.hover_info.insert(id_span.clone(), doc);
+                    self.insert_hover_info(id_span.clone(), doc);
                 }
                 return Type::Struct(name.clone());
             }
@@ -2398,7 +2412,7 @@ impl TypeChecker {
                         }
                     }
                     if let Some(doc) = variant.hover_doc {
-                        self.hover_info.insert(id_span.clone(), doc);
+                        self.insert_hover_info(id_span.clone(), doc);
                     }
                     return Type::EnumVariant {
                         enum_name: enum_name.clone(),
@@ -2438,7 +2452,7 @@ impl TypeChecker {
                         if let Some(sig) = funcs.get(member).cloned() {
                             self.check_call_args(&sig.params, args, span, member);
                             if let Some(doc) = &sig.hover_doc {
-                                self.hover_info.insert(span.clone(), doc.clone());
+                                self.insert_hover_info(span.clone(), doc.clone());
                             }
                             return sig.return_type.clone();
                         }
