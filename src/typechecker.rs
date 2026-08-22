@@ -2134,7 +2134,7 @@ impl TypeChecker {
                 Type::Unknown
             }
             Type::Enum(enum_name) => {
-                if let Some(info) = self.enums.get(&enum_name) {
+                if let Some(info) = self.enums.get(&enum_name).cloned() {
                     if let Some(variant) = info.variants.get(member) {
                         if let Some(doc) = &variant.hover_doc {
                             self.insert_hover_info(span.clone(), doc.clone());
