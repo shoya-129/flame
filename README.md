@@ -7,6 +7,16 @@ Flame is a statically typed, fast, and modern programming language built in Rust
 
 ---
 
+## Why Flame?
+Flame is designed to sit between high-level developer experience and
+native systems programming.
+
+Write simple Flame code while being able to use native Rust crates,
+native plugins, hardware APIs, and compile everything into a standalone
+native executable.
+
+---
+
 ## Architecture: True Multithreading & High Concurrency
 Flame avoids the slow, bottlenecked single-threaded event loops common in legacy runtimes like Node.js:
 - **True Multithreaded Execution**: Powered by Rust's native OS threads and multi-core **Tokio worker pools**, background computation and network tasks execute concurrently across all available CPU cores.
