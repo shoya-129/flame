@@ -3,7 +3,26 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.4] - 2026-08-22 (Codename: *Third Spark*)
+
+### ✨ New Features & Enhancements
+- **Math Standard Library (`std.math`)**: Implemented a comprehensive `math` module bound to native system intrinsics (`math.sin`, `math.cos`, `math.sqrt`, `math.abs`, `math.min`, `math.max`, `math.pi`, `math.e`, `math.inf`).
+- **Array & Tuple Indexing**: Added syntactic support for zero-based array and tuple indexing directly via bracket notation (e.g., `arr[0]`, `point[1]`), eliminating the need to rely strictly on iteration and destructuring.
+- **Match Statement Auto-Formatting**: `flame fmt` now flawlessly supports AST-aware code formatting for `match` statements and their deeply nested interior `{ ... }` block arms.
+
+### 🐛 Bug Fixes & Compiler Enhancements
+- **Deep Tuple Type Parsing**: Fixed a critical parser bug in `src/typechecker.rs` where the compiler blindly split on commas across nested data structures. Complex type signatures like `[(Float, Int)]` are now correctly depth-parsed without prematurely splitting on the inner tuple's comma.
+- **Formatter Brace & Grouping Fixes**: Resolved bugs inside the automated code formatting engine (`flame fmt`) related to parentheses/grouping depth tracking and brace block stacks, preventing formatting failures on complex conditional layouts.
+
+### 📚 Documentation & Benchmarking
+- **Destructuring & Complex Types**: Added comprehensive documentation for Tuple Destructuring and massively complex type extraction to the official `data-types.mdx` documentation.
+- **`Unknown` Type Clarification**: Formally documented the `Unknown` fallback type and its type-safety trade-offs.
+- **Native Benchmark Suite**: Created a pure-execution benchmark comparison between Python 3 and Flame's Native AOT execution targets, demonstrating Flame's sub-millisecond loop overheads.
+
+---
+
 ## [0.3.3] - 2026-08-21 (Codename: *Third Spark*)
+
 
 ### ✨ New Features & Enhancements
 - **`.env` Auto-loading**: Native standard library integration with `dotenvy`. The `std.env` module now automatically scans the workspace root for `.env` files and silently injects them during initialization. Calls to `env.get("FOO")` will effortlessly fetch variables from local environment configurations out of the box.

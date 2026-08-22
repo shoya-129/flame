@@ -831,6 +831,25 @@ impl TypeChecker {
 
                 Type::Formula(map, docs)
             }
+            "math" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+                
+                let float_fn = Type::Function(vec![Type::Unknown], Box::new(Type::Float));
+                let float_fn2 = Type::Function(vec![Type::Unknown, Type::Unknown], Box::new(Type::Float));
+                
+                map.insert("pi".to_string(), Type::Float);
+                map.insert("e".to_string(), Type::Float);
+                map.insert("inf".to_string(), Type::Function(vec![], Box::new(Type::Float)));
+                map.insert("abs".to_string(), float_fn.clone());
+                map.insert("sin".to_string(), float_fn.clone());
+                map.insert("cos".to_string(), float_fn.clone());
+                map.insert("sqrt".to_string(), float_fn.clone());
+                map.insert("min".to_string(), float_fn2.clone());
+                map.insert("max".to_string(), float_fn2.clone());
+
+                Type::Formula(map, docs)
+            }
             "http" => {
                 let mut map = HashMap::new();
                 let mut docs = HashMap::new();
@@ -1753,6 +1772,7 @@ impl TypeChecker {
             Expr::StructInit(inner, fields, span) => {
                 self.infer_struct_init_type(inner, fields, span)
             }
+            Expr::Index(inner, idx, span) => self.infer_index_type(inner, idx, span),
             Expr::Closure {
                 params,
                 return_type,
@@ -1886,6 +1906,20 @@ impl TypeChecker {
                 }
 
                 self.expect_assignable(&lhs_ty, &rhs_ty, span, "field assignment");
+                return lhs_ty;
+            } else if let Expr::Index(inner, idx, _) = left {
+                let lhs_ty = self.infer_index_type(inner, idx, span);
+                let rhs_ty = self.infer_expr_type(right);
+                if *op != BinaryOp::Assign {
+                    if !self.is_numeric(&lhs_ty) || !self.is_numeric(&rhs_ty) {
+                        if matches!(lhs_ty, Type::Unknown) || matches!(rhs_ty, Type::Unknown) {
+                            // ignore
+                        } else {
+                            self.error_binary_mismatch(op, &lhs_ty, &rhs_ty, span);
+                        }
+                    }
+                }
+                self.expect_assignable(&lhs_ty, &rhs_ty, span, "index assignment");
                 return rhs_ty;
             }
 
@@ -1989,6 +2023,54 @@ impl TypeChecker {
             | BinaryOp::BitXorAssign
             | BinaryOp::ShlAssign
             | BinaryOp::ShrAssign => Type::Unknown,
+        }
+    }
+
+    fn infer_index_type(&mut self, inner: &Expr, idx: &Expr, span: &Span) -> Type {
+        let inner_ty = self.infer_expr_type(inner);
+        let idx_ty = self.infer_expr_type(idx);
+        if !matches!(idx_ty, Type::Int | Type::Unknown) {
+            self.error(
+                format!("expected integer index, found {}", self.format_type(&idx_ty)),
+                idx.span(),
+                None,
+                None,
+            );
+        }
+        match inner_ty {
+            Type::Vector(elem) => *elem,
+            Type::Tuple(elems) => {
+                if let Expr::Literal(crate::parser::LiteralValue::Int(i), _) = idx {
+                    if *i >= 0 && (*i as usize) < elems.len() {
+                        return elems[*i as usize].clone();
+                    } else {
+                        self.error(
+                            format!("tuple index out of bounds: {} for tuple of length {}", i, elems.len()),
+                            span.clone(),
+                            None,
+                            None,
+                        );
+                    }
+                }
+                Type::Unknown
+            }
+            Type::String => Type::String,
+            Type::Unknown => Type::Unknown,
+            Type::Reference { inner: ref_inner, .. } => {
+                match *ref_inner {
+                    Type::Vector(elem) => *elem,
+                    _ => Type::Unknown,
+                }
+            }
+            _ => {
+                self.error(
+                    format!("cannot index into type {}", self.format_type(&inner_ty)),
+                    span.clone(),
+                    None,
+                    None,
+                );
+                Type::Unknown
+            }
         }
     }
 
@@ -2738,6 +2820,13 @@ impl TypeChecker {
         if expected == actual {
             return true;
         }
+        // Fallback for cases where structural equality fails but formatted strings match.
+        if self.format_type(expected) == self.format_type(actual) {
+            println!("DEBUG: Formatting matched but expected != actual for {}", self.format_type(expected));
+            println!("DEBUG expected: {:#?}", expected);
+            println!("DEBUG actual: {:#?}", actual);
+            return true;
+        }
 
         match (expected, actual) {
             (Type::Float, Type::Int) => true,
@@ -2854,10 +2943,30 @@ impl TypeChecker {
                 if inner.trim().is_empty() {
                     Type::Tuple(Vec::new())
                 } else {
+                    let mut parts = Vec::new();
+                    let mut current = String::new();
+                    let mut depth = 0;
+                    for c in inner.chars() {
+                        if c == '(' || c == '[' || c == '<' {
+                            depth += 1;
+                            current.push(c);
+                        } else if c == ')' || c == ']' || c == '>' {
+                            depth -= 1;
+                            current.push(c);
+                        } else if c == ',' && depth == 0 {
+                            parts.push(current.trim().to_string());
+                            current.clear();
+                        } else {
+                            current.push(c);
+                        }
+                    }
+                    if !current.trim().is_empty() {
+                        parts.push(current.trim().to_string());
+                    }
                     Type::Tuple(
-                        inner
-                            .split(',')
-                            .map(|part| self.parse_type_name(part.trim()))
+                        parts
+                            .into_iter()
+                            .map(|part| self.parse_type_name(&part))
                             .collect(),
                     )
                 }

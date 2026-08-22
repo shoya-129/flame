@@ -18,6 +18,7 @@ Flame is statically typed with strong type inference. Types can either be explic
 | **`Float`** | 64-bit IEEE 754 floating-point number | `let pi: Float = 3.14159` |
 | **`String`** | UTF-8 encoded text string | `let name: String = "Flame"` |
 | **`Bool`** | Boolean value (`true` or `false`) | `let is_ready: Bool = true` |
+| **`Unknown`** | A dynamically resolved type when inference is unavailable | `let data: Unknown = fetch()` |
 | **`Nil`** | Represents the absence of a value (void / null) | `let empty = nil` |
 
 ### String Interpolation
@@ -29,6 +30,26 @@ let score = 98
 let message = $"Player {user} scored {score} points!"
 print(message)
 ```
+
+---
+
+## The `Unknown` Type
+Flame is statically typed, but there are situations where the compiler cannot definitively infer a variable's type at compile time—especially when parsing untyped JSON, working with untyped dynamic arrays (like `[]` without a type annotation), or interfacing with certain dynamic APIs.
+
+In these cases, Flame uses the **`Unknown`** type.
+- `Unknown` acts as a dynamic type fallback. 
+- You can store any value inside an `Unknown` variable.
+- Operations on `Unknown` values bypass strict static type checking and are evaluated dynamically at runtime.
+
+```flame
+// An empty array has no inferred type, so it becomes [Unknown]
+let mut data = [] 
+data.push(42)
+data.push("String") // Allowed, because the array holds Unknown types
+```
+<Aside type="caution">
+While `Unknown` provides flexibility, it sacrifices the safety and performance of Flame's static typechecker. You should avoid `Unknown` whenever possible by explicitly providing type annotations: `let mut data: [Int] = []`.
+</Aside>
 
 ---
 
@@ -65,6 +86,29 @@ let record: (String, Int, Bool) = ("Server", 8080, true)
 // Access tuple members
 let host = record.0
 let port = record.1
+```
+
+#### Complex Tuples & Data Extraction
+Flame relies heavily on Tuples for returning multiple values efficiently without needing boilerplate classes or formulas. Let's look at a complex function signature as an example:
+
+```flame
+fn process_events(events: [(Int, Int, Int, Float, Int)]) -> (Int, Float, Float, Float, [Float], Int, [(Float, Int)])
+```
+
+**The Input: `events: [(Int, Int, Int, Float, Int)]`**
+This signifies that `events` is a dynamically sized Vector (`[...]`) containing strict Tuples (`(...)`). Each tuple is exactly 5 elements long. When iterating, we can extract all 5 elements instantly using **Tuple Destructuring**:
+```flame
+for event in events {
+    let (event_id, timestamp, user_id, value, category) = event
+    // ...
+}
+```
+
+**The Output: `-> (Int, Float, Float, Float, [Float], Int, [(Float, Int)])`**
+This is a massive return tuple containing primitive stats, an array of floats, an integer, and an array of smaller 2-element tuples. The caller can cleanly extract all 7 distinct items simultaneously using destructuring:
+```flame
+let result = process_events(events)
+let (count, total, minimum, maximum, category_totals, checksum, processed) = result
 ```
 
 ---

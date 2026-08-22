@@ -110,6 +110,9 @@ pub fn format_code(source: &str) -> String {
     let mut in_multiline_paren_count: usize = 0;
     let mut empty_line_pending = false;
 
+    let mut grouping_depth: usize = 0;
+    let mut brace_stack: Vec<bool> = Vec::new(); // true = object, false = block
+
     let indent_str = |level: usize| -> String {
         "    ".repeat(level)
     };
@@ -120,6 +123,12 @@ pub fn format_code(source: &str) -> String {
 
         if tok.kind == TokenKind::Newline {
             let last_kind = last_tok.as_ref().map(|t| t.kind.clone()).unwrap_or(TokenKind::EOF);
+            
+            let is_continuation = matches!(
+                last_kind,
+                TokenKind::OpenParen | TokenKind::OpenBracket | TokenKind::OpenBrace | TokenKind::Comma | TokenKind::Equal | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Dot | TokenKind::Ampersand2 | TokenKind::Pipe2 | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Lt | TokenKind::Le | TokenKind::Gt | TokenKind::Ge | TokenKind::Colon | TokenKind::Return
+            );
+            
             if last_kind != TokenKind::Newline || empty_line_pending || Some(i) == last_import_line_end_idx {
                 while out.ends_with(' ') || out.ends_with('\t') {
                     out.pop();
@@ -131,7 +140,7 @@ pub fn format_code(source: &str) -> String {
                     } else {
                         out.push_str("\n\n\n");
                     }
-                } else if empty_line_pending {
+                } else if empty_line_pending && grouping_depth == 0 && !is_continuation {
                     if !out.ends_with("\n\n") {
                         if !out.ends_with('\n') {
                             out.push_str("\n\n");
@@ -139,6 +148,7 @@ pub fn format_code(source: &str) -> String {
                             out.push('\n');
                         }
                     }
+                    empty_line_pending = false;
                 } else {
                     if !out.ends_with('\n') {
                         out.push('\n');
@@ -146,14 +156,39 @@ pub fn format_code(source: &str) -> String {
                 }
                 
                 needs_indent = true;
-                empty_line_pending = false;
             }
             last_tok = Some(tok.clone());
             i += 1;
             continue;
         }
 
+        if tok.kind == TokenKind::OpenParen || tok.kind == TokenKind::OpenBracket {
+            grouping_depth += 1;
+        } else if tok.kind == TokenKind::CloseParen || tok.kind == TokenKind::CloseBracket {
+            grouping_depth = grouping_depth.saturating_sub(1);
+        } else if tok.kind == TokenKind::OpenBrace {
+            let mut j = i;
+            let mut last_sig = TokenKind::EOF;
+            while j > 0 {
+                j -= 1;
+                if tokens[j].kind != TokenKind::Newline {
+                    last_sig = tokens[j].kind.clone();
+                    break;
+                }
+            }
+            let is_object = matches!(last_sig, TokenKind::Equal | TokenKind::Comma | TokenKind::Colon | TokenKind::Return | TokenKind::OpenParen | TokenKind::OpenBracket);
+            brace_stack.push(is_object);
+            if is_object {
+                grouping_depth += 1;
+            }
+        }
+
         if tok.kind == TokenKind::CloseBrace {
+            if let Some(is_object) = brace_stack.pop() {
+                if is_object {
+                    grouping_depth = grouping_depth.saturating_sub(1);
+                }
+            }
             indent_level = indent_level.saturating_sub(1);
             if !out.ends_with('\n') {
                 out.push('\n');

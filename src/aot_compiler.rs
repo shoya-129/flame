@@ -612,7 +612,33 @@ panic = "abort"
 
     main_rs.push_str("fn main() {\n");
     main_rs.push_str("    let handle = std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {\n");
+    
+    // Inject VFS
+    main_rs.push_str("    let mut vfs = std::collections::HashMap::new();\n");
+    let src_scan_dir = std::env::current_dir().unwrap().join("src");
+    fn collect_vfs(dir: &Path, main_rs: &mut String, base_dir: &Path) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_vfs(&path, main_rs, base_dir);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("fm") || path.extension().and_then(|s| s.to_str()) == Some("flame") {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        // Make sure we use forward slashes for internal VFS paths
+                        let rel_path = path.strip_prefix(base_dir).unwrap_or(&path).to_string_lossy().replace("\\", "/");
+                        let full_rel_path = format!("src/{}", rel_path);
+                        main_rs.push_str(&format!("    vfs.insert(\"{}\".to_string(), r####\"{}\"####.to_string());\n", full_rel_path, content));
+                    }
+                }
+            }
+        }
+    }
+    let base_dir = std::env::current_dir().unwrap().join("src");
+    collect_vfs(&base_dir, &mut main_rs, &base_dir);
+    
     main_rs.push_str("    let mut base_runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
+    main_rs.push_str("    base_runner.vfs = Some(vfs);\n");
+
     
     let mut perms = std::collections::HashSet::new();
     if Path::new("flame.toml").exists() {
@@ -691,7 +717,7 @@ panic = "abort"
         
         main_rs.push_str("    for file_path in files_to_test {\n");
         main_rs.push_str("        println!(\"\\nrunning tests in \\x1b[1m{}\\x1b[0m:\", file_path.display());\n");
-        main_rs.push_str("        let src = std::fs::read_to_string(&file_path).unwrap_or_default();\n");
+        main_rs.push_str("        let src = base_runner.vfs.as_ref().and_then(|vfs| vfs.get(&file_path.to_string_lossy().replace(\"\\\\\", \"/\"))).cloned().unwrap_or_else(|| std::fs::read_to_string(&file_path).unwrap_or_default());\n");
         main_rs.push_str("        let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
         main_rs.push_str("        let mut tokens = Vec::new();\n");
         main_rs.push_str("        loop {\n");
@@ -733,7 +759,7 @@ panic = "abort"
         
     } else {
         main_rs.push_str("    let mut runner = base_runner;\n");
-        main_rs.push_str("    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n");
+        main_rs.push_str("    let src = runner.vfs.as_ref().and_then(|vfs| vfs.get(\"src/main.fm\")).cloned().unwrap_or_else(|| std::fs::read_to_string(\"src/main.fm\").unwrap_or_default());\n");
         main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
         main_rs.push_str("    let mut tokens = Vec::new();\n");
         main_rs.push_str("    loop {\n");

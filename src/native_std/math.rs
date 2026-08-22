@@ -67,5 +67,38 @@ pub fn init() -> HashMap<String, Value> {
         }),
     );
 
+    m.insert(
+        "inf".to_string(),
+        Value::NativeCallback(|_args| Ok(Value::Float(f64::INFINITY))),
+    );
+
+    m.insert(
+        "min".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() != 2 { return Err("math.min expects 2 arguments".to_string()); }
+            match (&args[0], &args[1]) {
+                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.min(*b))),
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.min(b))),
+                (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a.min(*b as f64))),
+                (Value::Int(a), Value::Float(b)) => Ok(Value::Float((*a as f64).min(*b))),
+                _ => Err("math.min requires numbers".to_string())
+            }
+        }),
+    );
+
+    m.insert(
+        "max".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() != 2 { return Err("math.max expects 2 arguments".to_string()); }
+            match (&args[0], &args[1]) {
+                (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.max(*b))),
+                (Value::Int(a), Value::Int(b)) => Ok(Value::Int(*a.max(b))),
+                (Value::Float(a), Value::Int(b)) => Ok(Value::Float(a.max(*b as f64))),
+                (Value::Int(a), Value::Float(b)) => Ok(Value::Float((*a as f64).max(*b))),
+                _ => Err("math.max requires numbers".to_string())
+            }
+        }),
+    );
+
     m
 }

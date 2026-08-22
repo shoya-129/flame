@@ -69,6 +69,11 @@ pub enum RefPath {
         member: String,
         env: Arc<Mutex<Env>>,
     },
+    Index {
+        owner: String,
+        index: usize,
+        env: Arc<Mutex<Env>>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -325,6 +330,13 @@ impl fmt::Display for Value {
                         write!(f, "&mut {owner}.{member}")
                     } else {
                         write!(f, "&{owner}.{member}")
+                    }
+                }
+                RefPath::Index { owner, index, .. } => {
+                    if *mutable {
+                        write!(f, "&mut {owner}[{index}]")
+                    } else {
+                        write!(f, "&{owner}[{index}]")
                     }
                 }
             },

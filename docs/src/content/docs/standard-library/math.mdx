@@ -60,20 +60,26 @@ println(base.pow(3)) // 125
 
 ## The `std.math` Module
 
-For more advanced mathematical calculations, import the `std.math` module.
+For more advanced mathematical calculations or when you prefer a functional approach instead of calling methods on primitives, import the `std.math` module.
 
 ```flame
 import std.math
 
 // Mathematical Constants
-println(math.PI) // 3.141592653589793
-println(math.E)  // 2.718281828459045
+println(math.pi) // 3.141592653589793
+println(math.e)  // 2.718281828459045
+
+// Basic Operations
+println(math.abs(-10))       // 10
+println(math.sqrt(16))       // 4.0
+println(math.min(10, 20))    // 10
+println(math.max(10, 20))    // 20
 
 // Trigonometry
-let angle = math.PI / 2
+let angle = math.pi / 2.0
 println(math.sin(angle)) // 1.0
 println(math.cos(angle)) // 0.0
-println(math.tan(0))     // 0.0
+// Note: tangent is available if implemented, e.g. math.tan(0)
 
 // Random Numbers
 // Generates a random integer between min and max (inclusive)
@@ -104,10 +110,13 @@ let chance = math.random_float()
 
 | Method / Constant | Description |
 | :--- | :--- |
-| `math.PI` | The constant Pi (π). |
-| `math.E` | Euler's number (e). |
+| `math.pi` | The constant Pi (π). |
+| `math.e` | Euler's number (e). |
+| `math.abs(val)` | Returns the absolute value of the number. |
+| `math.sqrt(val)`| Returns the square root of the number. |
+| `math.min(x, y)`| Returns the smaller of the two values. |
+| `math.max(x, y)`| Returns the larger of the two values. |
 | `math.sin(rad)` | Sine of an angle in radians. |
 | `math.cos(rad)` | Cosine of an angle in radians. |
-| `math.tan(rad)` | Tangent of an angle in radians. |
 | `math.random_int(min, max)` | Random integer between min and max. |
 | `math.random_float()` | Random float between 0.0 and 1.0. |

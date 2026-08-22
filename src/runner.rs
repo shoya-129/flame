@@ -20,6 +20,7 @@ pub struct Runner {
     pub test_mode: bool,
     pub interactive: bool,
     pub granted_permissions: std::collections::HashSet<String>,
+    pub vfs: Option<HashMap<String, String>>,
 }
 
 impl Runner {
@@ -33,6 +34,7 @@ impl Runner {
             test_mode: false,
             interactive: true,
             granted_permissions: std::collections::HashSet::new(),
+            vfs: None,
         };
         crate::stdlib::register_global_builtins(runner.env.clone());
         runner
@@ -1785,6 +1787,33 @@ impl Runner {
                                 env.lock().unwrap().move_var(src_name);
                             }
                             return Ok(r_val);
+                        } else if let Expr::Index(inner, idx, _) = &**left {
+                            if let Expr::Identifier(owner, _) = &**inner {
+                                let idx_val = self.eval_expr(idx, env.clone())?;
+                                let idx_int = if let Value::Int(i) = idx_val { i as usize } else { return Err("Index must be an integer".to_string()); };
+                                let mut r_val = self.eval_expr(right, env.clone())?;
+                                
+                                if *op != BinaryOp::Assign {
+                                    let l_val = self.eval_expr(left, env.clone())?;
+                                    r_val = compute_compound(op, l_val, &r_val)?;
+                                }
+
+                                self.write_back(
+                                    env.clone(),
+                                    crate::vm::RefPath::Index {
+                                        owner: owner.clone(),
+                                        index: idx_int,
+                                        env: env.clone(),
+                                    },
+                                    r_val.clone(),
+                                )?;
+                                if let Expr::Identifier(src_name, _) = &**right {
+                                    env.lock().unwrap().move_var(src_name);
+                                }
+                                return Ok(r_val);
+                            } else {
+                                return Err("left-hand side assignment must be a variable array".to_string());
+                            }
                         } else {
                             return Err(
                                 "left-hand side assignment must be a variable or variable field"
@@ -1905,6 +1934,29 @@ impl Runner {
                         Err(format!("variant is not a struct variant"))
                     }
                     _ => Err(format!("cannot initialize struct on non-constructor value")),
+                }
+            }
+            Expr::Index(inner, idx, _) => {
+                let inner_val = self.eval_expr(inner, env.clone())?;
+                let idx_val = self.eval_expr(idx, env.clone())?;
+                let idx_int = if let Value::Int(i) = idx_val { i as usize } else { return Err("Index must be an integer".to_string()); };
+
+                match inner_val {
+                    Value::Tuple(elems) => {
+                        if idx_int < elems.len() {
+                            Ok(elems[idx_int].clone())
+                        } else {
+                            Err(format!("Index out of bounds: {}", idx_int))
+                        }
+                    }
+                    Value::String(s) => {
+                        if idx_int < s.len() {
+                            Ok(Value::String(s.chars().nth(idx_int).unwrap().to_string()))
+                        } else {
+                            Err(format!("Index out of bounds: {}", idx_int))
+                        }
+                    }
+                    _ => Err("Cannot index into this value".to_string()),
                 }
             }
             Expr::Dot(inner, member, _) => {
@@ -4222,6 +4274,27 @@ impl Runner {
                     None => Err(format!("variable '{}' not found for field read", owner)),
                 }
             }
+            RefPath::Index { owner, index, env } => {
+                let owner_val = {
+                    let e = env.lock().unwrap();
+                    e.get(&owner)
+                };
+                match owner_val {
+                    Some(Value::Moved(moved_name)) => Err(format!(
+                        "use of moved value '{}'.", moved_name
+                    )),
+                    Some(Value::RefPath(next, _)) => self.read_target(env.clone(), next),
+                    Some(Value::Tuple(elems)) => {
+                        if index < elems.len() {
+                            Ok(elems[index].clone())
+                        } else {
+                            Err(format!("Index out of bounds: {}", index))
+                        }
+                    }
+                    Some(_) => Err(format!("cannot index non-tuple/array '{}'", owner)),
+                    None => Err(format!("variable '{}' not found for index read", owner)),
+                }
+            }
         }
     }
 
@@ -4295,6 +4368,48 @@ impl Runner {
                 }
 
                 env.lock().unwrap().assign(name, new_val)
+            }
+            RefPath::Index { owner, index, env } => {
+                let mut owner_val = {
+                    let e = env.lock().unwrap();
+                    e.get(&owner)
+                };
+
+                let mut final_owner = owner.clone();
+                let mut final_env = env.clone();
+                while let Some(Value::RefPath(RefPath::Var(ref next_owner, ref next_env), _)) = owner_val {
+                    final_owner = next_owner.clone();
+                    final_env = next_env.clone();
+                    owner_val = {
+                        let e = final_env.lock().unwrap();
+                        e.get(&final_owner)
+                    };
+                }
+
+                let Some(mut owner_val) = owner_val else {
+                    return Err(format!(
+                        "variable '{}' not found for index assignment",
+                        final_owner
+                    ));
+                };
+
+                match &mut owner_val {
+                    Value::Tuple(elems) => {
+                        if index < elems.len() {
+                            elems[index] = new_val.clone();
+                        } else {
+                            return Err(format!("Index out of bounds: {}", index));
+                        }
+                    }
+                    _ => {
+                        return Err(format!(
+                            "cannot assign to index of non-array value in '{}'",
+                            final_owner
+                        ));
+                    }
+                }
+
+                final_env.lock().unwrap().assign(final_owner, owner_val.clone())
             }
             RefPath::Field { owner, member, env } => {
                 let mut owner_val = {
@@ -4531,6 +4646,7 @@ impl Runner {
             test_mode: self.test_mode,
             interactive: self.interactive,
             granted_permissions: self.granted_permissions.clone(),
+            vfs: self.vfs.clone(),
         }
     }
 

@@ -9,13 +9,13 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
     e.define("eprint".to_string(), Value::Nil, false);
     e.define("println".to_string(), Value::Nil, false);
     e.define("assert".to_string(), Value::Nil, false);
-    e.define("assert_eq".to_string(), Value::Nil, false);
-    e.define("assert_ne".to_string(), Value::Nil, false);
-    e.define("assert_true".to_string(), Value::Nil, false);
-    e.define("assert_false".to_string(), Value::Nil, false);
-    e.define("mock_api".to_string(), Value::Nil, false);
-    e.define("mock_data".to_string(), Value::Nil, false);
-    e.define("mock_function".to_string(), Value::Nil, false);
+    e.define("assertEq".to_string(), Value::Nil, false);
+    e.define("assertNe".to_string(), Value::Nil, false);
+    e.define("assertTrue".to_string(), Value::Nil, false);
+    e.define("assertFalse".to_string(), Value::Nil, false);
+    e.define("mockApi".to_string(), Value::Nil, false);
+    e.define("mockData".to_string(), Value::Nil, false);
+    e.define("mockFunction".to_string(), Value::Nil, false);
     
     use crate::parser::EnumVariant;
     e.define(
@@ -225,6 +225,7 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.net.interface" => Some(crate::native_std::net::init("interface")),
         #[cfg(feature = "time")]
         "std.time" => Some(crate::native_std::time::init()),
+        "std.math" => Some(crate::native_std::math::init()),
         "std.fmt" => Some(crate::native_std::fmt::init()),
         #[cfg(feature = "os")]
         "std.os" => Some(crate::native_std::os::init()),

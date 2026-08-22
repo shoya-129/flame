@@ -109,6 +109,7 @@ pub enum Expr {
     Block(Vec<Stmt>, Span),
     Borrow(Box<Expr>, bool, Span),
     StructInit(Box<Expr>, Vec<(String, Expr)>, Span),
+    Index(Box<Expr>, Box<Expr>, Span),
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +139,7 @@ impl Expr {
             Expr::Block(_, s) => s.clone(),
             Expr::Borrow(_, _, s) => s.clone(),
             Expr::StructInit(_, _, s) => s.clone(),
+            Expr::Index(_, _, s) => s.clone(),
         }
     }
 }
@@ -2135,6 +2137,19 @@ impl Parser {
                     col: expr.span().col,
                 };
                 expr = Expr::StructInit(Box::new(expr), fields, span);
+            } else if self.match_token(TokenKind::OpenBracket) {
+                let index_expr = self.parse_expr()?;
+                let end_tok = self.consume(
+                    TokenKind::CloseBracket,
+                    "expected ']' to close index expression",
+                )?;
+                let span = Span {
+                    start: expr.span().start,
+                    end: end_tok.span.end,
+                    line: expr.span().line,
+                    col: expr.span().col,
+                };
+                expr = Expr::Index(Box::new(expr), Box::new(index_expr), span);
             } else {
                 break;
             }

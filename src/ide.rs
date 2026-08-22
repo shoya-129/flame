@@ -150,20 +150,20 @@ const KEYWORDS: &[(&str, &str)] = &[
         "```flame\nfn assert(condition: Bool, message: String = \"\")\n```\nAsserts that condition evaluates to `true`. Terminates execution with an error if false.\n\n**Example:**\n```flame\nassert(x > 0, \"x must be positive\")\n```",
     ),
     (
-        "assert_eq",
-        "```flame\nfn assert_eq(actual: Any, expected: Any, message: String = \"\")\n```\nAsserts that `actual` equals `expected`. Terminates execution with an error if values differ.\n\n**Example:**\n```flame\nassert_eq(status_code, 200)\n```",
+        "assertEq",
+        "```flame\nfn assertEq(actual: Any, expected: Any, message: String = \"\")\n```\nAsserts that `actual` equals `expected`. Terminates execution with an error if values differ.\n\n**Example:**\n```flame\nassertEq(status_code, 200)\n```",
     ),
     (
-        "assert_ne",
-        "```flame\nfn assert_ne(actual: Any, unexpected: Any, message: String = \"\")\n```\nAsserts that `actual` does NOT equal `unexpected`.\n\n**Example:**\n```flame\nassert_ne(result, nil)\n```",
+        "assertNe",
+        "```flame\nfn assertNe(actual: Any, unexpected: Any, message: String = \"\")\n```\nAsserts that `actual` does NOT equal `unexpected`.\n\n**Example:**\n```flame\nassertNe(result, nil)\n```",
     ),
     (
-        "assert_true",
-        "```flame\nfn assert_true(condition: Bool, message: String = \"\")\n```\nAsserts that `condition` is `true`.\n\n**Example:**\n```flame\nassert_true(list.is_empty())\n```",
+        "assertTrue",
+        "```flame\nfn assertTrue(condition: Bool, message: String = \"\")\n```\nAsserts that `condition` is `true`.\n\n**Example:**\n```flame\nassertTrue(list.is_empty())\n```",
     ),
     (
-        "assert_false",
-        "```flame\nfn assert_false(condition: Bool, message: String = \"\")\n```\nAsserts that `condition` is `false`.\n\n**Example:**\n```flame\nassert_false(file.exists())\n```",
+        "assertFalse",
+        "```flame\nfn assertFalse(condition: Bool, message: String = \"\")\n```\nAsserts that `condition` is `false`.\n\n**Example:**\n```flame\nassertFalse(file.exists())\n```",
     ),
     (
         "panic",
@@ -182,16 +182,16 @@ const KEYWORDS: &[(&str, &str)] = &[
         "```flame\nfn sleep(ms: Int)\n```\nSuspends current thread execution for the specified milliseconds.\n\n**Example:**\n```flame\nsleep(1000)\n```",
     ),
     (
-        "mock_data",
-        "```flame\nfn mock_data(schema: String = \"default\") -> Formula\n```\nGenerates mock object data for testing. Supported schemas: `\"user\"`, `\"post\"`, `\"product\"`.\n\n**Example:**\n```flame\nlet user = mock_data(\"user\")\n```",
+        "mockData",
+        "```flame\nfn mockData(schema: String = \"default\") -> Formula\n```\nGenerates mock object data for testing. Supported schemas: `\"user\"`, `\"post\"`, `\"product\"`.\n\n**Example:**\n```flame\nlet user = mockData(\"user\")\n```",
     ),
     (
-        "mock_api",
-        "```flame\nfn mock_api(url: String = \"*\", body: String = \"{}\", status: Int = 200) -> Formula\n```\nConfigures mock responses for API endpoints during tests.\n\n**Example:**\n```flame\nlet res = mock_api(\"/api/v1/users\", \"{\\\"id\\\": 1}\", 200)\n```",
+        "mockApi",
+        "```flame\nfn mockApi(url: String = \"*\", body: String = \"{}\", status: Int = 200) -> Formula\n```\nConfigures mock responses for API endpoints during tests.\n\n**Example:**\n```flame\nlet res = mockApi(\"/api/v1/users\", \"{\\\"id\\\": 1}\", 200)\n```",
     ),
     (
-        "mock_function",
-        "```flame\nfn mock_function(name: String, return_value: Any)\n```\nOverrides a named function in the current environment to return `return_value` during tests.\n\n**Example:**\n```flame\nmock_function(\"fetch_user\", formula { name: \"Alex\" })\n```",
+        "mockFunction",
+        "```flame\nfn mockFunction(name: String, return_value: Any)\n```\nOverrides a named function in the current environment to return `return_value` during tests.\n\n**Example:**\n```flame\nmockFunction(\"fetch_user\", formula { name: \"Alex\" })\n```",
     ),
     (
         "formula",
@@ -268,7 +268,7 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Built-in Method: Returns the number of elements in the collection or string. Example: `let l = arr.len()`",
     ),
     (
-        "is_empty",
+        "isEmpty",
         "Built-in Method: Returns true if the collection or string contains no elements. Example: `if arr.is_empty() { ... }`",
     ),
     (
@@ -300,12 +300,12 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Built-in Method: Checks if a string contains the given substring. Example: `str.contains(\"pattern\")`",
     ),
     (
-        "starts_with",
+        "startsWith",
         "Built-in Method: Checks if a string begins with the given prefix. Example: `str.starts_with(\"prefix\")`",
     ),
     (
-        "ends_with",
-        "Built-in Method: Checks if a string ends with the given suffix. Example: `str.ends_with(\"suffix\")`",
+        "endsWith",
+        "Built-in Method: Checks if a string ends with the given suffix. Example: `str.endsWith(\"suffix\")`",
     ),
     (
         "replace",
@@ -316,11 +316,11 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Built-in Method: Strips leading and trailing whitespace from a string. Example: `str.trim()`",
     ),
     (
-        "to_uppercase",
-        "Built-in Method: Converts a string to uppercase. Example: `str.to_uppercase()`",
+        "toUpperCase",
+        "Built-in Method: Converts a string to uppercase. Example: `str.toUpperCase()`",
     ),
     (
-        "to_lowercase",
+        "toLowerCase",
         "Built-in Method: Converts a string to lowercase. Example: `str.to_lowercase()`",
     ),
     (

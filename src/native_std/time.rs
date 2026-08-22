@@ -211,7 +211,19 @@ pub fn init() -> HashMap<String, Value> {
         Value::NativeCallback(|_args| {
             match SystemTime::now().duration_since(UNIX_EPOCH) {
                 Ok(n) => {
-                    Ok(Value::Int(n.as_millis() as i64))
+                    let m = n.as_millis() as i64;
+                    let mut fields = HashMap::new();
+                    fields.insert("millis".to_string(), Value::Int(m));
+                    fields.insert("toMillis".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| Ok(Value::Int(m))))));
+                    fields.insert("toSeconds".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| Ok(Value::Int(m / 1000))))));
+                    fields.insert("toString".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| {
+                        if let chrono::LocalResult::Single(dt) = chrono::Utc.timestamp_millis_opt(m) {
+                            Ok(Value::String(dt.to_rfc3339()))
+                        } else {
+                            Ok(Value::String(format!("{}ms", m)))
+                        }
+                    }))));
+                    Ok(Value::Object(fields))
                 },
                 Err(_) => Err("SystemTime before UNIX EPOCH!".to_string()),
             }
@@ -223,7 +235,18 @@ pub fn init() -> HashMap<String, Value> {
         Value::NativeCallback(|args| {
             if args.len() != 1 { return Err("fromMillis expects 1 argument (Int)".to_string()); }
             if let Value::Int(m) = args[0] {
-                Ok(Value::Int(m))
+                let mut fields = HashMap::new();
+                fields.insert("millis".to_string(), Value::Int(m));
+                fields.insert("toMillis".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| Ok(Value::Int(m))))));
+                fields.insert("toSeconds".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| Ok(Value::Int(m / 1000))))));
+                fields.insert("toString".to_string(), Value::NativeClosure(crate::vm::NativeClosureType(std::sync::Arc::new(move |_| {
+                    if let chrono::LocalResult::Single(dt) = chrono::Utc.timestamp_millis_opt(m) {
+                        Ok(Value::String(dt.to_rfc3339()))
+                    } else {
+                        Ok(Value::String(format!("{}ms", m)))
+                    }
+                }))));
+                Ok(Value::Object(fields))
             } else {
                 Err("fromMillis expects Int".to_string())
             }
