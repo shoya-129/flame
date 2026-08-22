@@ -57,22 +57,22 @@ fn tear_down() {
 ## Built-in Test Assertions & Mock Helpers
 
 - `assert(condition, message = "assertion failed")`
-- `assert_true(condition, message = "assertion failed")`
-- `assert_false(condition, message = "assertion failed")`
+- `assertTrue(condition, message = "assertion failed")`
+- `assertFalse(condition, message = "assertion failed")`
 - `assertEq(actual, expected, message = "")`
 - `assertNe(actual, unexpected, message = "")`
-- `mock_data(schema: String) -> Formula`
-- `mock_api(url: String, body: String = "{\"status\": \"ok\"}", status: Int = 200) -> Formula`
-- `mock_function(function_name: String, return_value: Any)`
+- `mockData(schema: String) -> Formula`
+- `mockApi(url: String, body: String = "{\"status\": \"ok\"}", status: Int = 200) -> Formula`
+- `mockFunction(function_name: String, return_value: Any)`
 
 ```flame
 @Test
 fn test_mocking() {
-    let user = mock_data("user")
+    let user = mockData("user")
     assertEq(user.id, 1001)
 
-    let api_res = mock_api("/v1/health")
-    assert_true(api_res.ok)
+    let api_res = mockApi("/v1/health")
+    assertTrue(api_res.ok)
 }
 ```
 
@@ -87,20 +87,20 @@ You can invoke the built-in **`panic(message: String)`** function directly withi
 ```flame
 @Test
 fn test_logical_operators_and_safety_interlocks() {
-    let is_online = true
-    let is_faulted = false
+    let isOnline = true
+    let isFaulted = false
 
     // Explicit invariant validation using panic
-    if is_online and is_faulted {
+    if isOnline and isFaulted {
         panic("Expected safety interlock: system cannot be online while in a faulted state")
     }
 
-    if not (is_online or is_faulted) {
+    if not (isOnline or isFaulted) {
         panic("Expected system to be responsive (online or faulted)")
     }
 
-    let motor_speed: Int? = 1200
-    if motor_speed == nil {
+    let motorSpeed: Int? = 1200
+    if motorSpeed == nil {
         panic("Motor telemetry dropped unexpectedly during active test cycle")
     }
 }
