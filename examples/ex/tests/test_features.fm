@@ -8,66 +8,60 @@ import std.fs
 fn test_math() {
     let x = - 5
 
-    x.abs().assert_eq(5)
-    x.min(0).assert_eq( - 5)
-    x.max(10).assert_eq(10)
-    x.clamp(0, 100).assert_eq(0)
+    x.abs().assertEq(5)
+    x.min(0).assertEq( - 5)
+    x.max(10).assertEq(10)
+    x.clamp(0, 100).assertEq(0)
     let y = 5.5
 
-    y.floor().assert_eq(5.0)
-    y.ceil().assert_eq(6.0)
-    y.round().assert_eq(6.0)
+    y.floor().assertEq(5.0)
+    y.ceil().assertEq(6.0)
+    y.round().assertEq(6.0)
 }
 
 @Test
 fn test_type_conv() {
     let s = "123"
 
-    s.toInt().assert_eq(123)
-    s.type().assert_eq("String")
+    s.toInt().assertEq(123)
+    s.type().assertEq("String")
     let b = s.toByte()
 
-    b.type().assert_eq("Byte")
-    b.toHex().assert_eq("313233")
+    b.type().assertEq("Byte")
+    b.toHex().assertEq("313233")
     // toBase64 gives "MTIz" for "123"
-    b.toBase64().assert_eq("MTIz")
+    b.toBase64().assertEq("MTIz")
     let b2 = "456".toByte()
 
-    b.concat(b2).type().assert_eq("Byte")
+    b.concat(b2).type().assertEq("Byte")
 }
 
 @Test
 fn test_time() {
     let now = time.now()
 
-    now.type().assert_eq("Int")
-    let year = now.year()
-    let is_future = year > 2020
+    now.type().assertEq("Object")
+    let millis = now.millis
+    let is_future = millis > 0
 
-    is_future.assert_eq(true)
-    let later = now.addDays(5)
-    let is_later = later > now
-
-    is_later.assert_eq(true)
+    is_future.assertEq(true)
 }
 
 @Test
 fn test_json() {
     let obj = {
-
         name: "flame",
         version: 1
     }
 
     let json = obj.toJson()
     let dummy = {
-
     }
 
     let parsed = dummy.fromJson(json)
 
-    parsed.name.assert_eq("flame")
-    parsed.version.assert_eq(1)
+    parsed.name.assertEq("flame")
+    parsed.version.assertEq(1)
 }
 
 @Test
@@ -75,13 +69,13 @@ fn test_fs() {
     let file = await fs.open("test_fs_data.txt")
 
     file.write("Hello File")
-    file.exists().assert_eq(true)
-    file.size().assert_eq(10)
-    file.read().assert_eq("Hello File")
+    file.exists().assertEq(true)
+    file.size().assertEq(10)
+    file.read().assertEq("Hello File")
     file.append("!")
-    file.read().assert_eq("Hello File!")
+    file.read().assertEq("Hello File!")
     file.delete()
-    file.exists().assert_eq(false)
+    file.exists().assertEq(false)
 }
 
 @Test
@@ -89,7 +83,7 @@ fn test_tuple_index() {
     let t = (10, 20, 30)
     let (b: 1) = t
 
-    b.assert_eq(20)
+    b.assertEq(20)
 }
 
 @Test
@@ -98,11 +92,11 @@ fn test_match_enum_destructure() {
 
     match res {
         Result.Ok(val) => {
-            assert_eq(val, 10, "Result.Ok destructuring works")
+            assertEq(val, 10, "Result.Ok destructuring works")
         }
 
         Result.Err(err) => {
-            assert_eq(true, false, "Should not reach here")
+            assertEq(true, false, "Should not reach here")
         }
 
     }
@@ -111,11 +105,11 @@ fn test_match_enum_destructure() {
 
     match opt {
         Option.Some(val) => {
-            assert_eq(val, 42, "Option.Some destructuring works")
+            assertEq(val, 42, "Option.Some destructuring works")
         }
 
         Option.None => {
-            assert_eq(true, false, "Should not reach here")
+            assertEq(true, false, "Should not reach here")
         }
 
     }

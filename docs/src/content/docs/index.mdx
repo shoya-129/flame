@@ -107,7 +107,7 @@ await main()
 @Test(timeout: 2000)
 fn test_addition() {
     let sum = 2 + 2
-    assert_eq(sum, 4, "Math must be correct")
+    assertEq(sum, 4, "Math must be correct")
 }
 
 @Parameterized([
@@ -115,7 +115,7 @@ fn test_addition() {
     [5, 5, 10]
 ])
 fn test_math(a: Int, b: Int, expected: Int) {
-    assert_eq(a + b, expected)
+    assertEq(a + b, expected)
 }
 ```
   </TabItem>

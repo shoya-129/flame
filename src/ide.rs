@@ -829,7 +829,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
             structs.push(ScannedStruct {
                 name: synthetic_type.clone(),
                 fields,
-                methods: vec!["toString".to_string(), "to_string".to_string()],
+                methods: vec!["toString".to_string(), "toString".to_string()],
             });
             // Overwrite or add to vars at the beginning so it is found first
             vars.insert(

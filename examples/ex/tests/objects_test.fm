@@ -32,8 +32,8 @@ fn test_object_destructuring() {
             status, data
         } = obj
 
-        assert_eq(status, 200)
-        assert_eq(data, "ok")
+        assertEq(status, 200)
+        assertEq(data, "ok")
     }
 }
 
@@ -48,8 +48,8 @@ fn test_nested_objects() {
 
         }
 
-        assert_eq(user.name, "Soham")
-        assert_eq(user.stats.age, 17)
+        assertEq(user.name, "Soham")
+        assertEq(user.stats.age, 17)
     }
 }
 
@@ -66,15 +66,15 @@ fn test_struct_instance_and_methods() {
 
         }
 
-        assert_eq(battery.percent, 26)
-        assert_eq(battery.remaining.h, 1)
-        assert_eq(battery.remaining.totalSeconds(), 1 * 3600 + 22 * 60 + 49)
+        assertEq(battery.percent, 26)
+        assertEq(battery.remaining.h, 1)
+        assertEq(battery.remaining.totalSeconds(), 1 * 3600 + 22 * 60 + 49)
         let {
             percent, remaining
         } = battery
 
-        assert_eq(percent, 26)
-        assert_eq(remaining.min, 22)
+        assertEq(percent, 26)
+        assertEq(remaining.min, 22)
     }
 }
 
@@ -86,8 +86,8 @@ fn test_formula_destructuring() {
             code, msg
         } = parsed
 
-        assert_eq(code, 404)
-        assert_eq(msg, "not found")
+        assertEq(code, 404)
+        assertEq(msg, "not found")
     }
 }
 

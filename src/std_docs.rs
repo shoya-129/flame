@@ -182,7 +182,7 @@ The `process` module provides utilities to spawn new processes, execute commands
 ```flame
 import std.process
 let out = process.exec(\"echo\", [\"Hello\"])
-out.status.code.assert_eq(0)
+out.status.code.assertEq(0)
 ```
 - **`spawn()`**: Spawns a background process asynchronously.
 
@@ -223,7 +223,7 @@ fs.write(\"data.txt\", \"Hello World\")
 - **`exists()`**: Returns true if the file or directory exists.
 - **`is_file()`**: Returns true if the path points to a regular file.
 - **`is_dir()`**: Returns true if the path points to a directory.
-- **`read_dir()`**: Returns a list of files in a directory.
+- **`readDir()`**: Returns a list of files in a directory.
 "),
         "math" | "std.math" => Some("# Module `math`
 
@@ -405,7 +405,7 @@ thread.sleep(1000) // Sleep for 1 second
 ```flame
 let (tx, rx) = thread.channel()
 tx.send(\"hello\")
-rx.recv().assert_eq(\"hello\")
+rx.recv().assertEq(\"hello\")
 ```",
         ),
         ("process" | "std.process", "exec") => Some(
@@ -415,7 +415,7 @@ rx.recv().assert_eq(\"hello\")
 ```flame
 import std.process
 let out = process.exec(\"echo\", [\"Hello\"])
-out.status.code.assert_eq(0)
+out.status.code.assertEq(0)
 ```",
         ),
         ("process" | "std.process", "spawn") => Some(
@@ -464,7 +464,7 @@ fs.write(\"data.txt\", \"Hello World\")
         ("fs" | "std.fs", "exists") => Some("Returns true if the file or directory exists."),
         ("fs" | "std.fs", "is_file") => Some("Returns true if the path points to a regular file."),
         ("fs" | "std.fs", "is_dir") => Some("Returns true if the path points to a directory."),
-        ("fs" | "std.fs", "read_dir") => Some("Returns a list of files in a directory."),
+        ("fs" | "std.fs", "readDir") => Some("Returns a list of files in a directory."),
         ("fs" | "std.fs", "readBytes") => Some("Reads an entire file into a binary byte array."),
         ("fs" | "std.fs", "writeBytes") => Some("Writes raw binary bytes to a file."),
         ("fs" | "std.fs", "appendBytes") => Some("Appends raw binary bytes to the end of a file."),

@@ -19,48 +19,48 @@ fn test_byte_operations() {
     let combined = bytes.concat(" World".toByte())
     let utf8_str = combined.toUtf8()
 
-    b.type().assert_eq("Byte")
-    bytes.type().assert_eq("Byte")
-    hex.assert_eq("48656c6c6f")
-    b64.assert_eq("SGVsbG8=")
-    utf8_str.assert_eq("Hello World")
+    b.type().assertEq("Byte")
+    bytes.type().assertEq("Byte")
+    hex.assertEq("48656c6c6f")
+    b64.assertEq("SGVsbG8=")
+    utf8_str.assertEq("Hello World")
     // Test indexing on bytes
     let first_byte = bytes[0]
 
-    first_byte.type().assert_eq("Byte")
+    first_byte.type().assertEq("Byte")
     // 2. Struct JSON / Bytes deserialization
     let json_str = '{"id": 42, "name": "Alice", "active": true}'
     let u1 = User.fromJson(json_str)
 
-    u1.id.assert_eq(42)
+    u1.id.assertEq(42)
     let raw_bytes = '{"id": 99, "name": "Bob", "active": false}'.toByte()
     let u2 = User.fromBytes(raw_bytes)
 
-    u2.id.assert_eq(99)
+    u2.id.assertEq(99)
     // 3. std.byte file I/O
     let test_file = "test_data.bin"
 
     byte.writeBytes(test_file, combined)
     let read_back = byte.readBytes(test_file)
 
-    read_back.toUtf8().assert_eq("Hello World")
+    read_back.toUtf8().assertEq("Hello World")
     byte.appendBytes(test_file, "!".toByte())
     let read_appended = byte.readBytes(test_file)
 
-    read_appended.toUtf8().assert_eq("Hello World!")
+    read_appended.toUtf8().assertEq("Hello World!")
     // Single byte ops
     byte.writeByte("test_single.bin", 66)// 'B'
     byte.appendByte("test_single.bin", 67.toByte())// 'C'
     let single1 = byte.readByte("test_single.bin")
 
-    single1.assert_eq(66)
+    single1.assertEq(66)
     byte.writeByteAt("test_single.bin", 1, 68)// Change 'C' to 'D' (68)
     let single2 = byte.readByteAt("test_single.bin", 1)
 
-    single2.assert_eq(68)
+    single2.assertEq(68)
     let read_all_single = byte.readBytes("test_single.bin")
 
-    read_all_single.toUtf8().assert_eq("BD")
+    read_all_single.toUtf8().assertEq("BD")
     // Clean up
     fs.remove(test_file)
     fs.remove("test_single.bin")

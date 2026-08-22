@@ -34,7 +34,7 @@ fn init_test_env() {
 @Test(timeout: 3000)
 fn test_math_operations() {
     let result = 10 * 5
-    assert_eq(result, 50, "Multiplication should equal 50")
+    assertEq(result, 50, "Multiplication should equal 50")
 }
 
 @Parameterized([
@@ -43,7 +43,7 @@ fn test_math_operations() {
     [-5, 5, 0]
 ])
 fn test_addition(a: Int, b: Int, expected: Int) {
-    assert_eq(a + b, expected)
+    assertEq(a + b, expected)
 }
 
 @Cleanup
@@ -59,8 +59,8 @@ fn tear_down() {
 - `assert(condition, message = "assertion failed")`
 - `assert_true(condition, message = "assertion failed")`
 - `assert_false(condition, message = "assertion failed")`
-- `assert_eq(actual, expected, message = "")`
-- `assert_ne(actual, unexpected, message = "")`
+- `assertEq(actual, expected, message = "")`
+- `assertNe(actual, unexpected, message = "")`
 - `mock_data(schema: String) -> Formula`
 - `mock_api(url: String, body: String = "{\"status\": \"ok\"}", status: Int = 200) -> Formula`
 - `mock_function(function_name: String, return_value: Any)`
@@ -69,7 +69,7 @@ fn tear_down() {
 @Test
 fn test_mocking() {
     let user = mock_data("user")
-    assert_eq(user.id, 1001)
+    assertEq(user.id, 1001)
 
     let api_res = mock_api("/v1/health")
     assert_true(api_res.ok)
@@ -80,7 +80,7 @@ fn test_mocking() {
 
 ## Explicit Test Failures & Invariants (`panic`)
 
-When writing complex integration tests for robotics control loops or validating edge-case state transitions, standard equality assertions (`assert_eq`) may not express custom branching failure logic clearly. 
+When writing complex integration tests for robotics control loops or validating edge-case state transitions, standard equality assertions (`assertEq`) may not express custom branching failure logic clearly. 
 
 You can invoke the built-in **`panic(message: String)`** function directly within any `@Test` case to explicitly fail the test with an exact diagnostic message and line trace:
 

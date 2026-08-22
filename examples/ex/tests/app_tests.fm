@@ -34,7 +34,7 @@ fn test_imports() {
             }
         }
 
-        exports.sayhello(&user).assert_eq("hello soham-89")
+        exports.sayhello(&user).assertEq("hello soham-89")
     }
 }
 

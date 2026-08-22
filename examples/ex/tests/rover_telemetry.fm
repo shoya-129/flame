@@ -56,8 +56,8 @@ fn test_autonomous_rover_telemetry() {
 
     // Phase 1: Boot without telemetry connection
     let action1 = rover.compute_next_action() // Safety interlock triggers due to fallback GPS lock being false
-    action1.assert_eq(false)
-    rover.target_speed_rpm.assert_eq(0)
+    action1.assertEq(false)
+    rover.target_speed_rpm.assertEq(0)
 
     // Phase 2: Valid telemetry streaming
     rover.apply_telemetry(NavigationTelemetry {
@@ -66,6 +66,6 @@ fn test_autonomous_rover_telemetry() {
         is_gps_locked: true
     })
     let action2 = rover.compute_next_action() // Drives normally at 2500 RPM!
-    action2.assert_eq(true)
-    rover.target_speed_rpm.assert_eq(2500)
+    action2.assertEq(true)
+    rover.target_speed_rpm.assertEq(2500)
 }

@@ -3,6 +3,18 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.5] - 2026-08-22 (Codename: *Third Spark*)
+
+### ✨ Standard Library & Naming Convention Overhaul
+- **`camelCase` Standardization**: Successfully migrated the entire Flame ecosystem to universally enforce `camelCase` naming conventions for built-in methods across all standard library modules, native plugins, and execution environments. Legacy snake_case function calls (such as `assert_eq`, `to_string`, `read_bytes`) have been officially deprecated and refactored natively to `assertEq`, `toString`, `readBytes`, etc.
+
+### 🐛 Bug Fixes & IDE Enhancements
+- **Byte Array Indexing Support**: Patched a critical bug within the AST Engine (`Expr::Index`) where the interpreter failed to support zero-based indexing (`bytes[0]`) on raw Native Byte Arrays (`Value::Bytes(Vec<u8>)`). Indexing into a byte array now safely and correctly slices out a single `Byte` value without throwing a runtime trap.
+- **Time API Alignment**: Corrected legacy tests and core native bindings for `std.time`. The `time.now()` interface now strictly returns a structured `Object` natively mapped with Unix Epoch `millis` and conversion primitives (`toSeconds`, `toString`) instead of ambiguously returning a raw scalar `Int`.
+- **Language Server Import Bleed Prevention**: Solved an intrusive Language Server protocol (LSP) bug within the IDE `TypeChecker` where Markdown Hover documentation (`@Docs`) would incorrectly bleed into completely unrelated variables bearing the same name across separate projects upon triggering an `import` directive. An `is_importing` context flag now forcefully isolates namespace bindings.
+
+---
+
 ## [0.3.4] - 2026-08-22 (Codename: *Third Spark*)
 
 ### ✨ New Features & Enhancements

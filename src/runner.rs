@@ -1230,7 +1230,7 @@ impl Runner {
         env: Arc<Mutex<Env>>,
     ) -> Option<Result<Value, String>> {
         match member {
-            "toString" | "to_string" => {
+            "toString" => {
                 let mut prec = None;
                 if !args.is_empty() {
                     if let Ok(Value::Int(p)) = self.eval_expr(&args[0].1, env.clone()) {
@@ -1249,7 +1249,7 @@ impl Runner {
                     _ => Some(Ok(Value::String(val.to_string()))),
                 }
             }
-            "toInt" | "to_int" | "tryInt" | "try_int" => {
+            "toInt" | "tryInt" | "try_int" => {
                 let is_try = member.starts_with("try");
                 let mut radix = 10;
                 if !args.is_empty() {
@@ -1285,7 +1285,7 @@ impl Runner {
                     }
                 }
             }
-            "toFloat" | "to_float" | "toDouble" | "to_double" | "tryFloat" | "try_float"
+            "toFloat" | "toDouble" | "to_double" | "tryFloat" | "try_float"
             | "tryDouble" | "try_double" => {
                 let is_try = member.starts_with("try");
                 match val {
@@ -1956,6 +1956,13 @@ impl Runner {
                             Err(format!("Index out of bounds: {}", idx_int))
                         }
                     }
+                    Value::Bytes(b) => {
+                        if idx_int < b.len() {
+                            Ok(Value::Byte(b[idx_int]))
+                        } else {
+                            Err(format!("Index out of bounds: {}", idx_int))
+                        }
+                    }
                     _ => Err("Cannot index into this value".to_string()),
                 }
             }
@@ -2163,7 +2170,7 @@ impl Runner {
                         }
                         return Err(msg);
                     }
-                    if name == "assert_eq" {
+                    if name == "assertEq" {
                         if args.len() < 2 {
                             return Err(
                                 "assert_eq requires at least 2 arguments (actual, expected)"
@@ -2187,7 +2194,7 @@ impl Runner {
                             msg
                         ));
                     }
-                    if name == "assert_ne" {
+                    if name == "assertNe" {
                         if args.len() < 2 {
                             return Err(
                                 "assert_ne requires at least 2 arguments (actual, unexpected)"
@@ -2460,10 +2467,10 @@ impl Runner {
                         }
                         Value::String(ref s) => match member.as_str() {
                             "len" => return Ok(Value::Int(s.len() as i64)),
-                            "to_uppercase" => return Ok(Value::String(s.to_uppercase())),
-                            "to_lowercase" => return Ok(Value::String(s.to_lowercase())),
+                            "toUpperCase" => return Ok(Value::String(s.to_uppercase())),
+                            "toLowerCase" => return Ok(Value::String(s.to_lowercase())),
                             "trim" => return Ok(Value::String(s.trim().to_string())),
-                            "is_empty" => return Ok(Value::Bool(s.is_empty())),
+                            "isEmpty" => return Ok(Value::Bool(s.is_empty())),
                             "contains" => {
                                 if !args.is_empty() {
                                     let sub = self.eval_expr(&args[0].1, env.clone())?.to_string();
@@ -2471,14 +2478,14 @@ impl Runner {
                                 }
                                 return Ok(Value::Bool(false));
                             }
-                            "starts_with" => {
+                            "startsWith" => {
                                 if !args.is_empty() {
                                     let sub = self.eval_expr(&args[0].1, env.clone())?.to_string();
                                     return Ok(Value::Bool(s.starts_with(&sub)));
                                 }
                                 return Ok(Value::Bool(false));
                             }
-                            "ends_with" => {
+                            "endsWith" => {
                                 if !args.is_empty() {
                                     let sub = self.eval_expr(&args[0].1, env.clone())?.to_string();
                                     return Ok(Value::Bool(s.ends_with(&sub)));
@@ -2494,7 +2501,7 @@ impl Runner {
                                 }
                                 return Ok(Value::String(s.clone()));
                             }
-                            "assert_eq" => {
+                            "assertEq" => {
                                 if args.len() < 1 {
                                     return Err("assert_eq requires at least 2 arguments (actual, expected)".to_string());
                                 }
@@ -2517,7 +2524,7 @@ impl Runner {
                                     msg
                                 ));
                             }
-                            "assert_ne" => {
+                            "assertNe" => {
                                 if args.len() < 1 {
                                     return Err("assert_ne requires at least 2 arguments (actual, unexpected)".to_string());
                                 }
@@ -2559,7 +2566,7 @@ impl Runner {
                         },
                         Value::Tuple(ref vec) => match member.as_str() {
                             "len" => return Ok(Value::Int(vec.len() as i64)),
-                            "is_empty" => return Ok(Value::Bool(vec.is_empty())),
+                            "isEmpty" => return Ok(Value::Bool(vec.is_empty())),
                             "push" => {
                                 if !args.is_empty() {
                                     let val = self.eval_expr(&args[0].1, env.clone())?;
@@ -3300,7 +3307,7 @@ impl Runner {
                     }
 
                     // Support calling common builtins as methods on values, e.g. `val.assert_eq(expected)`
-                    if member == "assert_eq" {
+                    if member == "assertEq" {
                         if args.len() < 1 {
                             return Err(
                                 "assert_eq requires at least 2 arguments (actual, expected)"
@@ -3323,7 +3330,7 @@ impl Runner {
                             act.to_string(),
                             msg
                         ));
-                    } else if member == "assert_ne" {
+                    } else if member == "assertNe" {
                         if args.len() < 1 {
                             return Err(
                                 "assert_ne requires at least 2 arguments (actual, unexpected)"

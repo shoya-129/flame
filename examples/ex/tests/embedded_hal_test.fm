@@ -6,12 +6,12 @@ fn test_embedded_gpio() {
         print("[TEST] Verifying GPIO capability object...")
         let led = embedded.pin(13)
         led.mode("Output")
-        led.high().assert_eq(true)
-        led.read().assert_eq(true)
-        led.low().assert_eq(true)
-        led.read().assert_eq(false)
+        led.high().assertEq(true)
+        led.read().assertEq(true)
+        led.low().assertEq(true)
+        led.read().assertEq(false)
         let toggled = led.toggle()
-        toggled.assert_eq(true)
+        toggled.assertEq(true)
     }
 }
 
@@ -32,13 +32,13 @@ fn test_embedded_actuators() {
     await thread {
         print("[TEST] Verifying Actuator and Robotics drivers...")
         let s = embedded.servo(5)
-        s.angle(90).assert_eq(true)
-        s.stop().assert_eq(true)
+        s.angle(90).assertEq(true)
+        s.stop().assertEq(true)
 
         let m = embedded.motor(9, 7, 8)
-        m.speed(75.5).assert_eq(true)
-        m.forward().assert_eq(true)
-        m.stop().assert_eq(true)
+        m.speed(75.5).assertEq(true)
+        m.forward().assertEq(true)
+        m.stop().assertEq(true)
     }
 }
 
@@ -52,8 +52,8 @@ fn test_embedded_system_hardware() {
         print($"Architecture: {b.architecture}")
         print($"System Memory: {b.memory}")
         
-        embedded.flash.write(0x20, 999).assert_eq(true)
+        embedded.flash.write(0x20, 999).assertEq(true)
         let read_val = embedded.flash.read(0x20)
-        read_val.assert_eq(999)
+        read_val.assertEq(999)
     }
 }
