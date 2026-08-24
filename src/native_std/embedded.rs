@@ -369,7 +369,7 @@ fn create_analog_object(channel: i64) -> Value {
     let mut obj = HashMap::new();
     obj.insert("__type__".to_string(), Value::String("Analog".to_string()));
     obj.insert("channel".to_string(), Value::Int(channel));
-    obj.insert("resolution_bits".to_string(), Value::Int(12));
+    obj.insert("resolutionBits".to_string(), Value::Int(12));
 
     obj.insert(
         "read".to_string(),
@@ -624,9 +624,9 @@ fn create_servo_object(pin: i64) -> Value {
 fn create_motor_object(pwm: i64, dir1: i64, dir2: i64) -> Value {
     let mut obj = HashMap::new();
     obj.insert("__type__".to_string(), Value::String("Motor".to_string()));
-    obj.insert("pwm_pin".to_string(), Value::Int(pwm));
-    obj.insert("dir1_pin".to_string(), Value::Int(dir1));
-    obj.insert("dir2_pin".to_string(), Value::Int(dir2));
+    obj.insert("pwmPin".to_string(), Value::Int(pwm));
+    obj.insert("dir1Pin".to_string(), Value::Int(dir1));
+    obj.insert("dir2Pin".to_string(), Value::Int(dir2));
 
     obj.insert(
         "forward".to_string(),
@@ -670,8 +670,8 @@ fn create_motor_object(pwm: i64, dir1: i64, dir2: i64) -> Value {
 fn create_stepper_object(step_pin: i64, dir_pin: i64) -> Value {
     let mut obj = HashMap::new();
     obj.insert("__type__".to_string(), Value::String("Stepper".to_string()));
-    obj.insert("step_pin".to_string(), Value::Int(step_pin));
-    obj.insert("dir_pin".to_string(), Value::Int(dir_pin));
+    obj.insert("stepPin".to_string(), Value::Int(step_pin));
+    obj.insert("dirPin".to_string(), Value::Int(dir_pin));
 
     obj.insert(
         "step".to_string(),
@@ -703,8 +703,8 @@ fn create_stepper_object(step_pin: i64, dir_pin: i64) -> Value {
 fn create_encoder_object(pin_a: i64, pin_b: i64) -> Value {
     let mut obj = HashMap::new();
     obj.insert("__type__".to_string(), Value::String("Encoder".to_string()));
-    obj.insert("pin_a".to_string(), Value::Int(pin_a));
-    obj.insert("pin_b".to_string(), Value::Int(pin_b));
+    obj.insert("pinA".to_string(), Value::Int(pin_a));
+    obj.insert("pinB".to_string(), Value::Int(pin_b));
     obj.insert("position".to_string(), Value::Int(1024));
 
     obj.insert(

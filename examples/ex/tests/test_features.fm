@@ -115,3 +115,51 @@ fn test_match_enum_destructure() {
     }
 
 }
+
+@Test
+fn test_match_advanced() {
+    let x = 10
+    let mut res = 0
+
+    match x {
+        1|2 => {
+            res = 0
+        },
+        10 and x > 5 => {
+            res = 1
+        },
+        _ => {
+            res = 2
+        }
+
+    }
+
+    res.assertEq(1)
+    let y = 3
+    let mut res2 = 0
+
+    match y {
+        1 or 2 or 3 => {
+            res2 = 99
+        },
+        _ => {
+            res2 = 0
+        }
+
+    }
+
+    res2.assertEq(99)
+    let mut res3 = 0
+
+    match Result.Ok(5) {
+        Result.Ok(val)and val == 5 => {
+            res3 = 200
+        },
+        _ => {
+            res3 = 400
+        }
+
+    }
+
+    res3.assertEq(200)
+}

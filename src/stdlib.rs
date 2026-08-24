@@ -131,9 +131,9 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
             }
         }
         
-        // Check .flame/pkg for package imports
+        // Check .flame/pkg for package imports starting from current_file's parent, then fallback to cwd
         let pkg_name = &import_path[0];
-        let mut check_dir = cwd.clone();
+        let mut check_dir = parent_dir.to_path_buf();
         loop {
             let pkg_dir = check_dir.join(".flame").join("pkg").join(pkg_name).join("src");
             if pkg_dir.exists() {

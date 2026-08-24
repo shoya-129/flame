@@ -52,7 +52,7 @@ pub fn init() -> HashMap<String, Value> {
                     Value::String(dev.path().to_string_lossy().to_string()),
                 );
 
-                map.insert("usage_page".into(), Value::Int(dev.usage_page() as i64));
+                map.insert("usagePage".into(), Value::Int(dev.usage_page() as i64));
 
                 map.insert("usage".into(), Value::Int(dev.usage() as i64));
 

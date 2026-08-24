@@ -20,6 +20,7 @@ Flame features a comprehensive suite of **built-in PascalCase annotations** that
 | **`@Embedded`**| **Embedded** | `@Embedded(target: String = "arduino-uno", baud: Int = 115200)` | Defines the infinite hardware loop (`void loop()`) for zero-cost bare-metal firmware compilation. |
 | **`@Platform`**| **Compilation** | `@Platform("target_substring")` | Conditionally compiles the annotated declaration only if the active build target matches the given substring. Defaults to the host OS if no target is specified during compilation. |
 | **`@Requires`**| **Dependency** | `@Requires("module_name", ...)` | Performs a local, function-scoped module import. The module is only usable inside the annotated function (unlike global `import`). |
+| **`@Suggestion`**| **IDE** | `@Suggestion(["TypeName", "object"])` | Provides advanced IDE auto-completion suggestions for package variables. Type kind can be `object`, `array`, `function`, or `formula`. |
 | **`@Permission`**| **Security** | `@Permission("permission", ...)` | Requests runtime permissions exactly once at program startup. If denied, the program exits. Duplicate permissions across functions are prompted only once. |
 | **`@Test`** | **Testing** | `@Test(timeout: Int = 5000, skip: Bool = false, only: Bool = false, tags: Vector = [])` | Marks a function as an automated test case executed via `flame test`. Stripped in release builds. |
 | **`@Setup`** | **Testing** | `@Setup` | Runs before every test case in the current file. Stripped in release builds. |

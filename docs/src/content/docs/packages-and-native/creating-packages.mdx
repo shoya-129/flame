@@ -47,7 +47,26 @@ my_package/
 
 ---
 
-## 3. Exporting Functions and Annotations
+## 3. Documenting Your Package
+
+To provide documentation for consumers when they hover over your package name in an `import` statement, use the `package` keyword along with a `@Docs` annotation at the top of your `src/main.fm` file.
+
+```flame
+// src/main.fm
+@Docs("
+# My Package
+This package provides a collection of useful functions and native plugins.
+")
+package my_package
+
+import native.core
+```
+
+When a user writes `import my_package` and hovers over `my_package`, they will see these custom docs instantly.
+
+---
+
+## 4. Exporting Functions and Annotations
 
 For consumers to use your package's features, you must explicitly `export` them in your Flame scripts. You can export functions, structs, enums, and even custom annotations.
 
@@ -75,7 +94,7 @@ When a user imports your package, only the `export`ed symbols will be available 
 
 ---
 
-## 4. Bundling Local Rust Plugins
+## 5. Bundling Local Rust Plugins
 
 Flame makes it incredibly easy to bundle native Rust plugins inside your package. 
 
@@ -91,7 +110,7 @@ Flame makes it incredibly easy to bundle native Rust plugins inside your package
 
 ---
 
-## 5. Configuring and Running Tests
+## 6. Configuring and Running Tests
 
 Testing your package ensures its reliability before distribution. Flame includes a built-in testing framework that seamlessly resolves your package's modules.
 
@@ -121,7 +140,7 @@ Flame's package resolution system is smart enough to resolve `import main` insid
 
 ---
 
-## 6. Building and Distributing
+## 7. Building and Distributing
 
 When you are ready to distribute your package, simply run:
 

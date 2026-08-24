@@ -76,10 +76,11 @@ pub struct Annotation {
 
 #[derive(Debug, Clone)]
 pub struct MatchArm {
-    pub pattern: String,
+    pub patterns: Vec<String>,
     pub pattern_span: Span,
     pub destructure: Vec<String>,
     pub is_tuple_destructure: bool,
+    pub guard: Option<Expr>,
     pub body: Expr,
 }
 
@@ -257,6 +258,11 @@ pub enum Stmt {
         name: String,
         span: Span,
     },
+    PackageDecl {
+        name: String,
+        annotations: Vec<Annotation>,
+        span: Span,
+    },
 }
 
 pub struct Parser {
@@ -374,6 +380,7 @@ impl Parser {
                 self.advance(); // consume "async"
                 self.parse_func_decl(annotations)
             }
+            TokenKind::Package => self.parse_package_decl(annotations),
             TokenKind::Import => self.parse_import_statement(),
             TokenKind::Export => self.parse_export_statement(annotations),
             TokenKind::Let => self.parse_var_decl(TokenKind::Let, annotations),
@@ -517,6 +524,22 @@ impl Parser {
         })
     }
 
+    fn parse_package_decl(&mut self, annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
+        let start_tok = self.advance().clone(); // consume "package"
+        let name_tok = self.consume(TokenKind::Identifier, "Expected package name.")?;
+        let end_span = name_tok.span.clone();
+        Ok(Stmt::PackageDecl {
+            name: name_tok.lexeme.clone(),
+            annotations,
+            span: Span {
+                start: start_tok.span.start,
+                end: end_span.end,
+                line: start_tok.span.line,
+                col: start_tok.span.col,
+            },
+        })
+    }
+
     fn parse_export_statement(&mut self, outer_annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
         let start_tok = self.consume(TokenKind::Export, "expected 'export' keyword")?;
         let mut inner = self.parse_statement()?;
@@ -528,6 +551,7 @@ impl Parser {
                 | Stmt::StructDecl { annotations, .. }
                 | Stmt::EnumDecl { annotations, .. }
                 | Stmt::AnnotationDecl { annotations, .. }
+                | Stmt::PackageDecl { annotations, .. }
                 | Stmt::ImplDecl { annotations, .. } => {
                     let mut combined = outer_annotations;
                     combined.append(annotations);
@@ -1109,16 +1133,31 @@ impl Parser {
         self.consume(TokenKind::OpenBrace, "expected '{'")?;
         let mut arms = Vec::new();
         while !self.check(TokenKind::CloseBrace) && !self.check(TokenKind::EOF) {
-            let pat_tok = self.peek();
-            let mut pat = pat_tok.lexeme.clone();
-            let mut pattern_span = pat_tok.span.clone();
-            self.advance();
+            let mut patterns = Vec::new();
+            let mut pattern_span = self.peek().span.clone();
 
-            // Handle enum paths like `Result.Ok`
-            while self.match_token(TokenKind::Dot) {
-                let next_tok = self.consume(TokenKind::Identifier, "expected identifier in pattern path")?;
-                pat = format!("{}.{}", pat, next_tok.lexeme);
-                pattern_span.end = next_tok.span.end;
+            loop {
+                let pat_tok = self.peek();
+                let mut pat = pat_tok.lexeme.clone();
+                self.advance();
+
+                // Handle enum paths like `Result.Ok`
+                while self.match_token(TokenKind::Dot) {
+                    let next_tok = self.consume(TokenKind::Identifier, "expected identifier in pattern path")?;
+                    pat = format!("{}.{}", pat, next_tok.lexeme);
+                    pattern_span.end = next_tok.span.end;
+                }
+                
+                if pat_tok.kind == TokenKind::Identifier && pat == "_" {
+                    pat = "_".to_string();
+                }
+                
+                patterns.push(pat);
+                
+                if self.match_token(TokenKind::Pipe) || self.match_token(TokenKind::Pipe2) {
+                    continue;
+                }
+                break;
             }
 
             let mut destructure = Vec::new();
@@ -1139,6 +1178,12 @@ impl Parser {
                 }
                 self.consume(TokenKind::CloseParen, "expected ')' closing pattern destructuring")?;
             }
+            
+            let mut guard = None;
+            if self.match_token(TokenKind::Ampersand2) || self.match_token(TokenKind::If) {
+                guard = Some(self.parse_expr()?);
+            }
+            
             if !self.match_token(TokenKind::FatArrow) && !self.match_token(TokenKind::Arrow) {
                 return Err(self.consume(TokenKind::FatArrow, "expected '=>' pattern arm arrow").unwrap_err());
             }
@@ -1158,10 +1203,11 @@ impl Parser {
             };
 
             arms.push(MatchArm {
-                pattern: pat,
+                patterns,
                 pattern_span,
                 destructure,
                 is_tuple_destructure,
+                guard,
                 body,
             });
             self.match_token(TokenKind::Comma);
@@ -2150,6 +2196,32 @@ impl Parser {
                     col: expr.span().col,
                 };
                 expr = Expr::Index(Box::new(expr), Box::new(index_expr), span);
+            } else if self.match_token(TokenKind::As) {
+                let type_tok = self.advance();
+                let type_name = match &type_tok.kind {
+                    TokenKind::Identifier => type_tok.lexeme.clone(),
+                    _ => {
+                        return Err(Diagnostic::new_error(
+                            "expected type identifier after 'as'".to_string(),
+                            self.filepath.clone(),
+                            type_tok.span.clone(),
+                            None,
+                            None,
+                        ))
+                    }
+                };
+                let method_name = format!("to{}", type_name);
+                let span = Span {
+                    start: expr.span().start,
+                    end: type_tok.span.end,
+                    line: expr.span().line,
+                    col: expr.span().col,
+                };
+                expr = Expr::Call(
+                    Box::new(Expr::Dot(Box::new(expr), method_name, span.clone())),
+                    vec![],
+                    span,
+                );
             } else {
                 break;
             }
@@ -2182,6 +2254,7 @@ impl Stmt {
             Stmt::Continue(s) => s.clone(),
             Stmt::PluginDecl { span, .. } => span.clone(),
             Stmt::AnnotationDecl { span, .. } => span.clone(),
+            Stmt::PackageDecl { span, .. } => span.clone(),
         }
     }
 }

@@ -241,7 +241,10 @@ function activate(context) {
         const supportedLanguages = ['flame'];
         if (!document || !supportedLanguages.includes(document.languageId) || document.uri.fsPath.endsWith('.fmi') || document.uri.fsPath.endsWith('.tmp.fm')) return;
         const result = await runCheck(document);
-        if (!result) return;
+        if (!result) {
+            diagnostics.set(document.uri, []);
+            return;
+        }
 
         const mapped = (result.diagnostics || []).map((diag) => {
             const line = Math.max(0, (diag.line || 1) - 1);

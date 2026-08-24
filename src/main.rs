@@ -1166,7 +1166,11 @@ fn run_tests(args: &[String]) {
         }
         runner.interactive = false;
         runner.test_mode = true;
-        let _ = runner.run(&stmts);
+        if let Err(e) = runner.run(&stmts) {
+            println!("  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36mGlobal\x1b[0m setup failed");
+            let span = runner.current_span.clone().unwrap_or(crate::lexer::Span { start: 0, end: 0, line: 1, col: 1 });
+            crate::diagnostics::Diagnostic::new_error(e, runner.filepath.display().to_string(), span, None, None).print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
+        }
 
         let stats = crate::test_engine::execute_test_suite(&mut runner, &stmts, &path.display().to_string());
         total_passed += stats.passed;
@@ -1377,15 +1381,34 @@ fn run_check_command(args: &[String]) {
     } else if output.diagnostics.is_empty() {
         println!("\x1b[1;32mcheck:\x1b[0m no diagnostics");
     } else {
+        let content = if args.iter().any(|arg| arg == "--stdin") {
+            // Already read from stdin earlier, but we consumed it. 
+            // In non-json mode, we probably aren't using stdin, but let's fall back to reading the file.
+            std::fs::read_to_string(file).unwrap_or_default()
+        } else {
+            std::fs::read_to_string(file).unwrap_or_default()
+        };
+        let file_lines: Vec<&str> = content.lines().collect();
+
         for diagnostic in output.diagnostics {
-            println!(
-                "{}: {} --> {}:{}:{}",
-                diagnostic.severity,
-                diagnostic.message,
-                diagnostic.file,
-                diagnostic.line,
-                diagnostic.column
-            );
+            let color = match diagnostic.severity.as_str() {
+                "warning" => "\x1b[1;33m",
+                "info" => "\x1b[1;34m",
+                _ => "\x1b[1;31m",
+            };
+            println!("{}{} :\x1b[0m \x1b[1m{}\x1b[0m", color, diagnostic.severity, diagnostic.message);
+            println!("  \x1b[1;36m-->\x1b[0m {}:{}:{}", diagnostic.file, diagnostic.line, diagnostic.column);
+            
+            let line_idx = diagnostic.line.saturating_sub(1);
+            if line_idx < file_lines.len() {
+                let line_str = diagnostic.line.to_string();
+                let spacer = " ".repeat(line_str.len());
+                println!(" \x1b[1;36m{} |\x1b[0m", spacer);
+                println!(" \x1b[1;36m{} |\x1b[0m {}", line_str, file_lines[line_idx]);
+                let col = diagnostic.column.saturating_sub(1);
+                let pointer = " ".repeat(col) + "^";
+                println!(" \x1b[1;36m{} |\x1b[0m {}{}\x1b[0m", spacer, color, pointer);
+            }
         }
     }
 }
@@ -1445,8 +1468,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             tc_opt = Some(tc);
             if let Err(diags) = res {
                 for d in diags {
+                    let sev = match d.severity {
+                        crate::diagnostics::DiagnosticSeverity::Error => "error".to_string(),
+                        crate::diagnostics::DiagnosticSeverity::Warning => "warning".to_string(),
+                        crate::diagnostics::DiagnosticSeverity::Info => "info".to_string(),
+                    };
                     diagnostics.push(JsonDiagnostic {
-                        severity: "error".to_string(),
+                        severity: sev,
                         message: d.message,
                         file: d.filepath,
                         line: d.span.line,
@@ -1456,8 +1484,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
         }
         Err(diag) => {
+            let sev = match diag.severity {
+                crate::diagnostics::DiagnosticSeverity::Error => "error".to_string(),
+                crate::diagnostics::DiagnosticSeverity::Warning => "warning".to_string(),
+                crate::diagnostics::DiagnosticSeverity::Info => "info".to_string(),
+            };
             diagnostics.push(JsonDiagnostic {
-                severity: "error".to_string(),
+                severity: sev,
                 message: diag.message,
                 file: diag.filepath,
                 line: diag.span.line,
@@ -1489,9 +1522,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         .collect::<Vec<_>>();
 
     let lines = content.lines().collect::<Vec<_>>();
-    let current_line = line
-        .and_then(|line_no| lines.get(line_no.saturating_sub(1)).copied())
-        .unwrap_or("");
+    let current_line = if let Some(l) = line {
+        let line = content.lines().nth(l.saturating_sub(1)).unwrap_or("");
+        eprintln!("DEBUG_EXTRACT: req.line={}, content.len={}, lines={}, line='{}'", l, content.len(), content.lines().count(), line);
+        line
+    } else {
+        ""
+    };
     let cursor_col = col.unwrap_or(current_line.len() + 1);
 
     let mut completions = Vec::new();
@@ -1558,7 +1595,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
     let word_under_cursor = word_under_cursor_raw.trim_start_matches('@').to_string();
 
     // Scan for variables and structs
-    let (mut scanned_vars, scanned_structs) = ide::scan_document(&content);
+    let (mut scanned_vars, mut scanned_structs) = ide::scan_document(&content);
 
     let imported_module_decls = load_imported_module_declarations(&manifest_dir, file);
     for stmt in &imported_module_decls {
@@ -1575,6 +1612,81 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 return_type,
                 ..
             } => Some((name, params, return_type.as_deref(), true)),
+            crate::parser::Stmt::ExportDecl(inner, _) => {
+                match &**inner {
+                    crate::parser::Stmt::FuncDecl {
+                        name, params, return_type, ..
+                    } => Some((name, params, return_type.as_deref(), false)),
+                    crate::parser::Stmt::AnnotationDecl {
+                        name, params, return_type, ..
+                    } => Some((name, params, return_type.as_deref(), true)),
+                    crate::parser::Stmt::StructDecl {
+                        name, fields, ..
+                    } => {
+                        let mut struct_methods = Vec::new();
+                        for stmt in &imported_module_decls {
+                            if let crate::parser::Stmt::ImplDecl { target_type, methods, .. } = stmt {
+                                if target_type == name {
+                                    for m in methods {
+                                        if let crate::parser::Stmt::FuncDecl { name: m_name, params, return_type, annotations, .. } = m {
+                                            let mut doc_str = String::new();
+                                            for ann in annotations {
+                                                if ann.name == "Docs" {
+                                                    if let Some(s) = ann.args.get(0) {
+                                                        doc_str = s.trim_matches('"').to_string();
+                                                    }
+                                                }
+                                            }
+                                            let p_str = params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
+                                            let sig = format!("fn {}({}) -> {}", m_name, p_str, return_type.as_deref().unwrap_or("Nil"));
+                                            struct_methods.push(m_name.clone());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        scanned_structs.push(ide::ScannedStruct {
+                            name: name.clone(),
+                            fields: fields.clone(),
+                            methods: struct_methods,
+                        });
+                        None
+                    }
+                    _ => None,
+                }
+            }
+            crate::parser::Stmt::StructDecl {
+                name, fields, ..
+            } => {
+                let mut struct_methods = Vec::new();
+                for stmt in &imported_module_decls {
+                    if let crate::parser::Stmt::ImplDecl { target_type, methods, .. } = stmt {
+                        if target_type == name {
+                            for m in methods {
+                                if let crate::parser::Stmt::FuncDecl { name: m_name, params, return_type, annotations, .. } = m {
+                                    let mut doc_str = String::new();
+                                    for ann in annotations {
+                                        if ann.name == "Docs" {
+                                            if let Some(s) = ann.args.get(0) {
+                                                doc_str = s.trim_matches('"').to_string();
+                                            }
+                                        }
+                                    }
+                                    let p_str = params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
+                                    let sig = format!("fn {}({}) -> {}", m_name, p_str, return_type.as_deref().unwrap_or("Nil"));
+                                    struct_methods.push(m_name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                scanned_structs.push(ide::ScannedStruct {
+                    name: name.clone(),
+                    fields: fields.clone(),
+                    methods: struct_methods,
+                });
+                None
+            }
             _ => None,
         } {
             let params_str = params
@@ -1757,6 +1869,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
     }
 
     let mut scanned_var_hover = None;
+    let mut hover_found = None;
     if !word_under_cursor.is_empty() {
         if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
             if let Some(t) = &var.typ {
@@ -1790,10 +1903,89 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         }
     }
 
-    let mut hover = None;
 
     if let Some(namespace) = namespace {
-        let mut hover_found = None;
+        let mut resolved_as_var = false;
+        
+        // First check if it's a known variable! If so, it might be a struct or native type (e.g. FlameServer)
+        if let Some(var) = scanned_vars.iter().find(|v| v.name == namespace) {
+            if let Some(typ) = &var.typ {
+                if typ != "Unknown" {
+                    let mut provided = false;
+                    for s in &scanned_structs {
+                        if s.name == *typ {
+                            for func_name in &s.methods {
+                                if member_prefix.as_deref().map_or(true, |p| func_name.starts_with(p)) {
+                                    completions.push(JsonCompletion { sort_text: None,
+                                        label: func_name.clone(),
+                                        kind: "method".to_string(),
+                                        detail: format!("struct {}", typ),
+                                        documentation: None,
+                                    });
+                                }
+                            }
+                            provided = true;
+                        }
+                    }
+                    if !provided {
+                        for mod_name in &native_modules {
+                            if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+                                if let Some(struct_meta) = meta.structs.iter().find(|s| s.name == *typ) {
+                                    for func in &struct_meta.methods {
+                                        if member_prefix.as_deref().map_or(true, |p| func.flame_name.starts_with(p)) {
+                                            completions.push(JsonCompletion { sort_text: None,
+                                                label: func.flame_name.clone(),
+                                                kind: "method".to_string(),
+                                                detail: format!("native {}.{}", mod_name, typ),
+                                                documentation: func.docs.clone(),
+                                            });
+                                        }
+                                    }
+                                    provided = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if provided {
+                        resolved_as_var = true;
+                        
+                        if !word_under_cursor.is_empty() {
+                            for s in &scanned_structs {
+                                if s.name == *typ {
+                                    if let Some(func_name) = s.methods.iter().find(|&f| f == &word_under_cursor) {
+                                        let sig = format!("fn {}(...)", func_name);
+                                        hover_found = Some(JsonHover {
+                                            label: format!("{}.{}", typ, func_name),
+                                            documentation: Some(format!("```flame\n{}\n```\nDefined in project", sig)),
+                                        });
+                                    }
+                                }
+                            }
+                            if hover_found.is_none() {
+                                for mod_name in &native_modules {
+                                    if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+                                        if let Some(struct_meta) = meta.structs.iter().find(|s| s.name == *typ) {
+                                            if let Some(function) = struct_meta.methods.iter().find(|f| f.flame_name == word_under_cursor) {
+                                                let params_str = function.params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
+                                                let sig = format!("fn {}({}) -> {}", function.flame_name, params_str, function.return_type);
+                                                hover_found = Some(JsonHover {
+                                                    label: format!("{}.{}", typ, function.flame_name),
+                                                    documentation: Some(format!("```flame\n{}\n```\n{}", sig, function.docs.clone().unwrap_or_default())),
+                                                });
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !resolved_as_var {
         if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
             for function in &meta.functions {
                 if member_prefix
@@ -2026,29 +2218,43 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         name,
                         params,
                         return_type,
+                        annotations,
                         ..
-                    } => Some((name, params, return_type, true, &vec![])),
+                    } => Some((name, params, return_type, true, annotations)),
                     crate::parser::Stmt::ExportDecl(inner, _) => {
-                        if let crate::parser::Stmt::FuncDecl {
-                            name,
-                            params,
-                            return_type,
-                            annotations,
-                            ..
-                        } = &**inner
-                        {
-                            Some((name, params, return_type, false, annotations))
-                        } else if let crate::parser::Stmt::AnnotationDecl {
-                            name,
-                            params,
-                            return_type,
-                            ..
-                        } = &**inner
-                        {
-                            Some((name, params, return_type, true, &vec![]))
-                        } else {
-                            None
+                        match &**inner {
+                            crate::parser::Stmt::FuncDecl {
+                                name, params, return_type, annotations, ..
+                            } => Some((name, params, return_type, false, annotations)),
+                            crate::parser::Stmt::AnnotationDecl {
+                                name, params, return_type, annotations, ..
+                            } => Some((name, params, return_type, true, annotations)),
+                            crate::parser::Stmt::StructDecl {
+                                name, ..
+                            } => {
+                                completions.push(JsonCompletion { sort_text: None,
+                                    label: name.clone(),
+                                    kind: "class".to_string(),
+                                    detail: "struct".to_string(),
+                                    documentation: None,
+                                });
+                                provided_completions = true;
+                                None
+                            }
+                            _ => None,
                         }
+                    }
+                    crate::parser::Stmt::StructDecl {
+                        name, ..
+                    } => {
+                        completions.push(JsonCompletion { sort_text: None,
+                            label: name.clone(),
+                            kind: "class".to_string(),
+                            detail: "struct".to_string(),
+                            documentation: None,
+                        });
+                        provided_completions = true;
+                        None
                     }
                     _ => None,
                 };
@@ -2058,9 +2264,10 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         .iter()
                         .map(|p| {
                             format!(
-                                "{}{}: {}",
+                                "{}{}: {}{}",
                                 if p.is_mut { "mut " } else { "" },
                                 p.name,
+                                if p.is_ref { "&" } else { "" },
                                 p.type_name
                             )
                         })
@@ -2082,6 +2289,34 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         name.clone()
                     };
 
+                    let mut doc_str = String::new();
+                    for ann in annotations.iter() {
+                        if ann.name == "Docs" {
+                            if let Some(s) = ann.args.get(0) {
+                                let unquoted = s.trim_matches('"').replace("\\n", "\n");
+                                let lines: Vec<&str> = unquoted.lines().collect();
+                                let mut min_indent = usize::MAX;
+                                for line in &lines {
+                                    if line.trim().is_empty() { continue; }
+                                    let indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                                    if indent < min_indent { min_indent = indent; }
+                                }
+                                let mut cleaned_doc = String::new();
+                                for line in &lines {
+                                    if line.trim().is_empty() {
+                                        cleaned_doc.push('\n');
+                                    } else {
+                                        let indent = if min_indent == usize::MAX { 0 } else { min_indent };
+                                        let slice_start = std::cmp::min(indent, line.len());
+                                        cleaned_doc.push_str(&line[slice_start..]);
+                                        cleaned_doc.push('\n');
+                                    }
+                                }
+                                doc_str = format!("\n\n{}", cleaned_doc.trim());
+                            }
+                        }
+                    }
+
                     if member_prefix
                         .as_deref()
                         .map_or(true, |prefix| name.starts_with(prefix))
@@ -2094,7 +2329,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                 label: actual_label,
                                 kind: if is_annotation { "annotation".to_string() } else { "function".to_string() },
                                 detail: format!("module {}", namespace),
-                                documentation: Some(sig.clone()),
+                                documentation: Some(format!("```flame\n{}\n```{}", sig, doc_str)),
                             });
                             provided_completions = true;
                         }
@@ -2103,7 +2338,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     if !word_under_cursor.is_empty() && name == &word_under_cursor {
                         hover_found = Some(JsonHover {
                             label: format!("{}.{}()", namespace, name),
-                            documentation: Some(format!("```flame\n{}\n```", sig)),
+                            documentation: Some(format!("```flame\n{}\n```{}", sig, doc_str)),
                         });
                     }
                 }
@@ -2115,6 +2350,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         } else {
             let mut var_type = None;
             let mut is_instance = false;
+            let mut pkg_suggestions = Vec::new();
             if let Some(first_part) = namespace.split('.').next() {
                 var_type = scanned_vars
                     .iter()
@@ -2151,6 +2387,51 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             }
                         }
                     }
+                } else {
+                    let path_parts = vec![namespace.clone()];
+                    if let Some(candidate) = crate::stdlib::locate_import_file(Path::new(file), &path_parts).or_else(|| {
+                        let direct = manifest_dir.join(format!("{}.fm", namespace));
+                        if direct.exists() { return Some(direct); }
+                        let pkg_main = manifest_dir.join(".flame").join("pkg").join(&namespace).join("src").join("main.fm");
+                        if pkg_main.exists() { return Some(pkg_main); }
+                        None
+                    }) {
+                        eprintln!("DEBUG_CANDIDATE: {:?}", candidate);
+                        match std::fs::read_to_string(&candidate) {
+                            Ok(content) => {
+                                eprintln!("DEBUG_CANDIDATE_READ_OK, len={}", content.len());
+                                let mut lexer = crate::lexer::Lexer::new(&content);
+                            let mut tokens = Vec::new();
+                            loop {
+                                let tok = lexer.next_token();
+                                let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                tokens.push(tok);
+                                if is_eof { break; }
+                            }
+                            let mut parser = crate::parser::Parser::new(tokens, candidate.to_string_lossy().to_string());
+                            if let Ok(stmts) = parser.parse() {
+                                eprintln!("DEBUG_STMTS_LEN: {}", stmts.len());
+                                for stmt in stmts {
+                                    if let crate::parser::Stmt::PackageDecl { annotations, .. } = stmt {
+                                        for ann in annotations {
+                                            eprintln!("DEBUG_ANN: name={}, args={:?}", ann.name, ann.args);
+                                            if ann.name == "Suggestion" && !ann.args.is_empty() {
+                                                let s_trimmed = ann.args[0].trim_matches(|c| c == '"' || c == '[' || c == ']');
+                                                let parts: Vec<&str> = s_trimmed.split(',').map(|p| p.trim().trim_matches('"')).collect();
+                                                let struct_name = parts[0].to_string();
+                                                let kind = if parts.len() >= 2 { parts[1].to_string() } else { "object".to_string() };
+                                                pkg_suggestions.push((struct_name, kind));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            }
+                            Err(e) => {
+                                eprintln!("DEBUG_CANDIDATE_READ_ERR: {}", e);
+                            }
+                        }
+                    }
                 }
             }
             eprintln!("DEBUG_COMPLETIONS_PRE: namespace={}, var_type={:?}", namespace, var_type);
@@ -2159,25 +2440,39 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
             // If it's a standard module directly (e.g. `json.`, `tcp.`, `http.`)
             let is_std_module = std_modules.contains(&namespace) || matches!(namespace.as_str(), "json" | "tcp" | "udp" | "http" | "ws" | "mqtt" | "dns" | "url" | "interface");
-            if var_type.is_none() && is_std_module {
-                if let Some(methods) = ide::get_std_module_methods(&namespace) {
-                    for method in methods {
-                        if member_prefix.as_deref().map_or(true, |p| method.starts_with(p)) {
-                            let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
+            if var_type.is_none() {
+                if is_std_module {
+                    if let Some(methods) = ide::get_std_module_methods(&namespace) {
+                        for method in methods {
+                            if member_prefix.as_deref().map_or(true, |p| method.starts_with(p)) {
+                                let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
+                                completions.push(JsonCompletion { sort_text: None,
+                                    label: method.clone(),
+                                    kind: "function".to_string(),
+                                    detail: format!("std.{} function", namespace),
+                                    documentation: doc.map(|d| d.to_string()),
+                                });
+                                provided_completions = true;
+                            }
+                            if !word_under_cursor.is_empty() && method == word_under_cursor {
+                                let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
+                                hover_found = Some(JsonHover {
+                                    label: format!("std.{}::{}()", namespace, method),
+                                    documentation: doc.map(|d| d.to_string()), // std_docs already provides good markdown
+                                });
+                            }
+                        }
+                    }
+                } else if !pkg_suggestions.is_empty() {
+                    for (s_name, s_kind) in &pkg_suggestions {
+                        if member_prefix.as_deref().map_or(true, |p| s_name.starts_with(p)) {
                             completions.push(JsonCompletion { sort_text: None,
-                                label: method.clone(),
-                                kind: "function".to_string(),
-                                detail: format!("std.{} function", namespace),
-                                documentation: doc.map(|d| d.to_string()),
+                                label: s_name.clone(),
+                                kind: s_kind.clone(),
+                                detail: format!("{} {}", namespace, s_kind),
+                                documentation: None,
                             });
                             provided_completions = true;
-                        }
-                        if !word_under_cursor.is_empty() && method == word_under_cursor {
-                            let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
-                            hover_found = Some(JsonHover {
-                                label: format!("std.{}::{}()", namespace, method),
-                                documentation: doc.map(|d| d.to_string()), // std_docs already provides good markdown
-                            });
                         }
                     }
                 }
@@ -2527,7 +2822,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 }
             }
         }
-        hover = hover_found;
+        } // closes if !resolved_as_var
+
     } else {
         // Keyword completions for bare words
         completions.extend(ide::get_keyword_completions(
@@ -2536,8 +2832,6 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             &word_under_cursor,
             tc_opt.as_ref(),
         ));
-
-        let mut hover_found = None;
 
         if !word_under_cursor.is_empty() {
             if let Some(doc) = crate::std_docs::get_std_module_doc(&word_under_cursor) {
@@ -2639,12 +2933,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
         }
 
-        hover = exact_ast_hover
-            .or(hover_found)
-            .or(scanned_var_hover)
-            .or_else(|| ide::get_keyword_hover(&word_under_cursor));
-
-        if hover.is_none() && !word_under_cursor.is_empty() {
+        if hover_found.is_none() && exact_ast_hover.is_none() && scanned_var_hover.is_none() && !word_under_cursor.is_empty() {
             // Check if the bare word is a function/annotation from any native module
             for mod_name in &native_modules {
                 if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
@@ -2662,7 +2951,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             function.return_type
                         );
                         let doc = function.docs.clone().unwrap_or_else(|| "".to_string());
-                        hover = Some(JsonHover {
+                        hover_found = Some(JsonHover {
                             label: format!("{}::{}()", mod_name, function.flame_name),
                             documentation: Some(format!(
                                 "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
@@ -2762,6 +3051,11 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         }
     }
 
+    let hover = exact_ast_hover
+        .or(hover_found)
+        .or(scanned_var_hover)
+        .or_else(|| ide::get_keyword_hover(&word_under_cursor));
+
     let tokens = ide::get_semantic_tokens(&content);
 
     JsonCheckOutput {
@@ -2835,7 +3129,7 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
 }
 
 fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<String>) {
-    let mut end = col.min(line.len());
+    let end = col.min(line.len());
     let upto = line.chars().take(end).collect::<String>();
     
     // If the character just after the extracted part is a dot (meaning the cursor is exactly ON the dot),
@@ -2918,7 +3212,12 @@ fn load_local_module_declarations(
     let candidate = crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
         .or_else(|| {
             let direct = manifest_dir.join(format!("{}.fm", namespace));
-            if direct.exists() { Some(direct) } else { None }
+            if direct.exists() { return Some(direct); }
+            
+            let pkg_main = manifest_dir.join(".flame").join("pkg").join(namespace).join("src").join("main.fm");
+            if pkg_main.exists() { return Some(pkg_main); }
+            
+            None
         })?;
     let content = fs::read_to_string(&candidate).ok()?;
     let mut lexer = Lexer::new(&content);
@@ -2954,9 +3253,14 @@ fn load_imported_module_declarations(
         }
 
         let path_parts: Vec<String> = module_path.split('.').map(|s| s.to_string()).collect();
-        if let Some(file_path) =
-            crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
-        {
+        let file_path = crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
+            .or_else(|| {
+                let pkg_main = _manifest_dir.join(".flame").join("pkg").join(&module_path).join("src").join("main.fm");
+                if pkg_main.exists() { return Some(pkg_main); }
+                None
+            });
+        
+        if let Some(file_path) = file_path {
             if let Ok(module_content) = fs::read_to_string(&file_path) {
                 let mut lexer = Lexer::new(&module_content);
                 let mut tokens = Vec::new();

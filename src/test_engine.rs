@@ -63,10 +63,9 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
         let func_opt = runner.env.lock().unwrap().get(func_name);
         if let Some(func_val) = func_opt {
             if let Err(e) = runner.invoke_callback_value(&func_val, vec![]) {
-                println!(
-                    "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@BeforeAll\x1b[0m {}: {}",
-                    func_name, e
-                );
+                println!("  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@BeforeAll\x1b[0m {}", func_name);
+                let span = runner.current_span.clone().unwrap_or(crate::lexer::Span { start: 0, end: 0, line: 1, col: 1 });
+                crate::diagnostics::Diagnostic::new_error(e, runner.filepath.display().to_string(), span, None, None).print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
                 stats.failed += 1;
                 return stats;
             }
@@ -141,10 +140,9 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                 for _ in 0..25 {
                     let start = std::time::Instant::now();
                     if let Err(e) = runner.invoke_callback_value(&f_val, vec![]) {
-                        println!(
-                            "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Benchmark\x1b[0m {}: {}",
-                            func_name, e
-                        );
+                        println!("  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Benchmark\x1b[0m {}", func_name);
+                        let span = runner.current_span.clone().unwrap_or(crate::lexer::Span { start: 0, end: 0, line: 1, col: 1 });
+                        crate::diagnostics::Diagnostic::new_error(e, runner.filepath.display().to_string(), span, None, None).print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
                         stats.failed += 1;
                         benchmark_failed = true;
                         break;
@@ -193,10 +191,9 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                                 single => vec![single.clone()],
                             };
                             if let Err(e) = runner.invoke_callback_value(&f_val, call_args) {
-                                println!(
-                                    "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {} on argument {:?}: {}",
-                                    func_name, case, e
-                                );
+                                println!("  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Parameterized\x1b[0m {} on argument {:?}", func_name, case);
+                                let span = runner.current_span.clone().unwrap_or(crate::lexer::Span { start: 0, end: 0, line: 1, col: 1 });
+                                crate::diagnostics::Diagnostic::new_error(e, runner.filepath.display().to_string(), span, None, None).print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
                                 all_ok = false;
                                 break;
                             }
@@ -227,10 +224,7 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                 if is_expect_panic {
                     match res {
                         Err(e) => {
-                            println!(
-                                "  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@ExpectPanic\x1b[0m {} (expected panic occurred in {:.2}ms: {})",
-                                func_name, elapsed, e
-                            );
+                            println!("  \x1b[1;32m[PASS]\x1b[0m \x1b[1;36m@ExpectPanic\x1b[0m {} (expected panic occurred in {:.2}ms: {})", func_name, elapsed, e);
                             stats.passed += 1;
                         }
                         Ok(_) => {
@@ -251,10 +245,9 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                             stats.passed += 1;
                         }
                         Err(e) => {
-                            println!(
-                                "  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Test\x1b[0m {}: {}",
-                                func_name, e
-                            );
+                            println!("  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36m@Test\x1b[0m {}", func_name);
+                            let span = runner.current_span.clone().unwrap_or(crate::lexer::Span { start: 0, end: 0, line: 1, col: 1 });
+                            crate::diagnostics::Diagnostic::new_error(e, runner.filepath.display().to_string(), span, None, None).print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
                             stats.failed += 1;
                         }
                     }

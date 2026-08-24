@@ -191,7 +191,7 @@
 
         {
           "name": "keyword.declaration.flame",
-          "match": "\\b(let|const|var|fn|struct|enum|trait|impl|export|import|mut|as|type|where|formula)\\b"
+          "match": "\\b(let|const|var|fn|struct|enum|trait|impl|export|import|package|plugin|mut|as|type|where|formula)\\b"
         },
 
         {

@@ -867,20 +867,24 @@ impl Runner {
                     );
                     self.modules.insert(mod_name, mod_env);
                 } else {
-                    let local_file = crate::stdlib::locate_import_file(&self.filepath, path)
-                        .unwrap_or_else(|| {
-                            let pkg_main = self.resolve_path(&format!(
-                                ".flame/pkg/{}/src/main.fm",
-                                path.last().unwrap()
-                            ));
-                            if pkg_main.exists() {
-                                pkg_main
+                    let (local_file, content_opt) = match crate::stdlib::locate_import_file(&self.filepath, path) {
+                        Some(f) => {
+                            let c = self.read_file_or_vfs(&f);
+                            (f, c.ok())
+                        }
+                        None => {
+                            let pkg_main = self.resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
+                            let pkg_c = self.read_file_or_vfs(&pkg_main);
+                            if pkg_c.is_ok() {
+                                (pkg_main, pkg_c.ok())
                             } else {
-                                self.resolve_path(&format!("{}.fm", path.join("/")))
+                                let f = self.resolve_path(&format!("{}.fm", path.join("/")));
+                                let c = self.read_file_or_vfs(&f);
+                                (f, c.ok())
                             }
-                        });
-                    if local_file.exists() {
-                        let content = fs::read_to_string(&local_file).map_err(|e| e.to_string())?;
+                        }
+                    };
+                    if let Some(content) = content_opt {
                         let mut lexer = Lexer::new(&content);
                         let mut tokens = Vec::new();
                         loop {
@@ -1032,75 +1036,92 @@ impl Runner {
                 let target_val = self.eval_expr(target, env.clone())?;
 
                 for arm in arms {
-                    if arm.pattern == "_" {
-                        let res = self.eval_expr(&arm.body, env.clone())?;
-                        return Ok(res);
-                    }
-
                     let mut is_match = false;
                     let mut child_env_opt = None;
 
-                    match &target_val {
-                        Value::EnumValue(enum_name, variant_name, data) => {
-                            let dot_pat = format!("{}.{}", enum_name, variant_name);
-                            let colon_pat = format!("{}::{}", enum_name, variant_name);
-
-                            if dot_pat == arm.pattern || colon_pat == arm.pattern || variant_name == &arm.pattern {
-                                is_match = true;
-                                let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
-                                
-                                match data {
-                                    EnumData::Tuple(vals) => {
-                                        for (i, field) in arm.destructure.iter().enumerate() {
-                                            let field_val = vals.get(i).cloned().unwrap_or(Value::Nil);
-                                            child.lock().unwrap().define(field.clone(), field_val, false);
-                                        }
-                                    }
-                                    EnumData::Struct(map) => {
-                                        for field in &arm.destructure {
-                                            let field_val = map.get(field).cloned().unwrap_or(Value::Nil);
-                                            child.lock().unwrap().define(field.clone(), field_val, false);
-                                        }
-                                    }
-                                    EnumData::Unit => {}
-                                }
-                                child_env_opt = Some(child);
-                            }
+                    for pattern in &arm.patterns {
+                        if pattern == "_" {
+                            is_match = true;
+                            break;
                         }
-                        Value::Object(map) | Value::Formula(map) => {
-                            if let Some(Value::String(variant)) = map.get("$variant") {
-                                if variant == &arm.pattern {
+
+                        match &target_val {
+                            Value::EnumValue(enum_name, variant_name, data) => {
+                                let dot_pat = format!("{}.{}", enum_name, variant_name);
+                                let colon_pat = format!("{}::{}", enum_name, variant_name);
+
+                                if dot_pat == *pattern || colon_pat == *pattern || variant_name == pattern {
                                     is_match = true;
                                     let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
-                                    for field in &arm.destructure {
-                                        let field_val =
-                                            map.get(field).cloned().unwrap_or(Value::Nil);
-                                        child.lock().unwrap().define(
-                                            field.clone(),
-                                            field_val,
-                                            false,
-                                        );
+                                    
+                                    match data {
+                                        EnumData::Tuple(vals) => {
+                                            for (i, field) in arm.destructure.iter().enumerate() {
+                                                let field_val = vals.get(i).cloned().unwrap_or(Value::Nil);
+                                                child.lock().unwrap().define(field.clone(), field_val, false);
+                                            }
+                                        }
+                                        EnumData::Struct(map) => {
+                                            for field in &arm.destructure {
+                                                let field_val = map.get(field).cloned().unwrap_or(Value::Nil);
+                                                child.lock().unwrap().define(field.clone(), field_val, false);
+                                            }
+                                        }
+                                        EnumData::Unit => {}
                                     }
                                     child_env_opt = Some(child);
                                 }
                             }
-                        }
-                        Value::String(s) => {
-                            if s == &arm.pattern {
-                                is_match = true;
+                            Value::Object(map) | Value::Formula(map) => {
+                                if let Some(Value::String(variant)) = map.get("$variant") {
+                                    if variant == pattern {
+                                        is_match = true;
+                                        let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                                        for field in &arm.destructure {
+                                            let field_val =
+                                                map.get(field).cloned().unwrap_or(Value::Nil);
+                                            child.lock().unwrap().define(
+                                                field.clone(),
+                                                field_val,
+                                                false,
+                                            );
+                                        }
+                                        child_env_opt = Some(child);
+                                    }
+                                }
+                            }
+                            Value::String(s) => {
+                                if s == pattern {
+                                    is_match = true;
+                                }
+                            }
+                            v => {
+                                if v.to_string() == *pattern {
+                                    is_match = true;
+                                }
                             }
                         }
-                        v => {
-                            if v.to_string() == arm.pattern {
-                                is_match = true;
-                            }
+
+                        if is_match {
+                            break;
                         }
                     }
 
                     if is_match {
                         let exec_env = child_env_opt.unwrap_or_else(|| env.clone());
-                        let res = self.eval_expr(&arm.body, exec_env)?;
-                        return Ok(res);
+                        let mut guard_passed = true;
+                        
+                        if let Some(guard_expr) = &arm.guard {
+                            let guard_val = self.eval_expr(guard_expr, exec_env.clone())?;
+                            if !guard_val.is_truthy() {
+                                guard_passed = false;
+                            }
+                        }
+
+                        if guard_passed {
+                            let res = self.eval_expr(&arm.body, exec_env)?;
+                            return Ok(res);
+                        }
                     }
                 }
                 Ok(Value::Nil)
@@ -4641,6 +4662,25 @@ impl Runner {
                 .unwrap_or_else(|| Path::new("."))
                 .join(p)
         }
+    }
+
+    pub fn read_file_or_vfs(&self, path: &Path) -> Result<String, String> {
+        let vfs_path = path.to_string_lossy().replace("\\", "/");
+        if let Some(vfs) = &self.vfs {
+            if let Some(content) = vfs.get(&vfs_path) {
+                return Ok(content.clone());
+            }
+            // Fallback match by suffix for robust VFS loading
+            for (k, v) in vfs.iter() {
+                if vfs_path.ends_with(k) || k.ends_with(&vfs_path) {
+                    return Ok(v.clone());
+                }
+            }
+        }
+        if path.exists() {
+            return fs::read_to_string(path).map_err(|e| e.to_string());
+        }
+        Err(format!("File not found: {}", path.display()))
     }
 
     pub fn clone_for_thread(&self, env: Arc<Mutex<Env>>) -> Self {

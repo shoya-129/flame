@@ -96,6 +96,7 @@ pub struct TypeChecker {
     current_return_type: Option<Type>,
     pub hover_info: HashMap<Span, String>,
     pub modules: HashSet<String>,
+    pub module_docs: HashMap<String, String>,
     pub plugins: HashSet<String>,
     pub plugin_methods: HashMap<String, HashMap<String, Type>>,
     pub plugin_functions: HashMap<String, HashMap<String, FunctionSig>>,
@@ -106,6 +107,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn insert_hover_info(&mut self, span: crate::lexer::Span, info: String) {
         if !self.is_importing {
+            eprintln!("INSERT HOVER: {:?} -> {}", span, info);
             self.hover_info.insert(span, info);
         }
     }
@@ -123,6 +125,7 @@ impl TypeChecker {
             current_return_type: None,
             hover_info: HashMap::new(),
             modules: HashSet::new(),
+            module_docs: HashMap::new(),
             plugins: HashSet::new(),
             plugin_methods: HashMap::new(),
             plugin_functions: HashMap::new(),
@@ -161,12 +164,26 @@ impl TypeChecker {
                     if raw.starts_with('"') && raw.ends_with('"') {
                         raw = raw[1..raw.len() - 1].to_string();
                     }
-                    let doc_str = raw.replace("\\n", "\n");
-                    self.insert_hover_info(
-                        ann.span.clone(),
-                        format!("**Documentation**\n\n{}", doc_str),
-                    );
-                    docs.push(doc_str);
+                    let unquoted = raw.replace("\\n", "\n");
+                    let lines: Vec<&str> = unquoted.lines().collect();
+                    let mut min_indent = usize::MAX;
+                    for line in &lines {
+                        if line.trim().is_empty() { continue; }
+                        let indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
+                        if indent < min_indent { min_indent = indent; }
+                    }
+                    let mut cleaned_doc = String::new();
+                    for line in &lines {
+                        if line.trim().is_empty() {
+                            cleaned_doc.push('\n');
+                        } else {
+                            let indent = if min_indent == usize::MAX { 0 } else { min_indent };
+                            let slice_start = std::cmp::min(indent, line.len());
+                            cleaned_doc.push_str(&line[slice_start..]);
+                            cleaned_doc.push('\n');
+                        }
+                    }
+                    docs.push(cleaned_doc.trim().to_string());
                 }
             } else if ann.name == "Test" {
                 self.insert_hover_info(
@@ -631,6 +648,7 @@ impl TypeChecker {
                         },
                     );
                 }
+                Stmt::PackageDecl { .. } => {}
                 Stmt::AnnotationDecl {
                     name,
                     params,
@@ -1151,7 +1169,7 @@ impl TypeChecker {
 
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::ImportDecl { path, .. } => {
+            Stmt::ImportDecl { path, span, .. } => {
                 if let Some(last) = path.last() {
                     let is_native = path.first().map_or(false, |p| p == "native");
                     let kind_str = if is_native {
@@ -1161,6 +1179,51 @@ impl TypeChecker {
                     };
 
                     let path_str = path.join(".");
+                    let mut is_package = false;
+                    let mut package_docs = None;
+                    let mut suggestions = Vec::new();
+                    if !path.first().map_or(false, |p| p == "native" || p == "std") {
+                        if let Some(file_path) = crate::stdlib::locate_import_file(
+                            std::path::Path::new(&self.filepath),
+                            path,
+                        ) {
+                            let p_str = file_path.to_string_lossy();
+                            if p_str.contains(".flame/pkg/") || p_str.contains(".flame\\pkg\\") {
+                                is_package = true;
+                                if let Ok(content) = std::fs::read_to_string(&file_path) {
+                                    let mut lexer = crate::lexer::Lexer::new(&content);
+                                    let mut tokens = Vec::new();
+                                    loop {
+                                        let tok = lexer.next_token();
+                                        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                        tokens.push(tok);
+                                        if is_eof { break; }
+                                    }
+                                    let mut parser = crate::parser::Parser::new(tokens, file_path.to_string_lossy().to_string());
+                                    if let Ok(stmts) = parser.parse() {
+                                        for stmt in stmts {
+                                            if let crate::parser::Stmt::PackageDecl { annotations, .. } = stmt {
+                                                package_docs = self.process_annotations(&annotations);
+                                                for ann in &annotations {
+                                                    if ann.name == "Suggestion" {
+                                                        if let Some(s) = ann.args.first() {
+                                                            let s_trimmed = s.trim_matches(|c| c == '"' || c == '[' || c == ']');
+                                                            let parts: Vec<&str> = s_trimmed.split(',').map(|p| p.trim().trim_matches('"')).collect();
+                                                            let name = parts[0].to_string();
+                                                            let kind = if parts.len() > 1 { parts[1].to_string() } else { "object".to_string() };
+                                                            suggestions.push((name, kind));
+                                                        }
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let hover_str = if is_native {
                         format!("```flame\nimport {}\n```\n**Native Plugin**", path_str)
                     } else if path.first().map_or(false, |p| p == "std") {
@@ -1168,12 +1231,26 @@ impl TypeChecker {
                             "```flame\nimport {}\n```\n**Standard Library Module**",
                             path_str
                         )
+                    } else if is_package {
+                        let mut h = if let Some(docs) = package_docs {
+                            format!("```flame\nimport package {}\n```\n\n{}", path_str, docs)
+                        } else {
+                            format!("```flame\nimport package {}\n```", path_str)
+                        };
+                        h
                     } else {
                         format!("```flame\nimport {}\n```\n**Local Module**", path_str)
                     };
 
+                    self.insert_hover_info(span.clone(), hover_str.clone());
+                    if let Some(first_part) = path.first() {
+                        self.module_docs.insert(first_part.to_string(), hover_str.clone());
+                    }
+
                     let ty = if path.first().map_or(false, |p| p == "std") {
                         self.get_std_module_type(last)
+                    } else if let Some((s, _)) = suggestions.iter().find(|(_, k)| k == "object").or_else(|| suggestions.first()) {
+                        Type::Named(s.clone())
                     } else {
                         Type::Named(kind_str)
                     };
@@ -1723,13 +1800,17 @@ impl TypeChecker {
 
                 if is_cli_match {
                     for arm in arms {
-                        if arm.pattern == "_" {
+                        let is_wildcard = arm.patterns.iter().any(|p| p == "_");
+                        let is_help = arm.patterns.iter().any(|p| p == "help");
+                        let cmd_match = arm.patterns.iter().find_map(|p| self.commands.get(p).map(|c| (p, c.clone())));
+
+                        if is_wildcard {
                             let wildcard_doc = "```flame\n_ => ...\n```\n**Wildcard Match Arm**\nMatches any unrecognized CLI command.".to_string();
                             self.insert_hover_info(arm.pattern_span.clone(), wildcard_doc);
                             self.push_scope();
                             self.infer_expr_type(&arm.body);
                             self.pop_scope();
-                        } else if arm.pattern == "help" {
+                        } else if is_help {
                             let help_doc = if let Some(cmd) = self.commands.get("help") {
                                 cmd.hover_doc.clone()
                             } else {
@@ -1739,7 +1820,7 @@ impl TypeChecker {
                             self.push_scope();
                             self.infer_expr_type(&arm.body);
                             self.pop_scope();
-                        } else if let Some(cmd) = self.commands.get(&arm.pattern).cloned() {
+                        } else if let Some((pat, cmd)) = cmd_match {
                             self.insert_hover_info(arm.pattern_span.clone(), cmd.hover_doc.clone());
                             self.push_scope();
                             for field in &arm.destructure {
@@ -1767,11 +1848,12 @@ impl TypeChecker {
                             self.pop_scope();
                         } else {
                             // Command was not defined with @Command -> emit error!
+                            let pat = arm.patterns.first().unwrap_or(&String::new()).clone();
                             self.error(
-                                format!("unknown command '{}': no matching function annotated with @Command(name: \"{}\") was found", arm.pattern, arm.pattern),
+                                format!("unknown command '{}': no matching function annotated with @Command(name: \"{}\") was found", pat, pat),
                                 arm.pattern_span.clone(),
-                                Some(format!("unknown command '{}'", arm.pattern)),
-                                Some(format!("define a function annotated with '@Command(name: \"{}\")' to handle this command", arm.pattern)),
+                                Some(format!("unknown command '{}'", pat)),
+                                Some(format!("define a function annotated with '@Command(name: \"{}\")' to handle this command", pat)),
                             );
                             self.push_scope();
                             for field in &arm.destructure {
@@ -1812,6 +1894,7 @@ impl TypeChecker {
             | Stmt::ImplDecl { .. }
             | Stmt::Break(_)
             | Stmt::Continue(_)
+            | Stmt::PackageDecl { .. }
             | Stmt::PluginDecl { .. } => {}
         }
     }
@@ -1884,6 +1967,9 @@ impl TypeChecker {
                     );
                     Type::Named(format!("plugin:{}", name))
                 } else if self.modules.contains(name) {
+                    if let Some(doc) = self.module_docs.get(name) {
+                        self.insert_hover_info(span.clone(), doc.clone());
+                    }
                     Type::Named(format!("module:{}", name))
                 } else {
                     let mut found_variant = None;
@@ -1958,6 +2044,9 @@ impl TypeChecker {
                 } else if self.plugins.contains(name) {
                     "plugin".to_string()
                 } else if self.modules.contains(name) {
+                    if let Some(doc) = self.module_docs.get(name) {
+                        self.insert_hover_info(span.clone(), doc.clone());
+                    }
                     format!("module:{}", name)
                 } else {
                     let mut variant_doc = None;
@@ -2721,17 +2810,31 @@ impl TypeChecker {
         if let Expr::Identifier(name, id_span) = callee {
             if let Some(sig) = self.functions.get(name).cloned() {
                 self.check_call_args(&sig.params, args, span, name);
-                if let Some(doc) = sig.hover_doc {
-                    self.insert_hover_info(id_span.clone(), doc);
+                
+                let mut params_str = Vec::new();
+                for p in &sig.params {
+                    let mut mods = String::new();
+                    if p.is_ref { mods.push('&'); }
+                    if p.is_mut { mods.push_str("mut "); }
+                    params_str.push(format!("{}{}: {}{}", if p.is_mut && !p.is_ref { "mut " } else { "" }, p.name, mods, self.format_type(&p.ty)));
                 }
+                
+                let mut hover_str = format!("```flame\nfn {}({}) -> {}\n```", name, params_str.join(", "), self.format_type(&sig.return_type));
+                if let Some(doc) = sig.hover_doc {
+                    hover_str = format!("{}\n\n{}", hover_str, doc);
+                }
+                self.insert_hover_info(id_span.clone(), hover_str);
+                
                 return sig.return_type;
             }
 
             if let Some(struct_info) = self.structs.get(name).cloned() {
                 self.check_struct_constructor_args(name, &struct_info, args, span);
+                let mut hover_str = format!("```flame\nstruct {}\n```", name);
                 if let Some(doc) = struct_info.hover_doc {
-                    self.insert_hover_info(id_span.clone(), doc);
+                    hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
+                self.insert_hover_info(id_span.clone(), hover_str);
                 return Type::Struct(name.clone());
             }
 
@@ -2770,9 +2873,11 @@ impl TypeChecker {
                             );
                         }
                     }
+                    let mut hover_str = format!("```flame\n{}::{}\n```", enum_name, name);
                     if let Some(doc) = variant.hover_doc {
-                        self.insert_hover_info(id_span.clone(), doc);
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
+                    self.insert_hover_info(id_span.clone(), hover_str);
                     return Type::EnumVariant {
                         enum_name: enum_name.clone(),
                         variant_name: name.clone(),
@@ -2856,6 +2961,20 @@ impl TypeChecker {
                         &[]
                     };
                     self.check_call_args(params_to_check, args, span, member);
+                    
+                    let mut params_str = Vec::new();
+                    for p in &sig.params {
+                        let mut mods = String::new();
+                        if p.is_ref { mods.push('&'); }
+                        if p.is_mut { mods.push_str("mut "); }
+                        params_str.push(format!("{}{}: {}{}", if p.is_mut && !p.is_ref { "mut " } else { "" }, p.name, mods, self.format_type(&p.ty)));
+                    }
+                    let mut hover_str = format!("```flame\nfn {}({}) -> {}\n```", member, params_str.join(", "), self.format_type(&sig.return_type));
+                    if let Some(doc) = sig.hover_doc {
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
+                    }
+                    self.insert_hover_info(span.clone(), hover_str);
+                    
                     return sig.return_type;
                 }
 
@@ -3272,6 +3391,9 @@ impl TypeChecker {
 
     fn parse_type_name(&self, type_name: &str) -> Type {
         let trimmed = type_name.trim();
+        if trimmed == "Object" || trimmed == "Formula" {
+            return Type::Formula(HashMap::new(), HashMap::new());
+        }
         if trimmed == "&str"
             || trimmed == "&'static str"
             || trimmed == "str"

@@ -5,3 +5,4 @@ target/
 .flame/
 *.vsix
 .env
+*.log
