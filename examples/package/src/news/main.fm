@@ -1,0 +1,25 @@
+package news
+import std.net.http
+import std.json
+import std.env
+
+
+let news_api_key = "[API_KEY]"
+
+export async fn get_news() -> String {
+    let url = $"https://gnews.io/api/v4/top-headlines?category=general&lang=en&country=in&max=10&apikey={news_api_key}"
+    let response = await http.get(url)
+    let data = await response.json()
+    let mut result = "📰 <b>Top News</b>\n\n"
+    let mut index = 1
+
+    for article in data.articles {
+        let title = article.title
+        let link = article.url
+
+        result = $"{result}{index}. <a href='{link}'>{title}</a>\n\n"
+        index = index + 1
+    }
+
+    return result
+}

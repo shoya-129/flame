@@ -107,7 +107,6 @@ pub struct TypeChecker {
 impl TypeChecker {
     pub fn insert_hover_info(&mut self, span: crate::lexer::Span, info: String) {
         if !self.is_importing {
-            eprintln!("INSERT HOVER: {:?} -> {}", span, info);
             self.hover_info.insert(span, info);
         }
     }
@@ -940,29 +939,9 @@ impl TypeChecker {
                                                                         }
                                                                     }
 
-                                                                    let mut sig_str = format!(
-                                                                        "```flame\nfn {}(",
-                                                                        m_name
-                                                                    );
-                                                                    if !is_static {
-                                                                        sig_str.push_str("self");
-                                                                        if !params.is_empty() {
-                                                                            sig_str.push_str(", ");
-                                                                        }
-                                                                    }
-                                                                    let param_strs: Vec<String> = params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect();
-                                                                    sig_str.push_str(
-                                                                        &param_strs.join(", "),
-                                                                    );
-                                                                    sig_str.push_str(&format!(
-                                                                        ") -> {}\n```",
-                                                                        self.format_type(
-                                                                            &self.parse_type_name(
-                                                                                ret_str
-                                                                            )
-                                                                        )
-                                                                    ));
 
+
+                                                                    let doc = m.get("docs").and_then(|d| d.as_str()).map(|s| s.to_string());
                                                                     struct_methods.insert(
                                                                         m_name.to_string(),
                                                                         FunctionSig {
@@ -972,9 +951,7 @@ impl TypeChecker {
                                                                                 .parse_type_name(
                                                                                     ret_str,
                                                                                 ),
-                                                                            hover_doc: Some(
-                                                                                sig_str,
-                                                                            ),
+                                                                            hover_doc: doc,
                                                                         },
                                                                     );
                                                                 }
@@ -1268,41 +1245,57 @@ impl TypeChecker {
                             std::path::Path::new(&self.filepath),
                             path,
                         ) {
-                            if let Ok(content) = std::fs::read_to_string(&file_path) {
-                                let mut lexer = crate::lexer::Lexer::new(&content);
-                                let mut tokens = Vec::new();
-                                loop {
-                                    let tok = lexer.next_token();
-                                    let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
-                                    tokens.push(tok);
-                                    if is_eof {
-                                        break;
-                                    }
-                                }
-                                let mut parser = crate::parser::Parser::new(
-                                    tokens,
-                                    file_path.to_string_lossy().to_string(),
-                                );
-                                if let Ok(parsed_stmts) = parser.parse() {
-                                    let prev = self.is_importing;
-                                    self.is_importing = true;
-                                    for s in &parsed_stmts {
-                                        if let Stmt::ExportDecl(inner, _) = s {
-                                            if let Stmt::LetDecl { name, .. }
-                                            | Stmt::ConstDecl { name, .. } = inner.as_ref()
-                                            {
-                                                self.define_var(
-                                                    name.clone(),
-                                                    VarInfo {
-                                                        ty: Type::Unknown,
-                                                        is_mut: false,
-                                                        hover_doc: None,
-                                                    },
-                                                );
-                                            }
+                            let mut paths_to_read = Vec::new();
+                            if file_path.is_dir() {
+                                if let Ok(entries) = std::fs::read_dir(&file_path) {
+                                    for entry in entries.flatten() {
+                                        let p = entry.path();
+                                        if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("fm") {
+                                            paths_to_read.push(p);
                                         }
                                     }
-                                    self.is_importing = prev;
+                                }
+                            } else {
+                                paths_to_read.push(file_path);
+                            }
+
+                            for path_to_read in paths_to_read {
+                                if let Ok(content) = std::fs::read_to_string(&path_to_read) {
+                                    let mut lexer = crate::lexer::Lexer::new(&content);
+                                    let mut tokens = Vec::new();
+                                    loop {
+                                        let tok = lexer.next_token();
+                                        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                        tokens.push(tok);
+                                        if is_eof {
+                                            break;
+                                        }
+                                    }
+                                    let mut parser = crate::parser::Parser::new(
+                                        tokens,
+                                        path_to_read.to_string_lossy().to_string(),
+                                    );
+                                    if let Ok(parsed_stmts) = parser.parse() {
+                                        let prev = self.is_importing;
+                                        self.is_importing = true;
+                                        for s in &parsed_stmts {
+                                            if let Stmt::ExportDecl(inner, _) = s {
+                                                if let Stmt::LetDecl { name, .. }
+                                                | Stmt::ConstDecl { name, .. } = inner.as_ref()
+                                                {
+                                                    self.define_var(
+                                                        name.clone(),
+                                                        VarInfo {
+                                                            ty: Type::Unknown,
+                                                            is_mut: false,
+                                                            hover_doc: None,
+                                                        },
+                                                    );
+                                                }
+                                            }
+                                        }
+                                        self.is_importing = prev;
+                                    }
                                 }
                             }
                         }
@@ -3153,12 +3146,6 @@ impl TypeChecker {
         name: &str,
     ) {
         if name != "print" && name != "eprint" && args.len() != params.len() {
-            println!(
-                "DEBUG check_call_args: name={}, params.len()={}, args.len()={}",
-                name,
-                params.len(),
-                args.len()
-            );
             self.error(
                 format!(
                     "function '{}' expects {} argument(s), got {}",
@@ -3318,12 +3305,6 @@ impl TypeChecker {
         }
         // Fallback for cases where structural equality fails but formatted strings match.
         if self.format_type(expected) == self.format_type(actual) {
-            println!(
-                "DEBUG: Formatting matched but expected != actual for {}",
-                self.format_type(expected)
-            );
-            println!("DEBUG expected: {:#?}", expected);
-            println!("DEBUG actual: {:#?}", actual);
             return true;
         }
 

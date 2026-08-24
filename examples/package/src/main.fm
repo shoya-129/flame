@@ -1,31 +1,14 @@
 import std.net.http
 import std.json
 import std.env
+import bot
 import flamer
-
+import news
 
 
 let bot_token = env.get("BOT_TOKEN")
-let news_api_key = "[API_KEY]"
+
 println(bot_token)
-
-async fn get_news() -> String {
-    let url = $"https://gnews.io/api/v4/top-headlines?category=general&lang=en&country=in&max=10&apikey={news_api_key}"
-    let response = await http.get(url)
-    let data = await response.json()
-    let mut result = "📰 <b>Top News</b>\n\n"
-    let mut index = 1
-
-    for article in data.articles {
-        let title = article.title
-        let link = article.url
-
-        result = $"{result}{index}. <a href='{link}'>{title}</a>\n\n"
-        index = index + 1
-    }
-
-    return result
-}
 
 async fn webhook(body: Formula) -> Formula {
     let data = json.parse(body)
@@ -37,16 +20,15 @@ async fn webhook(body: Formula) -> Formula {
     let mut reply_text = ""
 
     if text == "/start" {
-        reply_text = "Welcome to Flame Bot! Send me a message."
+        await bot.reply(&data, &bot_token, "Welcome to Flame Bot! Send me a message.")
     } else if text == "/news" {
-        reply_text = await get_news()
+        reply_text = await news.get_news()
     } else {
         reply_text = $"You said: {text}"
     }
 
     let send_url = $"https://api.telegram.org/bot{bot_token}/sendMessage"
     let payload = {
-
         chat_id: chat_id,
         text: reply_text,
         parse_mode: "HTML"

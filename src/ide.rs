@@ -117,6 +117,7 @@ const KEYWORDS: &[(&str, &str)] = &[
     ),
     ("import", "Imports a module. Example: `import std.fs`"),
     ("export", "Exports a function, struct, enum, or annotation for external modules. Example: `export fn process() {}`"),
+    ("package", "Declares the package namespace for the current file. Required for folder-based imports. Example: `package utils`"),
     (
         "native",
         "Native dependencies import prefix. Example: `import native.mysql`",
@@ -232,6 +233,10 @@ const KEYWORDS: &[(&str, &str)] = &[
     (
         "@Command",
         "```flame\nannotation @Command\n```\n**CLI Command**\n\nRegisters a function as an executable command within a `@Cli` application. Associates the function with a specific command-line keyword.",
+    ),
+    (
+        "@Suggestions",
+        "```flame\nannotation @Suggestions([{name: String, kind: String}])\n```\n**Package Suggestions**\n\nProvides custom suggestions for IDE autocompletion when typing the package name (e.g. `mypackage.`). Used inside `PackageDecl` to suggest objects or functions exported by the package.\n\n**Parameters:**\n- `args: Array`: An array of objects, where each object has `name` (the property to suggest) and `kind` (the completion kind, such as `\"function\"`, `\"method\"`, `\"property\"`, or `\"object\"`).",
     ),
     (
         "features",
@@ -529,7 +534,7 @@ pub fn get_keyword_completions(
             }
         }
 
-        let annotations = ["@Application", "@Test", "@Embedded", "@Cli", "@Command", "@Requires", "@Permission"];
+        let annotations = ["@Application", "@Test", "@Embedded", "@Cli", "@Command", "@Requires", "@Permission", "@Suggestions", "@Docs", "@Platform"];
         for ann in annotations {
             if ann.starts_with(raw_word) {
                 let label = ann.to_string();
@@ -652,6 +657,7 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
 pub struct ScannedVar {
     pub name: String,
     pub typ: Option<String>,
+    pub doc: Option<String>,
 }
 
 #[derive(Debug)]
@@ -809,7 +815,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
                 cap.get(4).map(|m| m.as_str().to_string())
             }
         });
-        vars.push(ScannedVar { name, typ });
+        vars.push(ScannedVar { name, typ, doc: None });
     }
 
     // Scan for variables with formula bodies to extract fields
@@ -837,6 +843,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
                 ScannedVar {
                     name,
                     typ: Some(synthetic_type),
+                    doc: None,
                 },
             );
         }
@@ -873,6 +880,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         vars.push(ScannedVar {
             name: name_str.to_string(),
             typ: Some(sig),
+            doc: None,
         });
     }
 
@@ -891,6 +899,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         vars.push(ScannedVar {
             name: lower_name,
             typ: Some(typ),
+            doc: None,
         });
     }
 

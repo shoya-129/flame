@@ -1599,27 +1599,45 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
     let imported_module_decls = load_imported_module_declarations(&manifest_dir, file);
     for stmt in &imported_module_decls {
-        if let Some((name, params, return_type, is_annotation)) = match stmt {
+        if let Some((name, params, return_type, is_annotation, annotations)) = match stmt {
             crate::parser::Stmt::FuncDecl {
                 name,
                 params,
                 return_type,
+                annotations,
                 ..
-            } => Some((name, params, return_type.as_deref(), false)),
+            } => Some((name, params, return_type.as_deref(), false, annotations)),
+            crate::parser::Stmt::PackageDecl { name, annotations, .. } => {
+                let mut doc_str = String::new();
+                for ann in annotations {
+                    if ann.name == "Docs" {
+                        if let Some(s) = ann.args.get(0) {
+                            doc_str = s.trim_matches('"').to_string();
+                        }
+                    }
+                }
+                if !doc_str.is_empty() {
+                    if let Some(var) = scanned_vars.iter_mut().find(|v| v.name == *name && v.typ.as_deref() == Some(&format!("import package {}", name))) {
+                        var.doc = Some(doc_str);
+                    }
+                }
+                None
+            }
             crate::parser::Stmt::AnnotationDecl {
                 name,
                 params,
                 return_type,
+                annotations,
                 ..
-            } => Some((name, params, return_type.as_deref(), true)),
+            } => Some((name, params, return_type.as_deref(), true, annotations)),
             crate::parser::Stmt::ExportDecl(inner, _) => {
                 match &**inner {
                     crate::parser::Stmt::FuncDecl {
-                        name, params, return_type, ..
-                    } => Some((name, params, return_type.as_deref(), false)),
+                        name, params, return_type, annotations, ..
+                    } => Some((name, params, return_type.as_deref(), false, annotations)),
                     crate::parser::Stmt::AnnotationDecl {
-                        name, params, return_type, ..
-                    } => Some((name, params, return_type.as_deref(), true)),
+                        name, params, return_type, annotations, ..
+                    } => Some((name, params, return_type.as_deref(), true, annotations)),
                     crate::parser::Stmt::StructDecl {
                         name, fields, ..
                     } => {
@@ -1689,6 +1707,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
             _ => None,
         } {
+            let mut doc_str = None;
+            for ann in annotations {
+                if ann.name == "Docs" {
+                    if let Some(s) = ann.args.get(0) {
+                        doc_str = Some(s.trim_matches('"').to_string());
+                    }
+                }
+            }
+
             let params_str = params
                 .iter()
                 .map(|p| format!("{}: {}", p.name, p.type_name))
@@ -1704,9 +1731,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 format!("fn {}({}) -> {}", name, params_str, return_type.unwrap_or("Nil"))
             };
 
+            let doc_text = doc_str.clone().unwrap_or(sig.clone());
+
             scanned_vars.push(ide::ScannedVar {
                 name: name.clone(),
                 typ: Some(sig.clone()),
+                doc: doc_str.clone(),
             });
             let (actual_label, sort_text) = if is_annotation {
                 (format!("@{}", name), Some("1_".to_string()))
@@ -1722,7 +1752,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     "function".to_string()
                 },
                 detail: "imported module declaration".to_string(),
-                documentation: Some(sig),
+                documentation: Some(doc_text),
             });
         }
     }
@@ -1746,6 +1776,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                     scanned_vars.push(ide::ScannedVar {
                                         name: var_name.to_string(),
                                         typ: Some(func.return_type.clone()),
+                                        doc: None,
                                     });
                                 }
                             }
@@ -1771,6 +1802,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                         scanned_vars.push(ide::ScannedVar {
                                             name: var_name.to_string(),
                                             typ: Some(func.return_type.clone()),
+                                            doc: None,
                                         });
                                     }
                                 }
@@ -1783,7 +1815,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
     }
 
     let (namespace, member_prefix) = extract_member_context(current_line, cursor_col);
-    eprintln!("DEBUG_CONTEXT: namespace={:?}, prefix={:?}, line='{}', col={}", namespace, member_prefix, current_line, cursor_col);
+    // eprintln!("DEBUG_CONTEXT: namespace={:?}, prefix={:?}, line='{}', col={}", namespace, member_prefix, current_line, cursor_col);
 
     let mut exact_ast_hover = None;
     if let Some(tc) = &tc_opt {
@@ -2312,7 +2344,10 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                         cleaned_doc.push('\n');
                                     }
                                 }
-                                doc_str = format!("\n\n{}", cleaned_doc.trim());
+                                let trimmed = cleaned_doc.trim();
+                                if !trimmed.is_empty() {
+                                    doc_str = format!("\n\n{}", trimmed);
+                                }
                             }
                         }
                     }
@@ -2415,12 +2450,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                     if let crate::parser::Stmt::PackageDecl { annotations, .. } = stmt {
                                         for ann in annotations {
                                             eprintln!("DEBUG_ANN: name={}, args={:?}", ann.name, ann.args);
-                                            if ann.name == "Suggestion" && !ann.args.is_empty() {
-                                                let s_trimmed = ann.args[0].trim_matches(|c| c == '"' || c == '[' || c == ']');
-                                                let parts: Vec<&str> = s_trimmed.split(',').map(|p| p.trim().trim_matches('"')).collect();
-                                                let struct_name = parts[0].to_string();
-                                                let kind = if parts.len() >= 2 { parts[1].to_string() } else { "object".to_string() };
-                                                pkg_suggestions.push((struct_name, kind));
+                                            if ann.name == "Suggestions" && !ann.args.is_empty() {
+                                                let s_args = ann.args.join(" ");
+                                                let re = regex::Regex::new(r"\{\s*name\s*:\s*([^,]+),\s*kind\s*:\s*([^,}]+)(?:,\s*doc\s*:\s*([^}]+))?\}").unwrap();
+                                                for cap in re.captures_iter(&s_args) {
+                                                    let struct_name = cap[1].trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+                                                    let kind = cap[2].trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+                                                    let doc = cap.get(3).map(|m| m.as_str().trim().trim_matches(|c| c == '"' || c == '\'').to_string());
+                                                    pkg_suggestions.push((struct_name, kind, doc));
+                                                }
                                             }
                                         }
                                     }
@@ -2434,7 +2472,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     }
                 }
             }
-            eprintln!("DEBUG_COMPLETIONS_PRE: namespace={}, var_type={:?}", namespace, var_type);
+            // eprintln!("DEBUG_COMPLETIONS_PRE: namespace={}, var_type={:?}", namespace, var_type);
 
             let mut provided_completions = false;
 
@@ -2446,7 +2484,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         for method in methods {
                             if member_prefix.as_deref().map_or(true, |p| method.starts_with(p)) {
                                 let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
-                                completions.push(JsonCompletion { sort_text: None,
+                                completions.push(JsonCompletion { sort_text: Some("4_".to_string()),
                                     label: method.clone(),
                                     kind: "function".to_string(),
                                     detail: format!("std.{} function", namespace),
@@ -2464,13 +2502,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         }
                     }
                 } else if !pkg_suggestions.is_empty() {
-                    for (s_name, s_kind) in &pkg_suggestions {
+                    for (s_name, s_kind, s_doc) in &pkg_suggestions {
                         if member_prefix.as_deref().map_or(true, |p| s_name.starts_with(p)) {
-                            completions.push(JsonCompletion { sort_text: None,
+                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
                                 label: s_name.clone(),
                                 kind: s_kind.clone(),
                                 detail: format!("{} {}", namespace, s_kind),
-                                documentation: None,
+                                documentation: s_doc.clone(),
                             });
                             provided_completions = true;
                         }
@@ -2524,25 +2562,28 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                 params_str,
                                 function.return_type
                             );
-                            let doc = function.docs.clone().unwrap_or_else(|| "".to_string());
+                            let doc = function.docs.clone().unwrap_or_default();
+                            let formatted_doc = if doc.trim().is_empty() {
+                                format!("```flame\n{}\n```\n\n**Return Type**: `{}`", sig, function.return_type)
+                            } else {
+                                format!("```flame\n{}\n```\n{}\n\n**Return Type**: `{}`", sig, doc.trim(), function.return_type)
+                            };
+
                             hover_found = Some(JsonHover {
                                 label: format!("{}::{}()", namespace, function.flame_name),
-                                documentation: Some(format!(
-                                    "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
-                                    sig, doc, function.return_type
-                                )),
+                                documentation: Some(formatted_doc),
                             });
                         }
                     }
                     
                     for struct_meta in &meta.structs {
-                        eprintln!("DEBUG_COMPLETIONS: Checking struct: {}", struct_meta.name);
+                        // eprintln!("DEBUG_COMPLETIONS: Checking struct: {}", struct_meta.name);
                         if member_prefix
                             .as_deref()
                             .map(|p| struct_meta.name.starts_with(p))
                             .unwrap_or(true)
                         {
-                            eprintln!("DEBUG_COMPLETIONS: Adding struct: {}", struct_meta.name);
+                            // eprintln!("DEBUG_COMPLETIONS: Adding struct: {}", struct_meta.name);
                             completions.push(JsonCompletion {
                                 sort_text: Some("2_".to_string()),
                                 label: struct_meta.name.clone(),
@@ -2556,13 +2597,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         if !word_under_cursor.is_empty()
                             && struct_meta.name == word_under_cursor
                         {
-                            let doc = struct_meta.docs.clone().unwrap_or_else(|| "".to_string());
+                            let doc = struct_meta.docs.clone().unwrap_or_default();
+                            let formatted_doc = if doc.trim().is_empty() {
+                                format!("```flame\nstruct {}\n```", struct_meta.name)
+                            } else {
+                                format!("```flame\nstruct {}\n```\n{}", struct_meta.name, doc.trim())
+                            };
                             hover_found = Some(JsonHover {
                                 label: format!("{}::{}", namespace, struct_meta.name),
-                                documentation: Some(format!(
-                                    "```flame\nstruct {}\n```\n{}",
-                                    struct_meta.name, doc
-                                )),
+                                documentation: Some(formatted_doc),
                             });
                         }
                     }
@@ -2570,7 +2613,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
 
             if let Some(t) = &var_type {
-                eprintln!("DEBUG_COMPLETIONS: namespace={}, var_type={:?}, t={}, is_instance={}", namespace, var_type, t, is_instance);
+                // eprintln!("DEBUG_COMPLETIONS: namespace={}, var_type={:?}, t={}, is_instance={}", namespace, var_type, t, is_instance);
                 // If it's a known struct, suggest its fields and methods
                 if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
                     for field in &struct_def.fields {
@@ -2578,7 +2621,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             .as_deref()
                             .map_or(true, |prefix| field.0.starts_with(prefix))
                         {
-                            completions.push(JsonCompletion { sort_text: None,
+                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
                                 label: field.0.clone(),
                                 kind: "property".to_string(),
                                 detail: format!("{} field", t),
@@ -2592,7 +2635,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             .as_deref()
                             .map_or(true, |prefix| method.starts_with(prefix))
                         {
-                            completions.push(JsonCompletion { sort_text: None,
+                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
                                 label: method.clone(),
                                 kind: "method".to_string(),
                                 detail: format!("{} method", t),
@@ -2614,12 +2657,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     };
                     for mod_name in modules_to_check {
                         if let Some(meta) = load_meta_from_project(&manifest_dir, &mod_name) {
-                            eprintln!("DEBUG_COMPLETIONS: loaded meta for {}", mod_name);
+                            // eprintln!("DEBUG_COMPLETIONS: loaded meta for {}", mod_name);
                             for struct_meta in &meta.structs {
                                 if struct_meta.name == *t
                                     || struct_meta.name.to_lowercase() == t.to_lowercase()
                                 {
-                                    eprintln!("DEBUG_COMPLETIONS: matched struct {}", struct_meta.name);
+                                    // eprintln!("DEBUG_COMPLETIONS: matched struct {}", struct_meta.name);
                                     for function in &struct_meta.methods {
                                         if is_instance && function.is_static {
                                             continue;
@@ -2633,7 +2676,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                             .map(|p| function.flame_name.starts_with(p))
                                             .unwrap_or(true)
                                         {
-                                            completions.push(JsonCompletion { sort_text: None,
+                                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
                                                 label: function.flame_name.clone(),
                                                 kind: "method".to_string(),
                                                 detail: format!(
@@ -2675,15 +2718,21 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                                 )
                                                 .unwrap_or_default()
                                             });
+                                            let final_doc = if function.docs.is_some() {
+                                                doc
+                                            } else {
+                                                if doc.trim().is_empty() {
+                                                    format!("```flame\n{}\n```\n\n**Return Type / Structure**: `{}`", sig, function.return_type)
+                                                } else {
+                                                    format!("```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`", sig, doc.trim(), function.return_type)
+                                                }
+                                            };
                                             hover_found = Some(JsonHover {
                                                 label: format!(
                                                     "{}::{}()",
                                                     struct_meta.name, function.flame_name
                                                 ),
-                                                documentation: Some(format!(
-                                                    "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
-                                                    sig, doc, function.return_type
-                                                )),
+                                                documentation: Some(final_doc),
                                             });
                                         }
                                     }
@@ -2802,7 +2851,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         .map(|prefix| method.starts_with(prefix))
                         .unwrap_or(true)
                     {
-                        completions.push(JsonCompletion { sort_text: None,
+                        completions.push(JsonCompletion { sort_text: Some("3_".to_string()),
                             label: method.to_string(),
                             kind: "method".to_string(),
                             detail: "built-in method".to_string(),
@@ -2863,14 +2912,16 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         let is_func_or_anno = typ.starts_with("fn ") || typ.starts_with("annotation ");
                         
                         if is_func_or_anno {
+                            let doc = v.doc.clone().unwrap_or_else(|| format!("```flame\n{}\n```", typ));
                             hover_found = Some(JsonHover {
                                 label: format!("{}", typ),
-                                documentation: Some(format!("```flame\n{}\n```", typ)),
+                                documentation: Some(doc),
                             });
                         } else {
+                            let doc = v.doc.clone().unwrap_or_else(|| format!("```flame\nlet {}: {}\n```", v.name, typ));
                             hover_found = Some(JsonHover {
                                 label: format!("{}: {}", v.name, typ),
-                                documentation: Some(format!("```flame\nlet {}: {}\n```", v.name, typ)),
+                                documentation: Some(doc),
                             });
                         }
                     }
@@ -2951,12 +3002,17 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             function.return_type
                         );
                         let doc = function.docs.clone().unwrap_or_else(|| "".to_string());
-                        hover_found = Some(JsonHover {
-                            label: format!("{}::{}()", mod_name, function.flame_name),
-                            documentation: Some(format!(
+                        let final_doc = if function.docs.is_some() {
+                            doc
+                        } else {
+                            format!(
                                 "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
                                 sig, doc, function.return_type
-                            )),
+                            )
+                        };
+                        hover_found = Some(JsonHover {
+                            label: format!("{}::{}()", mod_name, function.flame_name),
+                            documentation: Some(final_doc),
                         });
                         break;
                     }
@@ -3058,13 +3114,21 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
     let tokens = ide::get_semantic_tokens(&content);
 
+    let mut unique_completions = Vec::new();
+    let mut seen_labels = std::collections::HashSet::new();
+    for c in completions {
+        if seen_labels.insert(c.label.clone()) {
+            unique_completions.push(c);
+        }
+    }
+
     JsonCheckOutput {
         file: file.to_string(),
         diagnostics,
         std_modules,
         native_modules,
         plugins,
-        completions,
+        completions: unique_completions,
         hover,
         signature_help,
         tokens,
@@ -3219,19 +3283,50 @@ fn load_local_module_declarations(
             
             None
         })?;
-    let content = fs::read_to_string(&candidate).ok()?;
-    let mut lexer = Lexer::new(&content);
-    let mut tokens = Vec::new();
-    loop {
-        let tok = lexer.next_token();
-        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
-        tokens.push(tok);
-        if is_eof {
-            break;
+
+    let mut paths_to_read = Vec::new();
+    if candidate.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&candidate) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("fm") {
+                    paths_to_read.push(p);
+                }
+            }
+        }
+    } else {
+        paths_to_read.push(candidate);
+    }
+
+    let mut exported_stmts = Vec::new();
+    for path in paths_to_read {
+        if let Ok(content) = fs::read_to_string(&path) {
+            let mut lexer = Lexer::new(&content);
+            let mut tokens = Vec::new();
+            loop {
+                let tok = lexer.next_token();
+                let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                tokens.push(tok);
+                if is_eof {
+                    break;
+                }
+            }
+            let mut parser = Parser::new(tokens, path.to_string_lossy().to_string());
+            if let Ok(stmts) = parser.parse() {
+                for stmt in stmts {
+                    if let crate::parser::Stmt::ExportDecl(inner, _) = stmt {
+                        exported_stmts.push(*inner);
+                    }
+                }
+            }
         }
     }
-    let mut parser = Parser::new(tokens, candidate.to_string_lossy().to_string());
-    parser.parse().ok()
+    
+    if exported_stmts.is_empty() {
+        None
+    } else {
+        Some(exported_stmts)
+    }
 }
 
 fn load_imported_module_declarations(
@@ -3261,22 +3356,40 @@ fn load_imported_module_declarations(
             });
         
         if let Some(file_path) = file_path {
-            if let Ok(module_content) = fs::read_to_string(&file_path) {
-                let mut lexer = Lexer::new(&module_content);
-                let mut tokens = Vec::new();
-                loop {
-                    let tok = lexer.next_token();
-                    let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
-                    tokens.push(tok);
-                    if is_eof {
-                        break;
+            let mut paths_to_read = Vec::new();
+            if file_path.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&file_path) {
+                    for entry in entries.flatten() {
+                        let p = entry.path();
+                        if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("fm") {
+                            paths_to_read.push(p);
+                        }
                     }
                 }
-                let mut parser = Parser::new(tokens, file_path.to_string_lossy().to_string());
-                if let Ok(parsed_stmts) = parser.parse() {
-                    for stmt in parsed_stmts {
-                        if let crate::parser::Stmt::ExportDecl(inner, _) = stmt {
-                            results.push(*inner);
+            } else {
+                paths_to_read.push(file_path);
+            }
+
+            for path in paths_to_read {
+                if let Ok(module_content) = fs::read_to_string(&path) {
+                    let mut lexer = Lexer::new(&module_content);
+                    let mut tokens = Vec::new();
+                    loop {
+                        let tok = lexer.next_token();
+                        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                        tokens.push(tok);
+                        if is_eof {
+                            break;
+                        }
+                    }
+                    let mut parser = Parser::new(tokens, path.to_string_lossy().to_string());
+                    if let Ok(parsed_stmts) = parser.parse() {
+                        for stmt in parsed_stmts {
+                            if let crate::parser::Stmt::ExportDecl(inner, _) = &stmt {
+                                results.push((**inner).clone());
+                            } else if let crate::parser::Stmt::PackageDecl { .. } = &stmt {
+                                results.push(stmt.clone());
+                            }
                         }
                     }
                 }

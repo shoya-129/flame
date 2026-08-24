@@ -867,63 +867,117 @@ impl Runner {
                     );
                     self.modules.insert(mod_name, mod_env);
                 } else {
-                    let (local_file, content_opt) = match crate::stdlib::locate_import_file(&self.filepath, path) {
-                        Some(f) => {
-                            let c = self.read_file_or_vfs(&f);
-                            (f, c.ok())
+                    let mut files_to_run = Vec::new();
+                    let mut error_msg = String::new();
+                    let mut target_is_dir = false;
+                    
+                    let mut target_path = None;
+                    let pkg_main = self.resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
+                    let f_fm = self.resolve_path(&format!("{}.fm", path.join("/")));
+                    let f_flame = self.resolve_path(&format!("{}.flame", path.join("/")));
+                    
+                    if self.vfs.is_some() && self.read_file_or_vfs(&pkg_main).is_ok() {
+                        target_path = Some(pkg_main);
+                    } else if self.vfs.is_some() && self.read_file_or_vfs(&f_fm).is_ok() {
+                        target_path = Some(f_fm);
+                    } else if self.vfs.is_some() && self.read_file_or_vfs(&f_flame).is_ok() {
+                        target_path = Some(f_flame);
+                    } else if let Some(f) = crate::stdlib::locate_import_file(&self.filepath, path) {
+                        target_path = Some(f);
+                    } else {
+                        if self.read_file_or_vfs(&pkg_main).is_ok() {
+                            target_path = Some(pkg_main);
+                        } else if self.read_file_or_vfs(&f_fm).is_ok() {
+                            target_path = Some(f_fm);
                         }
-                        None => {
-                            let pkg_main = self.resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
-                            let pkg_c = self.read_file_or_vfs(&pkg_main);
-                            if pkg_c.is_ok() {
-                                (pkg_main, pkg_c.ok())
-                            } else {
-                                let f = self.resolve_path(&format!("{}.fm", path.join("/")));
-                                let c = self.read_file_or_vfs(&f);
-                                (f, c.ok())
-                            }
-                        }
-                    };
-                    if let Some(content) = content_opt {
-                        let mut lexer = Lexer::new(&content);
-                        let mut tokens = Vec::new();
-                        loop {
-                            let tok = lexer.next_token();
-                            let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
-                            tokens.push(tok);
-                            if is_eof {
-                                break;
-                            }
-                        }
-                        let mut parser =
-                            Parser::new(tokens, local_file.to_string_lossy().to_string());
-                        let parsed_stmts = parser.parse().map_err(|e| e.message)?;
+                    }
 
-                        let mod_env = Arc::new(Mutex::new(Env::new()));
-                        crate::stdlib::register_global_builtins(mod_env.clone());
-                        let mut runner = Runner::new(local_file.clone());
-                        runner.env = mod_env.clone();
-                        runner.native_methods = self.native_methods.clone();
-                        for s in &parsed_stmts {
-                            runner.execute_statement(s, mod_env.clone())?;
-                            if let Stmt::ExportDecl(inner, _) = s {
-                                match inner.as_ref() {
-                                    Stmt::FuncDecl { name, .. }
-                                    | Stmt::AnnotationDecl { name, .. }
-                                    | Stmt::LetDecl { name, .. }
-                                    | Stmt::ConstDecl { name, .. }
-                                    | Stmt::StructDecl { name, .. }
-                                    | Stmt::EnumDecl { name, .. } => {
-                                        if let Some(val) = mod_env.lock().unwrap().get(name) {
-                                            env.lock().unwrap().define(name.clone(), val, false);
+                    if let Some(f) = target_path {
+                        target_is_dir = f.is_dir();
+                        if target_is_dir {
+                            if let Ok(entries) = std::fs::read_dir(&f) {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("fm") {
+                                        if let Ok(c) = self.read_file_or_vfs(&path) {
+                                            files_to_run.push((path, c));
                                         }
                                     }
-                                    _ => {}
                                 }
                             }
+                        } else {
+                            if let Ok(c) = self.read_file_or_vfs(&f) {
+                                files_to_run.push((f.clone(), c));
+                            }
                         }
+                        if files_to_run.is_empty() {
+                            error_msg = format!("Module '{}' found at {:?} but contains no readable .fm files", mod_name, f);
+                        }
+                    } else {
+                        error_msg = format!("Module '{}' not found", mod_name);
+                    }
 
-                        for (k, v) in runner.modules {
+                    if !files_to_run.is_empty() {
+                        let expected_pkg = path.last().unwrap();
+                        
+                        let mod_env = Arc::new(Mutex::new(Env::new()));
+                        crate::stdlib::register_global_builtins(mod_env.clone());
+                        let mut all_modules = std::collections::HashMap::new();
+
+                        for (local_file, content) in files_to_run {
+                            let mut lexer = Lexer::new(&content);
+                            let mut tokens = Vec::new();
+                            loop {
+                                let tok = lexer.next_token();
+                                let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                tokens.push(tok);
+                                if is_eof { break; }
+                            }
+                            let mut parser = Parser::new(tokens, local_file.to_string_lossy().to_string());
+                            let parsed_stmts = parser.parse().map_err(|e| e.message)?;
+                            
+                            if target_is_dir {
+                                let mut found_pkg = None;
+                                for s in &parsed_stmts {
+                                    if let Stmt::PackageDecl { name, .. } = s {
+                                        found_pkg = Some(name.clone());
+                                        break;
+                                    }
+                                }
+                                match found_pkg {
+                                    Some(name) if &name == expected_pkg => {},
+                                    Some(name) => return Err(format!("File {} declared package '{}', but expected '{}'", local_file.display(), name, expected_pkg)),
+                                    None => return Err(format!("File {} in a folder import must declare 'package {}'", local_file.display(), expected_pkg)),
+                                }
+                            }
+
+                            let mut runner = Runner::new(local_file.clone());
+                            runner.env = mod_env.clone();
+                            runner.native_methods = self.native_methods.clone();
+                            for s in &parsed_stmts {
+                                runner.execute_statement(s, mod_env.clone())?;
+                                if let Stmt::ExportDecl(inner, _) = s {
+                                    match inner.as_ref() {
+                                        Stmt::FuncDecl { name, .. }
+                                        | Stmt::AnnotationDecl { name, .. }
+                                        | Stmt::LetDecl { name, .. }
+                                        | Stmt::ConstDecl { name, .. }
+                                        | Stmt::StructDecl { name, .. }
+                                        | Stmt::EnumDecl { name, .. } => {
+                                            if let Some(val) = mod_env.lock().unwrap().get(name) {
+                                                env.lock().unwrap().define(name.clone(), val, false);
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            for (k, v) in runner.modules {
+                                all_modules.insert(k, v);
+                            }
+                        }
+                        
+                        for (k, v) in all_modules {
                             self.modules.insert(k, v);
                         }
 
@@ -936,10 +990,7 @@ impl Runner {
                         );
                         self.modules.insert(mod_name, mod_env);
                     } else {
-                        return Err(format!(
-                            "Module '{}' not found at {:?}",
-                            mod_name, local_file
-                        ));
+                        return Err(error_msg);
                     }
                 }
                 Ok(Value::Nil)

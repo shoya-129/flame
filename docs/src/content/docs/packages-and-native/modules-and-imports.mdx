@@ -62,6 +62,47 @@ import utils.math
 
 ---
 
+## Folder-Based Imports & Packages
+
+If a folder contains multiple `.fm` files, you can import the entire folder as a single namespace. To do this, every `.fm` file in that folder must begin with a `package` declaration that matches the folder's name. 
+
+When imported, Flame will scan all `.fm` files in the folder and aggregate all exported functions, structs, and annotations into a single module namespace.
+
+```flame
+// utils/math.fm
+package utils
+
+export fn add(a: Int, b: Int) -> Int {
+    return a + b
+}
+```
+
+```flame
+// utils/string.fm
+package utils
+
+@Docs("Reverses a string")
+export fn reverse(s: String) -> String {
+    // ...
+}
+```
+
+You can then import the `utils` folder and access symbols from both files seamlessly:
+
+```flame
+// main.fm
+import utils
+
+fn main() {
+    let sum = utils.add(10, 20)
+    let rev = utils.reverse("hello")
+}
+```
+
+Flame's language server fully supports folder-based imports, meaning custom `@Docs` and autocomplete suggestions will work accurately across all files aggregated in the namespace.
+
+---
+
 ## Exported Annotations
 
 Custom annotations exported from a module are automatically brought into scope without requiring namespace qualification:

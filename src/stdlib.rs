@@ -82,6 +82,7 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
     let candidates = vec![
         format!("{}.fm", module_path),
         format!("{}.flame", module_path),
+        module_path.clone(),
         format!("{}.fm", dotted_path),
         format!("{}.flame", dotted_path),
         format!("{}.fm", raw_name),

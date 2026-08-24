@@ -627,7 +627,7 @@ panic = "abort"
                         // Make sure we use forward slashes for internal VFS paths
                         let rel_path = path.strip_prefix(base_dir).unwrap_or(&path).to_string_lossy().replace("\\", "/");
                         let full_rel_path = format!("{}/{}", prefix, rel_path);
-                        main_rs.push_str(&format!("    vfs.insert(\"{}\".to_string(), r####\"{}\"####.to_string());\n", full_rel_path, content));
+                        main_rs.push_str(&format!("    vfs.insert(\"{}\".to_string(), r########\"{}\"########.to_string());\n", full_rel_path, content));
                     }
                 }
             }
@@ -952,15 +952,8 @@ fn generate_param_extraction(
                 "            let arg_cv = flamelang::runner::CValue::from_string(&body);\n",
             );
             code.push_str("            let res = flamelang::vm::enqueue_callback(cb, vec![arg_cv]).unwrap_or_else(|_| flamelang::vm::CValue::null());\n");
-            code.push_str("            if res.tag == flamelang::runner::CValueTag::String && !res.string_ptr.is_null() {\n");
-            code.push_str("                let s = unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() };\n");
-            code.push_str(
-                "                unsafe { let _ = std::ffi::CString::from_raw(res.string_ptr); }\n",
-            );
-            code.push_str("                s\n");
-            code.push_str("            } else {\n");
-            code.push_str("                String::new()\n");
-            code.push_str("            }\n");
+            code.push_str("            let res_val = flamelang::vm::Value::unpack(res, \"\", \"\");\n");
+            code.push_str("            res_val.to_string()\n");
             code.push_str("        };\n");
         } else {
             code.push_str(&format!(
@@ -969,15 +962,8 @@ fn generate_param_extraction(
             ));
             code.push_str(&format!("            let cb = flamelang::vm::FlameCallback {{ function_id: fn_id{}, module_id: 0 }};\n", c_idx));
             code.push_str("            let res = flamelang::vm::enqueue_callback(cb, vec![]).unwrap_or_else(|_| flamelang::vm::CValue::null());\n");
-            code.push_str("            if res.tag == flamelang::runner::CValueTag::String && !res.string_ptr.is_null() {\n");
-            code.push_str("                let s = unsafe { std::ffi::CStr::from_ptr(res.string_ptr).to_string_lossy().into_owned() };\n");
-            code.push_str(
-                "                unsafe { let _ = std::ffi::CString::from_raw(res.string_ptr); }\n",
-            );
-            code.push_str("                s\n");
-            code.push_str("            } else {\n");
-            code.push_str("                String::new()\n");
-            code.push_str("            }\n");
+            code.push_str("            let res_val = flamelang::vm::Value::unpack(res, \"\", \"\");\n");
+            code.push_str("            res_val.to_string()\n");
             code.push_str("        };\n");
         }
     } else if p_type.contains("range") {

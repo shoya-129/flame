@@ -1,6 +1,5 @@
 import native.bridge
-
-
+import main
 
 @Test
 fn test_rust_add() {
