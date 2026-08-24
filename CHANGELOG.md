@@ -3,6 +3,17 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.6] - 2026-08-24 (Codename: *Third Spark*)
+
+### ✨ New Features & IDE Enhancements
+- **Custom `@Suggestion` Autocompletion**: The IDE now supports defining custom autocomplete suggestions natively through `@Suggestion` annotations. By passing arrays of metadata such as `@Suggestion([["TestObj", "object"], ["hello", "function"]])`, packages can explicitly inject methods, objects, and configurations directly into the Language Server dropdown matrix.
+- **`package` Declaration Keyword**: Introduced the formal `package` keyword modifier for delineating module boundary roots. This explicit syntax clarifies scoping semantics and triggers pristine `import package <name>` documentation blocks directly in the IDE hover window.
+
+### 🐛 Bug Fixes
+- **Formula Return Bug**: Resolved a parser evaluation glitch where `formula { ... }` blocks failed to correctly route returned values or terminated prematurely during AST unwinding. Formulas now behave identically to native objects when mapping complex nested responses.
+
+---
+
 ## [0.3.5] - 2026-08-22 (Codename: *Third Spark*)
 
 ### ✨ Standard Library & Naming Convention Overhaul

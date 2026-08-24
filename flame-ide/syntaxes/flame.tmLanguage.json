@@ -181,7 +181,7 @@
 
         {
           "name": "keyword.control.flame",
-          "match": "\\b(if|else|match|for|in|while|loop|break|continue|defer|return|yield|await|async|thread)\\b"
+          "match": "\\b(if|else|match|for|in|while|loop|break|continue|defer|return|yield|await|async|thread|package)\\b"
         },
 
         {
@@ -191,7 +191,7 @@
 
         {
           "name": "keyword.declaration.flame",
-          "match": "\\b(let|const|var|fn|struct|enum|trait|impl|export|import|package|plugin|mut|as|type|where|formula)\\b"
+          "match": "\\b(let|const|var|fn|struct|enum|trait|impl|export|import|plugin|mut|as|type|where|formula)\\b"
         },
 
         {
