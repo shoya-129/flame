@@ -208,13 +208,15 @@ impl TypeChecker {
                     "**Required Permissions:** `{}`",
                     ann.args.join(", ")
                 ));
+            } else if ann.name == "Suggestions" {
+                self.insert_hover_info(
+                    ann.name_span.clone(),
+                    "```flame\n@Suggestions([{name: String, kind: String}])\n```\n\nProvides custom suggestions for IDE autocompletion when typing the package name.".to_string()
+                );
             } else if let Some(func) = self.functions.get(&ann.name).cloned() {
                 if let Some(doc) = func.hover_doc {
                     self.insert_hover_info(ann.name_span.clone(), doc);
                 }
-                docs.push(format!("**@{}**", ann.name));
-            } else {
-                docs.push(format!("**@{}**", ann.name));
             }
         }
         if docs.is_empty() {
@@ -1182,7 +1184,7 @@ impl TypeChecker {
                                             if let crate::parser::Stmt::PackageDecl { annotations, .. } = stmt {
                                                 package_docs = self.process_annotations(&annotations);
                                                 for ann in &annotations {
-                                                    if ann.name == "Suggestion" {
+                                                    if ann.name == "Suggestions" {
                                                         if let Some(s) = ann.args.first() {
                                                             let s_trimmed = s.trim_matches(|c| c == '"' || c == '[' || c == ']');
                                                             let parts: Vec<&str> = s_trimmed.split(',').map(|p| p.trim().trim_matches('"')).collect();

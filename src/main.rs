@@ -1617,8 +1617,11 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     }
                 }
                 if !doc_str.is_empty() {
-                    if let Some(var) = scanned_vars.iter_mut().find(|v| v.name == *name && v.typ.as_deref() == Some(&format!("import package {}", name))) {
-                        var.doc = Some(doc_str);
+                    if let Some(var) = scanned_vars.iter_mut().find(|v| {
+                        v.name == *name
+                            && v.typ.as_deref() == Some(&format!("```flame\nimport package {}\n```", name))
+                    }) {
+                        var.doc = Some(format!("```flame\nimport package {}\n```\n{}", name, doc_str));
                     }
                 }
                 None

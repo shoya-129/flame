@@ -31,6 +31,15 @@ export default defineConfig({
 				src: './src/assets/flame.png',
 				alt: 'Flame Logo',
 			},
+			head: [
+				{
+					tag: 'meta',
+					attrs: {
+						name: 'google-site-verification',
+						content: 'N9sdgiZupGzt7Ib-WtTXDBF78oGUvM5EEJ4UcQWCSTQ',
+					},
+				},
+			],
 			customCss: ['./src/styles/custom.css'],
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/shoya-129/flame' }

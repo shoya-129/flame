@@ -99,6 +99,20 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
     let mut candidates_to_search = Vec::new();
     let parent_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
     
+    // Check for "import main" mapping to the workspace's "src" directory
+    if import_path.len() == 1 && import_path[0] == "main" {
+        let mut base_dir = parent_dir.to_path_buf();
+        for _ in 0..7 {
+            let src_dir = base_dir.join("src");
+            if src_dir.exists() && src_dir.is_dir() {
+                return Some(src_dir);
+            }
+            if !base_dir.pop() {
+                break;
+            }
+        }
+    }
+
     // Add current_file's parent hierarchy
     let mut base_dir = parent_dir.to_path_buf();
     for _ in 0..7 {

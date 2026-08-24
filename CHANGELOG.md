@@ -8,9 +8,12 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 ### ✨ New Features & IDE Enhancements
 - **Custom `@Suggestion` Autocompletion**: The IDE now supports defining custom autocomplete suggestions natively through `@Suggestion` annotations. By passing arrays of metadata such as `@Suggestion([["TestObj", "object"], ["hello", "function"]])`, packages can explicitly inject methods, objects, and configurations directly into the Language Server dropdown matrix.
 - **`package` Declaration Keyword**: Introduced the formal `package` keyword modifier for delineating module boundary roots. This explicit syntax clarifies scoping semantics and triggers pristine `import package <name>` documentation blocks directly in the IDE hover window.
+- **`import main` Auto-Resolution**: The top-level `src/` directory is now implicitly treated as the `main` package namespace. Files outside of `src/` (such as those in `tests/`) can securely execute `import main` to aggregate all exported symbols from the `src/` folder natively without forcing repetitive `package main` definitions per file.
 
 ### 🐛 Bug Fixes
 - **Formula Return Bug**: Resolved a parser evaluation glitch where `formula { ... }` blocks failed to correctly route returned values or terminated prematurely during AST unwinding. Formulas now behave identically to native objects when mapping complex nested responses.
+- **IDE Hover Isolation**: Corrected a flaw inside the Language Server where internal annotations (e.g., `@Suggestions`) and unrecognized meta-tags incorrectly bled into the global Markdown hover tooltips for decorated functions and packages. Hover strings are now pristine and specifically filtered.
+- **VFS Runtime Prioritization**: Fixed a bug in `runner.rs` where runtime release builds were prioritizing the physical file system over the embedded Virtual File System (VFS), preventing packed applications from executing reliably if source files were modified or deleted after compilation.
 
 ---
 

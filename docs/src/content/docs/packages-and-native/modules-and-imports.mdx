@@ -64,7 +64,10 @@ import utils.math
 
 ## Folder-Based Imports & Packages
 
-If a folder contains multiple `.fm` files, you can import the entire folder as a single namespace. To do this, every `.fm` file in that folder must begin with a `package` declaration that matches the folder's name. 
+If a folder contains multiple `.fm` files, you can import the entire folder as a single namespace. To do this, every `.fm` file in that folder must begin with a `package` declaration.
+
+> [!IMPORTANT]
+> The `package` declaration **must exactly match the folder's name**. For example, if your folder is named `utils`, you must declare `package utils` in the files. The compiler relies on this convention to correctly resolve cross-file imports for the package.
 
 When imported, Flame will scan all `.fm` files in the folder and aggregate all exported functions, structs, and annotations into a single module namespace.
 
@@ -98,6 +101,24 @@ fn main() {
     let rev = utils.reverse("hello")
 }
 ```
+
+---
+
+## The `main` Package (The `src/` Directory)
+
+In Flame projects, the top-level `src/` directory is implicitly treated as the `main` package. If you are writing tests inside the `tests/` directory (or other folders outside of `src/`), you can import everything exported from your `src/` directory using:
+
+```flame
+import main
+
+@Test
+fn test_something() {
+    // Access exported symbols from src/ using main.*
+    let result = main.some_exported_function()
+}
+```
+
+You do not need to explicitly declare `package main` in your `src/` files. When you write `import main`, Flame will automatically aggregate all exported symbols across the `.fm` files in your `src/` folder.
 
 Flame's language server fully supports folder-based imports, meaning custom `@Docs` and autocomplete suggestions will work accurately across all files aggregated in the namespace.
 

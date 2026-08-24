@@ -4,6 +4,7 @@ import std.json
 import std.env
 
 
+
 let news_api_key = "[API_KEY]"
 
 export async fn get_news() -> String {

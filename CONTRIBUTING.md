@@ -156,7 +156,9 @@ Flame allows you to define custom annotations directly in Flame code!
 ### 1. Define the Annotation in `src/annotation/<name>.fm`
 
 ```flame
-// src/annotation/logger.fm
+// src/my_folder/logger.fm
+package my_folder
+
 annotation Logger(prefix: String = "APP") {
     print($"[LOGGER INIT] Prefix configured: {prefix}")
     return prefix
@@ -167,7 +169,7 @@ annotation Logger(prefix: String = "APP") {
 
 ```flame
 // src/main.fm
-import annotation.logger
+import my_folder
 
 @Logger(prefix: "flame-cli")
 fn main() {

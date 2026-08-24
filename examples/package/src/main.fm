@@ -6,6 +6,7 @@ import flamer
 import news
 
 
+
 let bot_token = env.get("BOT_TOKEN")
 
 println(bot_token)
