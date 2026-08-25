@@ -47,21 +47,6 @@ fn main() {
 
 ---
 
-## Module Resolution Rules
-
-Flame searches for imported modules in the following order:
-1. **Current Directory**: Relative files in the same folder.
-2. **Project Source Folders**: `src/`, `tests/`.
-
-```flame
-// Cross-folder imports
-import src.exports
-import tests.helpers
-import utils.math
-```
-
----
-
 ## Folder-Based Imports & Packages
 
 If a folder contains multiple `.fm` files, you can import the entire folder as a single namespace. To do this, every `.fm` file in that folder must begin with a `package` declaration.
