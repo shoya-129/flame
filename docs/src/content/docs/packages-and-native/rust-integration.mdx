@@ -1,0 +1,94 @@
+---
+title: "Flame Binder (Rust Integration)"
+description: "Learn how to embed and execute Flame scripts directly inside your Rust projects using the flamebinder crate."
+---
+
+Flame is designed to be highly interoperable with Rust, not just by writing native plugins for Flame, but also by embedding the Flame VM directly into your own Rust applications. This is handled by the **`flamebinder`** crate.
+
+Using `flamebinder`, you can easily load `.fm` files, initialize a Flame environment natively in Rust, and execute Flame functions or evaluate Flame code.
+
+## Installation
+
+Add `flamebinder` and `flamelang` to your Rust project's `Cargo.toml`:
+
+```toml
+[dependencies]
+flamebinder = "0.1.0"
+flamelang = "0.3.7"
+```
+
+## Basic Usage
+
+The core of the `flamebinder` API revolves around the `Binder` struct, which encapsulates the Flame `Runner` (the execution engine) and manages loading and execution.
+
+### 1. Write your Flame Script
+
+First, create a Flame script containing the logic you want to execute from Rust. 
+
+**`script.fm`**
+```flame
+// Export the function so it can be called externally
+export fn process_data(input: String) -> String {
+    let prefix = "Processed: ";
+    return prefix + input;
+}
+```
+
+### 2. Embed and Execute in Rust
+
+Next, initialize the `Binder` from your Rust code, prepare the arguments using Flame's native `Value` enum, and call the function.
+
+**`main.rs`**
+```rust
+use flame_binder::Binder;
+use flamelang::vm::Value;
+
+fn main() {
+    // 1. Initialize the Binder and load the Flame script.
+    // This will parse the script and evaluate its top-level statements.
+    let mut binder = match Binder::load("script.fm") {
+        Ok(b) => b,
+        Err(e) => panic!("Failed to load Flame file: {}", e),
+    };
+
+    // 2. Prepare the arguments to pass to the Flame function.
+    // Arguments must be wrapped in `flamelang::vm::Value`.
+    let args = vec![Value::String("Raw Data".to_string())];
+
+    // 3. Call the exported Flame function natively.
+    let result = binder.call("process_data", args).expect("Failed to execute function");
+
+    // 4. Match and extract the returned Flame `Value`.
+    match result {
+        Value::String(s) => println!("{}", s), // Outputs: Processed: Raw Data
+        _ => println!("Unexpected return type"),
+    }
+}
+```
+
+## How It Works
+
+When you call `Binder::load(path)`, the following happens under the hood:
+1. **Virtual File System (VFS)**: The binder reads the file content from disk. 
+2. **Lexing & Parsing**: The raw string is tokenized and parsed into a Flame Abstract Syntax Tree (AST).
+3. **Execution Context**: An independent `Runner` instance is created and the AST is executed. Any `export fn` declarations in the script are evaluated and stored securely in the `Runner`'s global environment.
+4. **Native Bridging**: When `binder.call("func_name", args)` is executed, the binder looks up the function in the environment, checks its signature, passes the Rust arguments into the VM, and retrieves the returned result back into a Rust `Value`.
+
+## Interacting with Flame Values
+
+The `flamelang::vm::Value` enum contains all the fundamental types Flame uses natively. When passing arguments or receiving results, you will interact with this enum.
+
+```rust
+pub enum Value {
+    Nil,
+    Int(i64),
+    Float(f64),
+    Bool(bool),
+    String(String),
+    List(Vec<Value>),
+    Formula(HashMap<String, Value>),
+    // ... other internal types
+}
+```
+
+You can construct complex structures like lists or formulas (objects) in Rust and pass them directly into your Flame scripts!

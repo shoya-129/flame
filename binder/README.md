@@ -1,15 +1,15 @@
-# flame_binder
+# flamebinder
 
-`flame_binder` is the official Rust integration crate for the **Flame** programming language. It provides a simple, native API to seamlessly embed the Flame VM within any Rust project, load Flame source files, and directly execute exported Flame functions from Rust.
+`flamebinder` is the official Rust integration crate for the **Flame** programming language. It provides a simple, native API to seamlessly embed the Flame VM within any Rust project, load Flame source files, and directly execute exported Flame functions from Rust.
 
 ## Usage
 
-Add `flame_binder` to your Rust project's dependencies:
+Add `flamebinder` to your Rust project's dependencies:
 
 ```toml
 [dependencies]
-flame_binder = { path = "path/to/flame_binder" }
-flamelang = { path = "path/to/flamelang" }
+flamebinder = "*"
+flamelang = "*"
 ```
 
 ### Loading and Executing Flame Code
@@ -25,7 +25,7 @@ export fn hello(name: String) -> String {
 
 **`main.rs`** (Rust Code)
 ```rust
-use flame_binder::Binder;
+use flamebinder::Binder;
 use flamelang::vm::Value;
 
 fn main() {

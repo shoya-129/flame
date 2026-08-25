@@ -98,6 +98,7 @@ export default defineConfig({
 						{ label: 'Using Native Rust Crates', slug: 'packages-and-native/native-rust-crates' },
 						{ label: 'Native Plugins & FFI', slug: 'packages-and-native/native-plugins' },
 						{ label: 'Native Macros (flame-macro)', slug: 'packages-and-native/native-macros' },
+						{ label: 'Rust Integration (flamebinder)', slug: 'packages-and-native/rust-integration' },
 					],
 				},
 				{
