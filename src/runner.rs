@@ -718,19 +718,18 @@ impl Runner {
                             .unwrap_or(Path::new("."))
                             .join(&rel_meta),
                     ];
-                    let mut meta_file = None;
+                    let mut meta_str = None;
                     for c in meta_candidates {
-                        if c.exists() {
-                            meta_file = Some(c);
+                        if let Ok(content) = self.read_file_or_vfs(&c) {
+                            meta_str = Some(content);
                             break;
                         }
                     }
 
-                    if let Some(meta_path) = meta_file {
-                        if let Ok(meta_str) = fs::read_to_string(&meta_path) {
-                            if let Ok(meta) =
-                                serde_json::from_str::<crate::package_manager::FlameMeta>(&meta_str)
-                            {
+                    if let Some(meta_str) = meta_str {
+                        if let Ok(meta) =
+                            serde_json::from_str::<crate::package_manager::FlameMeta>(&meta_str)
+                        {
                                 if meta.kind == "native" {
                                     mod_env.lock().unwrap().define(
                                         "__crate__".to_string(),
@@ -838,7 +837,6 @@ impl Runner {
                                 }
                             }
                         }
-                    }
 
                     // Fallback registrations for known native modules (e.g. native.bridge)
                     crate::stdlib::register_native_module(&mod_name, mod_env.clone());
@@ -876,45 +874,90 @@ impl Runner {
                     let f_fm = self.resolve_path(&format!("{}.fm", path.join("/")));
                     let f_flame = self.resolve_path(&format!("{}.flame", path.join("/")));
                     
-                    if self.vfs.is_some() && self.read_file_or_vfs(&pkg_main).is_ok() {
-                        target_path = Some(pkg_main);
-                    } else if self.vfs.is_some() && self.read_file_or_vfs(&f_fm).is_ok() {
-                        target_path = Some(f_fm);
-                    } else if self.vfs.is_some() && self.read_file_or_vfs(&f_flame).is_ok() {
-                        target_path = Some(f_flame);
-                    } else if let Some(f) = crate::stdlib::locate_import_file(&self.filepath, path) {
-                        target_path = Some(f);
-                    } else {
-                        if self.read_file_or_vfs(&pkg_main).is_ok() {
-                            target_path = Some(pkg_main);
-                        } else if self.read_file_or_vfs(&f_fm).is_ok() {
-                            target_path = Some(f_fm);
+                    if self.vfs.is_some() {
+                        let vfs = self.vfs.as_ref().unwrap();
+                        let pkg_main_str = format!(".flame/pkg/{}/src/main.fm", path.last().unwrap());
+                        let f_fm_str = format!("src/{}.fm", path.join("/"));
+                        let f_flame_str = format!("src/{}.flame", path.join("/"));
+                        let dir_prefix = format!("src/{}/", path.join("/"));
+                        
+                        if vfs.contains_key(&pkg_main_str) {
+                            target_path = Some(PathBuf::from(pkg_main_str));
+                        } else if vfs.contains_key(&f_fm_str) {
+                            target_path = Some(PathBuf::from(f_fm_str));
+                        } else if vfs.contains_key(&f_flame_str) {
+                            target_path = Some(PathBuf::from(f_flame_str));
+                        } else {
+                            // Check if it's a directory in VFS
+                            let mut has_dir = false;
+                            for k in vfs.keys() {
+                                if k.starts_with(&dir_prefix) {
+                                    has_dir = true;
+                                    break;
+                                }
+                            }
+                            if has_dir {
+                                target_path = Some(PathBuf::from(dir_prefix.trim_end_matches('/')));
+                                target_is_dir = true;
+                            }
                         }
-                    }
+                        
+                        if let Some(f) = target_path {
+                            if target_is_dir {
+                                let prefix = format!("{}/", f.to_string_lossy().replace("\\", "/"));
+                                for (k, content) in vfs {
+                                    if k.starts_with(&prefix) && k.ends_with(".fm") {
+                                        files_to_run.push((PathBuf::from(k), content.clone()));
+                                    }
+                                }
+                            } else {
+                                let k = f.to_string_lossy().replace("\\", "/");
+                                if let Some(content) = vfs.get(&k) {
+                                    files_to_run.push((f.clone(), content.clone()));
+                                }
+                            }
+                            if files_to_run.is_empty() {
+                                error_msg = format!("Module '{}' found in VFS but contains no readable .fm files", mod_name);
+                            }
+                        } else {
+                            error_msg = format!("Module '{}' not found in VFS", mod_name);
+                        }
+                    } else {
+                        // Physical filesystem fallback
+                        if let Some(f) = crate::stdlib::locate_import_file(&self.filepath, path) {
+                            target_path = Some(f);
+                        } else {
+                            if self.read_file_or_vfs(&pkg_main).is_ok() {
+                                target_path = Some(pkg_main);
+                            } else if self.read_file_or_vfs(&f_fm).is_ok() {
+                                target_path = Some(f_fm);
+                            }
+                        }
 
-                    if let Some(f) = target_path {
-                        target_is_dir = f.is_dir();
-                        if target_is_dir {
-                            if let Ok(entries) = std::fs::read_dir(&f) {
-                                for entry in entries.flatten() {
-                                    let path = entry.path();
-                                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("fm") {
-                                        if let Ok(c) = self.read_file_or_vfs(&path) {
-                                            files_to_run.push((path, c));
+                        if let Some(f) = target_path {
+                            target_is_dir = f.is_dir();
+                            if target_is_dir {
+                                if let Ok(entries) = std::fs::read_dir(&f) {
+                                    for entry in entries.flatten() {
+                                        let path = entry.path();
+                                        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("fm") {
+                                            if let Ok(c) = self.read_file_or_vfs(&path) {
+                                                files_to_run.push((path, c));
+                                            }
                                         }
                                     }
                                 }
+                            } else {
+                                if let Ok(c) = self.read_file_or_vfs(&f) {
+                                    files_to_run.push((f.clone(), c));
+                                }
+                            }
+                            if files_to_run.is_empty() {
+                                error_msg = format!("Module '{}' found at {:?} but contains no readable .fm files", mod_name, f);
                             }
                         } else {
-                            if let Ok(c) = self.read_file_or_vfs(&f) {
-                                files_to_run.push((f.clone(), c));
-                            }
+                            error_msg = format!("Module '{}' not found", mod_name);
                         }
-                        if files_to_run.is_empty() {
-                            error_msg = format!("Module '{}' found at {:?} but contains no readable .fm files", mod_name, f);
-                        }
-                    } else {
-                        error_msg = format!("Module '{}' not found", mod_name);
                     }
 
                     if !files_to_run.is_empty() {

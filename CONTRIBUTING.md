@@ -44,9 +44,9 @@ The Flame repository is organized into several key components:
     and produces standalone binaries.
   - `main.rs`: CLI commands (`run`, `build`, `check`, `format`, `new`, `add`,
     `remove`, `list-plugins`).
-- **`flame-macro/`**: Attribute procedural macros (`#[flame]`,
+- **`macro/`**: Attribute procedural macros (`#[flame]`,
   `#[flame_export]`, `#[flame(daemon)]`, etc.) used by native Rust plugins.
-- **`flame-ide/`**: VS Code extension providing language server features
+- **`ide/`**: VS Code extension providing language server features
   (diagnostics, completions, hover, syntax highlighting, formatting).
 - **`examples/`**: Real-world sample projects, CLI tools, and native plugins
   (e.g. Axum web server).

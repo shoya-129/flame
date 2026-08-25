@@ -3,6 +3,15 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.7] - 2026-08-25 (Codename: *Third Spark*)
+
+### ✨ New Features & Fixes
+- **Flame Binder API (`flame_binder`)**: Introduced a dedicated Rust crate that allows developers to seamlessly embed the Flame VM in their Rust projects. Developers can load Flame scripts and execute exported Flame functions directly from Rust using `Binder::load("path.fm")` and `binder.call("func", args)`.
+- **Complete AOT VFS Isolation**: The AOT compiler now strictly bundles only source code files (`.fm`, `.flame`, and `.fmi`). The runtime VM (`runner.rs`) has been updated to bypass physical filesystem fallback when executing a compiled binary, ensuring that `.env` files, `tests/` directories, and other host files are completely isolated and not accidentally accessed by compiled applications.
+- **Documentation Updates**: Added Google site verification metadata to the online docs and clarified that the package directory name must match the package identifier for VFS module resolution.
+
+---
+
 ## [0.3.6] - 2026-08-24 (Codename: *Third Spark*)
 
 ### ✨ New Features & IDE Enhancements

@@ -622,7 +622,10 @@ panic = "abort"
                 let path = entry.path();
                 if path.is_dir() {
                     collect_vfs(&path, main_rs, base_dir, prefix);
-                } else if path.extension().and_then(|s| s.to_str()) == Some("fm") || path.extension().and_then(|s| s.to_str()) == Some("flame") {
+                } else if path.extension().and_then(|s| s.to_str()) == Some("fm") 
+                    || path.extension().and_then(|s| s.to_str()) == Some("flame")
+                    || path.extension().and_then(|s| s.to_str()) == Some("fmi") 
+                {
                     if let Ok(content) = fs::read_to_string(&path) {
                         // Make sure we use forward slashes for internal VFS paths
                         let rel_path = path.strip_prefix(base_dir).unwrap_or(&path).to_string_lossy().replace("\\", "/");
