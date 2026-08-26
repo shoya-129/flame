@@ -6,10 +6,13 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 ## [0.3.8] - 2026-08-26 (Codename: *Third Spark*)
 
 ### ✨ New Features & Enhancements
-- **Native Plugin Structural Identifier Resolution**: The AOT compiler now automatically resolves structural identifiers for native Rust structs, allowing methods to be called directly on instances without needing explicit `flame_name` metadata. If `flame_name` is omitted, the compiler safely falls back to the source struct name for binding.
+- **Automatic Structural Naming**: Rust structs used in FMI plugins now automatically inherit their `flame_name` from the Rust struct's identifier, eliminating the need for manual `flame_name` attributes in metadata.
+- **Enhanced Test Engine**: Upgraded the test engine to support structural method invocation on native types, enabling AOT testing for complex plugin architectures.
+- **Improved Debug Output**: Enhanced the test engine with structured logging for plugin loading and method binding, providing clearer diagnostics during development.
 
 ### 🐛 Bug Fixes
-- **Plugin Test Engine Method Binding**: Fixed a critical bug where the test engine failed to bind methods for native structs when `flame_name` metadata was missing. The engine now correctly maps methods using the struct's source name, enabling reliable AOT testing for native plugins without manual metadata configuration.
+- **Native Plugin Integration Fix**: Resolved issues preventing native plugin methods from being discovered and bound by the AOT compiler, specifically addressing cases where `flame_name` attributes were missing.
+- **Test Execution Stability**: Eliminated engine panics caused by unlinked native libraries by implementing proper linking in the test runner and AOT generation pipeline.
 
 ---
 
