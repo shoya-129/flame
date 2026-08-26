@@ -805,7 +805,7 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
 
     // Scan for variables: `let x = StructName.new(...)`, `let x: StructName = ...`, `let x = StructName { ... }`
     let var_re =
-        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)(?:\s*:\s*([a-zA-Z_]\w*))?(?:\s*=\s*(?:(await)\s+)?([a-zA-Z_]\w*)(?:\.new|\s*\{|\s*\()?)?").unwrap();
+        Regex::new(r"(?:let|const)(?:\s+mut)?\s+([a-zA-Z_]\w*)(?:\s*:\s*([a-zA-Z_]\w*))?(?:\s*=\s*(?:(await)\s+)?(?:[a-zA-Z_]\w*\.)*([a-zA-Z_]\w*)(?:\.new|\s*\{|\s*\()?)?").unwrap();
     for cap in var_re.captures_iter(content) {
         let name = cap[1].to_string();
         let typ = cap.get(2).map(|m| m.as_str().to_string()).or_else(|| {

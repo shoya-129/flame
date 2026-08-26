@@ -55,22 +55,22 @@ pub struct FunctionSig {
 }
 
 #[derive(Debug, Clone)]
-struct StructInfo {
-    fields: Vec<(String, Type)>,
-    hover_doc: Option<String>,
+pub struct StructInfo {
+    pub fields: Vec<(String, Type)>,
+    pub hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-struct VariantInfo {
-    tuple_items: Vec<Type>,
-    struct_fields: Vec<(String, Type)>,
-    hover_doc: Option<String>,
+pub struct VariantInfo {
+    pub tuple_items: Vec<Type>,
+    pub struct_fields: Vec<(String, Type)>,
+    pub hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-struct EnumInfo {
-    variants: HashMap<String, VariantInfo>,
-    hover_doc: Option<String>,
+pub struct EnumInfo {
+    pub variants: HashMap<String, VariantInfo>,
+    pub hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,8 +89,8 @@ pub struct TypeChecker {
     diagnostics: Vec<Diagnostic>,
     scopes: Vec<HashMap<String, VarInfo>>,
     pub functions: HashMap<String, FunctionSig>,
-    structs: HashMap<String, StructInfo>,
-    enums: HashMap<String, EnumInfo>,
+    pub structs: HashMap<String, StructInfo>,
+    pub enums: HashMap<String, EnumInfo>,
     pub methods: HashMap<String, HashMap<String, FunctionSig>>,
     pub commands: HashMap<String, CommandInfo>,
     current_return_type: Option<Type>,
@@ -167,16 +167,24 @@ impl TypeChecker {
                     let lines: Vec<&str> = unquoted.lines().collect();
                     let mut min_indent = usize::MAX;
                     for line in &lines {
-                        if line.trim().is_empty() { continue; }
+                        if line.trim().is_empty() {
+                            continue;
+                        }
                         let indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
-                        if indent < min_indent { min_indent = indent; }
+                        if indent < min_indent {
+                            min_indent = indent;
+                        }
                     }
                     let mut cleaned_doc = String::new();
                     for line in &lines {
                         if line.trim().is_empty() {
                             cleaned_doc.push('\n');
                         } else {
-                            let indent = if min_indent == usize::MAX { 0 } else { min_indent };
+                            let indent = if min_indent == usize::MAX {
+                                0
+                            } else {
+                                min_indent
+                            };
                             let slice_start = std::cmp::min(indent, line.len());
                             cleaned_doc.push_str(&line[slice_start..]);
                             cleaned_doc.push('\n');
@@ -941,9 +949,10 @@ impl TypeChecker {
                                                                         }
                                                                     }
 
-
-
-                                                                    let doc = m.get("docs").and_then(|d| d.as_str()).map(|s| s.to_string());
+                                                                    let doc = m
+                                                                        .get("docs")
+                                                                        .and_then(|d| d.as_str())
+                                                                        .map(|s| s.to_string());
                                                                     struct_methods.insert(
                                                                         m_name.to_string(),
                                                                         FunctionSig {
@@ -1176,20 +1185,39 @@ impl TypeChecker {
                                         let tok = lexer.next_token();
                                         let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
                                         tokens.push(tok);
-                                        if is_eof { break; }
+                                        if is_eof {
+                                            break;
+                                        }
                                     }
-                                    let mut parser = crate::parser::Parser::new(tokens, file_path.to_string_lossy().to_string());
+                                    let mut parser = crate::parser::Parser::new(
+                                        tokens,
+                                        file_path.to_string_lossy().to_string(),
+                                    );
                                     if let Ok(stmts) = parser.parse() {
                                         for stmt in stmts {
-                                            if let crate::parser::Stmt::PackageDecl { annotations, .. } = stmt {
-                                                package_docs = self.process_annotations(&annotations);
+                                            if let crate::parser::Stmt::PackageDecl {
+                                                annotations,
+                                                ..
+                                            } = stmt
+                                            {
+                                                package_docs =
+                                                    self.process_annotations(&annotations);
                                                 for ann in &annotations {
                                                     if ann.name == "Suggestions" {
                                                         if let Some(s) = ann.args.first() {
-                                                            let s_trimmed = s.trim_matches(|c| c == '"' || c == '[' || c == ']');
-                                                            let parts: Vec<&str> = s_trimmed.split(',').map(|p| p.trim().trim_matches('"')).collect();
+                                                            let s_trimmed = s.trim_matches(|c| {
+                                                                c == '"' || c == '[' || c == ']'
+                                                            });
+                                                            let parts: Vec<&str> = s_trimmed
+                                                                .split(',')
+                                                                .map(|p| p.trim().trim_matches('"'))
+                                                                .collect();
                                                             let name = parts[0].to_string();
-                                                            let kind = if parts.len() > 1 { parts[1].to_string() } else { "object".to_string() };
+                                                            let kind = if parts.len() > 1 {
+                                                                parts[1].to_string()
+                                                            } else {
+                                                                "object".to_string()
+                                                            };
                                                             suggestions.push((name, kind));
                                                         }
                                                     }
@@ -1223,12 +1251,17 @@ impl TypeChecker {
 
                     self.insert_hover_info(span.clone(), hover_str.clone());
                     if let Some(first_part) = path.first() {
-                        self.module_docs.insert(first_part.to_string(), hover_str.clone());
+                        self.module_docs
+                            .insert(first_part.to_string(), hover_str.clone());
                     }
 
                     let ty = if path.first().map_or(false, |p| p == "std") {
                         self.get_std_module_type(last)
-                    } else if let Some((s, _)) = suggestions.iter().find(|(_, k)| k == "object").or_else(|| suggestions.first()) {
+                    } else if let Some((s, _)) = suggestions
+                        .iter()
+                        .find(|(_, k)| k == "object")
+                        .or_else(|| suggestions.first())
+                    {
                         Type::Named(s.clone())
                     } else {
                         Type::Named(kind_str)
@@ -1252,7 +1285,9 @@ impl TypeChecker {
                                 if let Ok(entries) = std::fs::read_dir(&file_path) {
                                     for entry in entries.flatten() {
                                         let p = entry.path();
-                                        if p.is_file() && p.extension().and_then(|s| s.to_str()) == Some("fm") {
+                                        if p.is_file()
+                                            && p.extension().and_then(|s| s.to_str()) == Some("fm")
+                                        {
                                             paths_to_read.push(p);
                                         }
                                     }
@@ -1281,18 +1316,193 @@ impl TypeChecker {
                                         let prev = self.is_importing;
                                         self.is_importing = true;
                                         for s in &parsed_stmts {
-                                            if let Stmt::ExportDecl(inner, _) = s {
-                                                if let Stmt::LetDecl { name, .. }
-                                                | Stmt::ConstDecl { name, .. } = inner.as_ref()
-                                                {
-                                                    self.define_var(
-                                                        name.clone(),
-                                                        VarInfo {
-                                                            ty: Type::Unknown,
-                                                            is_mut: false,
+                                            if let Stmt::ImplDecl { target_type, methods, .. } = s {
+                                                let prefixed_target = format!("{}.{}", last, target_type);
+                                                if !self.structs.contains_key(&prefixed_target) {
+                                                    self.structs.insert(prefixed_target.clone(), StructInfo {
+                                                        fields: Vec::new(),
+                                                        hover_doc: None,
+                                                    });
+                                                }
+                                                for m in methods {
+                                                    if let Stmt::FuncDecl { name, params, return_type, .. } = m {
+                                                        let is_static = !params.first().map_or(false, |p| p.name == "self");
+                                                        let p_info = params.iter().map(|p| ParamInfo {
+                                                            name: p.name.clone(),
+                                                            ty: self.parse_type_name(&p.type_name),
+                                                            is_ref: p.is_ref,
+                                                            is_mut: p.is_mut,
+                                                        }).collect();
+                                                        let r_type = return_type.as_ref().map(|t| self.parse_type_name(t)).unwrap_or(Type::Nil);
+                                                        self.methods.entry(prefixed_target.clone()).or_default().insert(name.clone(), FunctionSig {
+                                                            params: p_info,
+                                                            return_type: r_type,
+                                                            is_static,
                                                             hover_doc: None,
-                                                        },
-                                                    );
+                                                        });
+                                                    }
+                                                }
+                                            }
+                                            if let Stmt::ExportDecl(inner, _) = s {
+                                                match inner.as_ref() {
+                                                    Stmt::LetDecl { name, .. } | Stmt::ConstDecl { name, .. } => {
+                                                        self.define_var(
+                                                            format!("{}.{}", last, name),
+                                                            VarInfo {
+                                                                ty: Type::Unknown,
+                                                                is_mut: false,
+                                                                hover_doc: None,
+                                                            },
+                                                        );
+                                                    }
+                                                    Stmt::StructDecl { name, fields, .. } => {
+                                                        let mut struct_fields = Vec::new();
+                                                        for (f_name, f_type) in fields {
+                                                            struct_fields.push((
+                                                                f_name.clone(),
+                                                                self.parse_type_name(f_type),
+                                                            ));
+                                                        }
+                                                        self.structs.insert(
+                                                            format!("{}.{}", last, name),
+                                                            StructInfo {
+                                                                fields: struct_fields,
+                                                                hover_doc: None,
+                                                            },
+                                                        );
+                                                    }
+                                                    Stmt::EnumDecl { name, variants, .. } => {
+                                                        let mut enum_variants = HashMap::new();
+                                                        for var in variants {
+                                                            match var {
+                                                                crate::parser::EnumVariant::Unit(n) => {
+                                                                    enum_variants.insert(n.clone(), VariantInfo {
+                                                                        tuple_items: vec![],
+                                                                        struct_fields: Vec::new(),
+                                                                        hover_doc: None,
+                                                                    });
+                                                                }
+                                                                crate::parser::EnumVariant::Tuple(n, items) => {
+                                                                    enum_variants.insert(n.clone(), VariantInfo {
+                                                                        tuple_items: items.iter().map(|item| self.parse_type_name(item)).collect(),
+                                                                        struct_fields: Vec::new(),
+                                                                        hover_doc: None,
+                                                                    });
+                                                                }
+                                                                crate::parser::EnumVariant::Struct(n, fields) => {
+                                                                    let mut struct_fields = Vec::new();
+                                                                    for (f_name, f_type) in fields {
+                                                                        struct_fields.push((f_name.clone(), self.parse_type_name(f_type)));
+                                                                    }
+                                                                    enum_variants.insert(n.clone(), VariantInfo {
+                                                                        tuple_items: vec![],
+                                                                        struct_fields,
+                                                                        hover_doc: None,
+                                                                    });
+                                                                }
+                                                            }
+                                                        }
+                                                        self.enums.insert(
+                                                            format!("{}.{}", last, name),
+                                                            EnumInfo {
+                                                                variants: enum_variants,
+                                                                hover_doc: None,
+                                                            },
+                                                        );
+                                                    }
+                                                    Stmt::FuncDecl {
+                                                        name,
+                                                        params,
+                                                        return_type,
+                                                        ..
+                                                    } => {
+                                                        let p_info = params
+                                                            .iter()
+                                                            .map(|p| ParamInfo {
+                                                                name: p.name.clone(),
+                                                                ty: self
+                                                                    .parse_type_name(&p.type_name),
+                                                                is_ref: p.is_ref,
+                                                                is_mut: p.is_mut,
+                                                            })
+                                                            .collect();
+                                                        let r_type = return_type
+                                                            .as_ref()
+                                                            .map(|t| self.parse_type_name(t))
+                                                            .unwrap_or(Type::Nil);
+                                                        self.functions.insert(
+                                                            format!("{}.{}", last, name),
+                                                            FunctionSig {
+                                                                params: p_info,
+                                                                return_type: r_type,
+                                                                is_static: false,
+                                                                hover_doc: None,
+                                                            },
+                                                        );
+                                                    }
+                                                    Stmt::ImplDecl {
+                                                        target_type,
+                                                        methods,
+                                                        ..
+                                                    } => {
+                                                        let prefixed_target =
+                                                            format!("{}.{}", last, target_type);
+                                                        if !self
+                                                            .structs
+                                                            .contains_key(&prefixed_target)
+                                                        {
+                                                            self.structs.insert(
+                                                                prefixed_target.clone(),
+                                                                StructInfo {
+                                                                    fields: Vec::new(),
+                                                                    hover_doc: None,
+                                                                },
+                                                            );
+                                                        }
+                                                        for m in methods {
+                                                            if let Stmt::FuncDecl {
+                                                                name,
+                                                                params,
+                                                                return_type,
+                                                                ..
+                                                            } = m
+                                                            {
+                                                                let is_static = !params
+                                                                    .first()
+                                                                    .map_or(false, |p| {
+                                                                        p.name == "self"
+                                                                    });
+                                                                let p_info = params
+                                                                    .iter()
+                                                                    .map(|p| ParamInfo {
+                                                                        name: p.name.clone(),
+                                                                        ty: self
+                                                                            .parse_type_name(
+                                                                                &p.type_name,
+                                                                            ),
+                                                                        is_ref: p.is_ref,
+                                                                        is_mut: p.is_mut,
+                                                                    })
+                                                                    .collect();
+                                                                let r_type = return_type
+                                                                    .as_ref()
+                                                                    .map(|t| {
+                                                                        self.parse_type_name(t)
+                                                                    })
+                                                                    .unwrap_or(Type::Nil);
+                                                                self.methods.entry(prefixed_target.clone()).or_default().insert(
+                                                                    name.clone(),
+                                                                    FunctionSig {
+                                                                        params: p_info,
+                                                                        return_type: r_type,
+                                                                        is_static,
+                                                                        hover_doc: None,
+                                                                    },
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                    _ => {}
                                                 }
                                             }
                                         }
@@ -1797,7 +2007,10 @@ impl TypeChecker {
                     for arm in arms {
                         let is_wildcard = arm.patterns.iter().any(|p| p == "_");
                         let is_help = arm.patterns.iter().any(|p| p == "help");
-                        let cmd_match = arm.patterns.iter().find_map(|p| self.commands.get(p).map(|c| (p, c.clone())));
+                        let cmd_match = arm
+                            .patterns
+                            .iter()
+                            .find_map(|p| self.commands.get(p).map(|c| (p, c.clone())));
 
                         if is_wildcard {
                             let wildcard_doc = "```flame\n_ => ...\n```\n**Wildcard Match Arm**\nMatches any unrecognized CLI command.".to_string();
@@ -2805,21 +3018,37 @@ impl TypeChecker {
         if let Expr::Identifier(name, id_span) = callee {
             if let Some(sig) = self.functions.get(name).cloned() {
                 self.check_call_args(&sig.params, args, span, name);
-                
+
                 let mut params_str = Vec::new();
                 for p in &sig.params {
+                    let is_already_ref = matches!(p.ty, Type::Reference { .. });
                     let mut mods = String::new();
-                    if p.is_ref { mods.push('&'); }
-                    if p.is_mut { mods.push_str("mut "); }
-                    params_str.push(format!("{}{}: {}{}", if p.is_mut && !p.is_ref { "mut " } else { "" }, p.name, mods, self.format_type(&p.ty)));
+                    if p.is_ref && !is_already_ref {
+                        mods.push('&');
+                    }
+                    if p.is_mut && !is_already_ref {
+                        mods.push_str("mut ");
+                    }
+                    params_str.push(format!(
+                        "{}{}: {}{}",
+                        if p.is_mut && !p.is_ref { "mut " } else { "" },
+                        p.name,
+                        mods,
+                        self.format_type(&p.ty)
+                    ));
                 }
-                
-                let mut hover_str = format!("```flame\nfn {}({}) -> {}\n```", name, params_str.join(", "), self.format_type(&sig.return_type));
+
+                let mut hover_str = format!(
+                    "```flame\nfn {}({}) -> {}\n```",
+                    name,
+                    params_str.join(", "),
+                    self.format_type(&sig.return_type)
+                );
                 if let Some(doc) = sig.hover_doc {
                     hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
                 self.insert_hover_info(id_span.clone(), hover_str);
-                
+
                 return sig.return_type;
             }
 
@@ -2956,20 +3185,36 @@ impl TypeChecker {
                         &[]
                     };
                     self.check_call_args(params_to_check, args, span, member);
-                    
+
                     let mut params_str = Vec::new();
                     for p in &sig.params {
+                        let is_already_ref = matches!(p.ty, Type::Reference { .. });
                         let mut mods = String::new();
-                        if p.is_ref { mods.push('&'); }
-                        if p.is_mut { mods.push_str("mut "); }
-                        params_str.push(format!("{}{}: {}{}", if p.is_mut && !p.is_ref { "mut " } else { "" }, p.name, mods, self.format_type(&p.ty)));
+                        if p.is_ref && !is_already_ref {
+                            mods.push('&');
+                        }
+                        if p.is_mut && !is_already_ref {
+                            mods.push_str("mut ");
+                        }
+                        params_str.push(format!(
+                            "{}{}: {}{}",
+                            if p.is_mut && !p.is_ref { "mut " } else { "" },
+                            p.name,
+                            mods,
+                            self.format_type(&p.ty)
+                        ));
                     }
-                    let mut hover_str = format!("```flame\nfn {}({}) -> {}\n```", member, params_str.join(", "), self.format_type(&sig.return_type));
+                    let mut hover_str = format!(
+                        "```flame\nfn {}({}) -> {}\n```",
+                        member,
+                        params_str.join(", "),
+                        self.format_type(&sig.return_type)
+                    );
                     if let Some(doc) = sig.hover_doc {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
                     self.insert_hover_info(span.clone(), hover_str);
-                    
+
                     return sig.return_type;
                 }
 

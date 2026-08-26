@@ -82,10 +82,11 @@ pub fn build_aot_project(
                             
                             // Map standard libraries to their Cargo features
                             let module_features = match search.as_str() {
-                                "std.time" => vec!["time"],
+                                "std.time" => vec!["utils"],
                                 "std.os" => vec!["os"],
                                 "std.regex" => vec!["regex"],
-                                "std.robot" => vec!["robot"],
+                                "std.json" => vec!["utils"],
+                                "std.desktop" => vec!["os"],
                                 "std.hardware" => vec!["hardware"],
                                 "std.camera" => vec!["camera"],
                                 "std.bluetooth" => vec!["bluetooth"],
@@ -388,7 +389,7 @@ panic = "abort"
                             continue;
                         }
 
-                        let f_name = &func.flame_name;
+                        let f_name = if func.flame_name.is_empty() { &func.name } else { &func.flame_name };
                         main_rs.push_str(&format!(
                             "    pub fn {}(_args: *const CValue, _len: usize) -> CValue {{\n",
                             f_name
@@ -476,9 +477,10 @@ panic = "abort"
                     }
 
                     for struct_meta in meta.structs {
-                        let s_name = &struct_meta.name;
+                        let s_name = if struct_meta.flame_name.is_empty() { &struct_meta.name } else { &struct_meta.flame_name };
+                        let s_rust_name = &struct_meta.name;
                         for func in struct_meta.methods {
-                            let f_name = &func.flame_name;
+                            let f_name = if func.flame_name.is_empty() { &func.name } else { &func.flame_name };
                             let combined_name = format!("{}_{}", s_name, f_name);
                             if !generated_methods.insert(combined_name.clone())
                                 || should_skip_bridge_function(&func)
@@ -498,12 +500,16 @@ panic = "abort"
                                 || func.return_type.contains("async");
                             if !func.is_static {
                                 main_rs.push_str("        // Self is arg 0, cast from obj_ptr\n");
+                                main_rs.push_str("        if c_args.is_empty() {\n");
+                                main_rs.push_str(&format!("            eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m argument mismatch in native function '{}': expected at least 1 argument (self), got 0\");\n", func.name));
+                                main_rs.push_str("            std::process::exit(1);\n");
+                                main_rs.push_str("        }\n");
                                 if func.receiver == Some("self".to_string())
                                     || (is_async && is_persistent_async)
                                 {
-                                    main_rs.push_str(&format!("        let obj = *unsafe {{ Box::from_raw(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                                    main_rs.push_str(&format!("        let obj = *unsafe {{ Box::from_raw(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_rust_name));
                                 } else {
-                                    main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_name));
+                                    main_rs.push_str(&format!("        let obj = unsafe {{ &mut *(c_args[0].obj_ptr as *mut {}::{}) }};\n", name, s_rust_name));
                                 }
                             }
 
@@ -573,7 +579,7 @@ panic = "abort"
                                 main_rs.push_str("        }\n");
                             } else {
                                 let call_expr = if func.is_static {
-                                    format!("{}::{}::{}({})", name, s_name, func.name, args_str)
+                                    format!("{}::{}::{}({})", name, s_rust_name, func.name, args_str)
                                 } else {
                                     format!("obj.{}({})", func.name, args_str)
                                 };
@@ -677,14 +683,15 @@ panic = "abort"
                         {
                             continue;
                         }
-                        let f_name = &func.flame_name;
+                        let f_name = if func.flame_name.is_empty() { &func.name } else { &func.flame_name };
                         let sym = format!("flame_{}_{}", name, f_name);
                         main_rs.push_str(&format!("    base_runner.native_methods.insert(\"{sym}\".to_string(), bridge_{name}::{f_name} as fn(*const CValue, usize) -> CValue);\n", sym=sym, name=name, f_name=f_name));
                     }
                     for struct_meta in meta.structs {
-                        let s_name = &struct_meta.name;
+                        let s_name = if struct_meta.flame_name.is_empty() { &struct_meta.name } else { &struct_meta.flame_name };
+                        let s_rust_name = &struct_meta.name;
                         for func in struct_meta.methods {
-                            let f_name = &func.flame_name;
+                            let f_name = if func.flame_name.is_empty() { &func.name } else { &func.flame_name };
                             let combined_name = format!("{}_{}", s_name, f_name);
                             if !generated_methods.insert(combined_name.clone())
                                 || should_skip_bridge_function(&func)
@@ -743,9 +750,11 @@ panic = "abort"
         // copy native methods over
         main_rs.push_str("                runner.native_methods = base_runner.native_methods.clone();\n");
         main_rs.push_str("                runner.granted_permissions = base_runner.granted_permissions.clone();\n");
-        // We probably need to clone runner methods outside the loop
+        main_rs.push_str("                runner.vfs = base_runner.vfs.clone();\n");
         main_rs.push_str("                runner.test_mode = true;\n");
-        main_rs.push_str("                let _ = runner.run(&stmts);\n");
+        main_rs.push_str("                if let Err(e) = runner.run(&stmts) {\n");
+        main_rs.push_str("                    eprintln!(\"\\x1b[1;31mError during test setup:\\x1b[0m {}\", e);\n");
+        main_rs.push_str("                }\n");
         main_rs.push_str("                let stats = flamelang::test_engine::execute_test_suite(&mut runner, &stmts, \"AOT Test Suite\");\n");
         main_rs.push_str("                total_passed += stats.passed;\n");
         main_rs.push_str("                total_failed += stats.failed;\n");
@@ -932,6 +941,16 @@ fn generate_param_extraction(
     let p_type = p.type_name.to_lowercase();
     let var_name = format!("arg{}", c_idx);
     let mut code = String::new();
+    code.push_str(&format!(
+        "        if c_args.len() <= {} {{\n",
+        c_idx
+    ));
+    code.push_str(&format!(
+        "            eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m argument mismatch in native function '{}': expected at least {} arguments, got {{}}\", c_args.len());\n",
+        func_name, c_idx + 1
+    ));
+    code.push_str("            std::process::exit(1);\n");
+    code.push_str("        }\n");
 
     if p.is_callback
         || p_type.contains("callback")

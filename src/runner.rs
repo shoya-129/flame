@@ -727,9 +727,8 @@ impl Runner {
                     }
 
                     if let Some(meta_str) = meta_str {
-                        if let Ok(meta) =
-                            serde_json::from_str::<crate::package_manager::FlameMeta>(&meta_str)
-                        {
+                        match serde_json::from_str::<crate::package_manager::FlameMeta>(&meta_str) {
+                            Ok(meta) => {
                                 if meta.kind == "native" {
                                     mod_env.lock().unwrap().define(
                                         "__crate__".to_string(),
@@ -836,10 +835,16 @@ impl Runner {
                                     }
                                 }
                             }
+                            Err(e) => {
+                                return Err(format!("Native package metadata '{}' invalid: {}", rel_meta, e));
+                            }
                         }
+                    } else {
+                        return Err(format!("Native package metadata '{}' not found", rel_meta));
+                    }
 
                     // Fallback registrations for known native modules (e.g. native.bridge)
-                    crate::stdlib::register_native_module(&mod_name, mod_env.clone());
+                    crate::stdlib::register_std_module(&mod_name, mod_env.clone());
 
                     // Direct Rust interop: auto-scan for matching .rs file in workspace
                     let rs_candidates = vec![
@@ -1144,7 +1149,7 @@ impl Runner {
                                 let dot_pat = format!("{}.{}", enum_name, variant_name);
                                 let colon_pat = format!("{}::{}", enum_name, variant_name);
 
-                                if dot_pat == *pattern || colon_pat == *pattern || variant_name == pattern {
+                                if dot_pat == *pattern || colon_pat == *pattern || variant_name == pattern || pattern.ends_with(&format!(".{}", dot_pat)) || pattern.ends_with(&format!("::{}", colon_pat)) {
                                     is_match = true;
                                     let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
                                     
@@ -2095,7 +2100,10 @@ impl Runner {
                         }
                     }
                 }
-                let left = self.eval_expr(inner, env.clone())?;
+                let mut left = self.eval_expr(inner, env.clone())?;
+                if let Value::RefPath(path, _) = &left {
+                    left = self.read_target(env.clone(), path.clone())?;
+                }
                 match left {
                     Value::StructConstructor { name, .. } => {
                         if let Some(impl_env) = self.modules.get(&format!("impl_{}", name)) {
@@ -2191,10 +2199,12 @@ impl Runner {
                         println!("DEBUG [runner:2017]: Expr::Dot evaluated directly! left = {:?}, member = {:?}", left, member);
                         let bt = std::backtrace::Backtrace::force_capture();
                         println!("Backtrace: {:#?}", bt);
-                        Err(format!(
-                            "cannot access member '{}' on non-namespace",
-                            member
-                        ))
+                        println!("DEBUG: left is {:?}", left);
+                        return Err(format!(
+                            "cannot access member '{}' on non-namespace value in '{}'",
+                            member, 
+                            if let Expr::Identifier(name, _) = &**inner { name } else { "unknown" }
+                        ));
                     },
                 }
             }
@@ -2447,7 +2457,10 @@ impl Runner {
                         }
                         return self.eval_expr(inner_expr, env.clone());
                     }
-                    let inner_val = self.eval_expr(inner_expr, env.clone())?;
+                    let mut inner_val = self.eval_expr(inner_expr, env.clone())?;
+                    if let Value::RefPath(path, _) = &inner_val {
+                        inner_val = self.read_target(env.clone(), path.clone())?;
+                    }
                     let receiver_val = inner_val.clone();
                     if let Some(res) =
                         self.eval_explicit_conversion(&receiver_val, member, args, env.clone())
@@ -2899,7 +2912,10 @@ impl Runner {
                             let mut c_args = Vec::new();
                             c_args.push(inner_val.pack());
                             for (_, arg_expr) in args {
-                                let arg_v = self.eval_expr(arg_expr, env.clone())?;
+                                let mut arg_v = self.eval_expr(arg_expr, env.clone())?;
+                                if let Value::RefPath(path, _) = &arg_v {
+                                    arg_v = self.read_target(env.clone(), path.clone())?;
+                                }
                                 c_args.push(arg_v.pack());
                             }
 
@@ -3256,7 +3272,10 @@ impl Runner {
                                 let raw_ns = raw_ns_str.as_str();
                                 let mut c_args = Vec::new();
                                 for (_, arg_expr) in args {
-                                    let arg_v = self.eval_expr(arg_expr, env.clone())?;
+                                    let mut arg_v = self.eval_expr(arg_expr, env.clone())?;
+                                    if let Value::RefPath(path, _) = &arg_v {
+                                        arg_v = self.read_target(env.clone(), path.clone())?;
+                                    }
                                     c_args.push(arg_v.pack());
                                 }
 
@@ -3702,7 +3721,7 @@ impl Runner {
                         let max_f = if let Value::Float(f) = max_val { f } else { max_val.as_int().unwrap_or(0) as f64 };
                         return Ok(Value::Float(v_f.max(min_f).min(max_f)));
                     }
-                    #[cfg(feature = "time")]
+                    #[cfg(feature = "utils")]
                     {
                         if member == "year" {
                             if let Value::Int(timestamp) = receiver_val {
@@ -4391,7 +4410,10 @@ impl Runner {
                         "use of moved value '{}'. Value was moved. Use '&{}' to borrow or '{}.clone()' to copy.",
                         moved_name, moved_name, moved_name
                     )),
-                    Some(Value::RefPath(next, _)) => self.read_target(env.clone(), next),
+                    Some(Value::RefPath(next, _)) => {
+                        let resolved_owner = self.read_target(env.clone(), next)?;
+                        self.read_field_value(&resolved_owner, &member, &owner)
+                    }
                     Some(val) => self.read_field_value(&val, &member, &owner),
                     None => Err(format!("variable '{}' not found for field read", owner)),
                 }
@@ -4405,7 +4427,18 @@ impl Runner {
                     Some(Value::Moved(moved_name)) => Err(format!(
                         "use of moved value '{}'.", moved_name
                     )),
-                    Some(Value::RefPath(next, _)) => self.read_target(env.clone(), next),
+                    Some(Value::RefPath(next, _)) => {
+                        let resolved_owner = self.read_target(env.clone(), next)?;
+                        if let Value::Tuple(elems) = resolved_owner {
+                            if index < elems.len() {
+                                Ok(elems[index].clone())
+                            } else {
+                                Err(format!("Index out of bounds: {}", index))
+                            }
+                        } else {
+                            Err(format!("cannot index non-tuple/array '{}'", owner))
+                        }
+                    }
                     Some(Value::Tuple(elems)) => {
                         if index < elems.len() {
                             Ok(elems[index].clone())
@@ -4431,6 +4464,10 @@ impl Runner {
                 .get(member)
                 .cloned()
                 .ok_or_else(|| format!("member '{}' not found in '{}'", member, owner)),
+            Value::StructInstance { name, fields } => fields
+                .get(member)
+                .cloned()
+                .ok_or_else(|| format!("field '{}' not found in struct '{}' ('{}')", member, name, owner)),
             Value::EnumValue(enum_name, variant_name, data) => match data {
                 EnumData::Struct(map) => map.get(member).cloned().ok_or_else(|| {
                     format!(

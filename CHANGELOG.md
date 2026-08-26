@@ -3,6 +3,16 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.8] - 2026-08-26 (Codename: *Third Spark*)
+
+### ✨ New Features & Enhancements
+- **Native Plugin Structural Identifier Resolution**: The AOT compiler now automatically resolves structural identifiers for native Rust structs, allowing methods to be called directly on instances without needing explicit `flame_name` metadata. If `flame_name` is omitted, the compiler safely falls back to the source struct name for binding.
+
+### 🐛 Bug Fixes
+- **Plugin Test Engine Method Binding**: Fixed a critical bug where the test engine failed to bind methods for native structs when `flame_name` metadata was missing. The engine now correctly maps methods using the struct's source name, enabling reliable AOT testing for native plugins without manual metadata configuration.
+
+---
+
 ## [0.3.7] - 2026-08-25 (Codename: *Third Spark*)
 
 ### ✨ New Features & Fixes

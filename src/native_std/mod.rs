@@ -4,13 +4,15 @@ pub mod thread;
 pub mod process;
 pub mod env;
 pub mod math;
-#[cfg(feature = "time")]
+#[cfg(feature = "utils")]
 pub mod time;
+#[cfg(feature = "utils")]
+pub mod json;
 #[cfg(feature = "os")]
 pub mod os;
 #[cfg(feature = "hardware")]
 pub mod hardware;
-#[cfg(feature = "robot")]
+#[cfg(feature = "os")]
 pub mod desktop;
 #[cfg(feature = "hardware")]
 pub mod hid;
@@ -21,7 +23,6 @@ pub mod bluetooth;
 #[cfg(feature = "camera")]
 pub mod camera;
 pub mod embedded;
-pub mod json;
 pub mod fmt;
 #[cfg(feature = "net")]
 pub mod net;
@@ -38,7 +39,7 @@ pub fn get_module_defs() -> Vec<NativeModuleDef> {
         fmt::def(),
     ];
     
-    #[cfg(feature = "time")]
+    #[cfg(feature = "utils")]
     defs.push(time::def());
     
     #[cfg(feature = "net")]

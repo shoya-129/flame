@@ -159,6 +159,20 @@ fn main() {
         "test" => {
             run_tests(&args);
         }
+        "gen" => {
+            if args.len() < 3 || args[2] != "fmi" {
+                println!("\x1b[1;31merror:\x1b[0m unknown subcommand");
+                println!("usage: flame gen fmi <rust_file>");
+                return;
+            }
+            if args.len() < 4 {
+                println!("\x1b[1;31merror:\x1b[0m expected rust file path");
+                println!("usage: flame gen fmi <rust_file>");
+                return;
+            }
+            let filepath = &args[3];
+            package_manager::gen_fmi_from_rust_file(std::path::Path::new(filepath));
+        }
         "native" => {
             if args.len() < 3 || args[2] != "init" {
                 println!("\x1b[1;31merror:\x1b[0m unknown subcommand");
@@ -1596,6 +1610,42 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
     // Scan for variables and structs
     let (mut scanned_vars, mut scanned_structs) = ide::scan_document(&content);
+    
+    let mut cursor_byte_idx = 0;
+    if let Some(l) = line {
+        let mut curr_line = 1;
+        let mut curr_col = 1;
+        let c_col = col.unwrap_or(1);
+        for (i, c) in content.char_indices() {
+            if curr_line == l && curr_col == c_col {
+                cursor_byte_idx = i;
+                break;
+            }
+            if c == '\n' {
+                curr_line += 1;
+                curr_col = 1;
+            } else {
+                curr_col += 1;
+            }
+        }
+    }
+    
+    let impl_re = regex::Regex::new(r"impl\s+([a-zA-Z_]\w*)").unwrap();
+    let mut current_impl = None;
+    for cap in impl_re.captures_iter(&content) {
+        if let Some(m) = cap.get(0) {
+            if m.start() <= cursor_byte_idx {
+                current_impl = Some(cap[1].to_string());
+            }
+        }
+    }
+    if let Some(impl_name) = current_impl {
+        scanned_vars.push(crate::ide::ScannedVar {
+            name: "self".to_string(),
+            typ: Some(impl_name),
+            doc: None,
+        });
+    }
 
     let imported_module_decls = load_imported_module_declarations(&manifest_dir, file);
     for stmt in &imported_module_decls {
@@ -2479,6 +2529,36 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
             let mut provided_completions = false;
 
+            if let Some(tc) = &tc_opt {
+                if let Some(enum_info) = tc.enums.get(&namespace) {
+                    for (variant_name, _) in &enum_info.variants {
+                        if member_prefix.as_deref().map_or(true, |p| variant_name.starts_with(p)) {
+                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()), label: variant_name.clone(), kind: "enumMember".to_string(), detail: format!("{} enum variant", namespace), documentation: None });
+                            provided_completions = true;
+                        }
+                    }
+                } else if var_type.is_none() {
+                    for (enum_name, enum_info) in &tc.enums {
+                        if enum_name.starts_with(&format!("{}.", namespace)) {
+                            let short_name = enum_name.strip_prefix(&format!("{}.", namespace)).unwrap();
+                            if !short_name.contains('.') && member_prefix.as_deref().map_or(true, |p| short_name.starts_with(p)) {
+                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()), label: short_name.to_string(), kind: "enum".to_string(), detail: format!("{} enum", namespace), documentation: enum_info.hover_doc.clone() });
+                                provided_completions = true;
+                            }
+                        }
+                    }
+                    for (struct_name, s_info) in &tc.structs {
+                        if struct_name.starts_with(&format!("{}.", namespace)) {
+                            let short_name = struct_name.strip_prefix(&format!("{}.", namespace)).unwrap();
+                            if !short_name.contains('.') && member_prefix.as_deref().map_or(true, |p| short_name.starts_with(p)) {
+                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()), label: short_name.to_string(), kind: "struct".to_string(), detail: format!("{} struct", namespace), documentation: s_info.hover_doc.clone() });
+                                provided_completions = true;
+                            }
+                        }
+                    }
+                }
+            }
+
             // If it's a standard module directly (e.g. `json.`, `tcp.`, `http.`)
             let is_std_module = std_modules.contains(&namespace) || matches!(namespace.as_str(), "json" | "tcp" | "udp" | "http" | "ws" | "mqtt" | "dns" | "url" | "interface");
             if var_type.is_none() {
@@ -2617,7 +2697,6 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
             if let Some(t) = &var_type {
                 // eprintln!("DEBUG_COMPLETIONS: namespace={}, var_type={:?}, t={}, is_instance={}", namespace, var_type, t, is_instance);
-                // If it's a known struct, suggest its fields and methods
                 if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
                     for field in &struct_def.fields {
                         if member_prefix
@@ -2645,6 +2724,35 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                 documentation: None,
                             });
                             provided_completions = true;
+                        }
+                    }
+                }
+
+                if let Some(tc) = &tc_opt {
+                    if let Some(s_info) = tc.structs.get(t) {
+                        for (field_name, _) in &s_info.fields {
+                            if member_prefix.as_deref().map_or(true, |prefix| field_name.starts_with(prefix)) {
+                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
+                                    label: field_name.clone(),
+                                    kind: "property".to_string(),
+                                    detail: format!("{} field", t),
+                                    documentation: s_info.hover_doc.clone(),
+                                });
+                                provided_completions = true;
+                            }
+                        }
+                    }
+                    if let Some(methods) = tc.methods.get(t) {
+                        for (method_name, m_sig) in methods {
+                            if member_prefix.as_deref().map_or(true, |prefix| method_name.starts_with(prefix)) {
+                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
+                                    label: method_name.clone(),
+                                    kind: "method".to_string(),
+                                    detail: format!("{} method", t),
+                                    documentation: m_sig.hover_doc.clone(),
+                                });
+                                provided_completions = true;
+                            }
                         }
                     }
                 }

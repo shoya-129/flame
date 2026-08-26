@@ -16,7 +16,7 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
     e.define("mockApi".to_string(), Value::Nil, false);
     e.define("mockData".to_string(), Value::Nil, false);
     e.define("mockFunction".to_string(), Value::Nil, false);
-    
+
     use crate::parser::EnumVariant;
     e.define(
         "Result".to_string(),
@@ -29,7 +29,7 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
         ),
         false,
     );
-    
+
     e.define(
         "Option".to_string(),
         Value::EnumMeta(
@@ -41,35 +41,73 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
         ),
         false,
     );
-    
-    e.define("Error".to_string(), Value::StructConstructor { name: "Error".to_string(), fields: vec![("message".to_string(), "String".to_string()), ("code".to_string(), "Int".to_string())] }, false);
+
+    e.define(
+        "Error".to_string(),
+        Value::StructConstructor {
+            name: "Error".to_string(),
+            fields: vec![
+                ("message".to_string(), "String".to_string()),
+                ("code".to_string(), "Int".to_string()),
+            ],
+        },
+        false,
+    );
 
     use crate::vm::EnumData;
 
     // Register global constructors for Result
-    e.define("Ok".to_string(), Value::NativeCallback(|args| {
-        if args.len() != 1 {
-            return Err("Ok expects exactly 1 argument".to_string());
-        }
-        Ok(Value::EnumValue("Result".to_string(), "Ok".to_string(), EnumData::Tuple(args)))
-    }), false);
-    
-    e.define("Err".to_string(), Value::NativeCallback(|args| {
-        if args.len() != 1 {
-            return Err("Err expects exactly 1 argument".to_string());
-        }
-        Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), EnumData::Tuple(args)))
-    }), false);
+    e.define(
+        "Ok".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() != 1 {
+                return Err("Ok expects exactly 1 argument".to_string());
+            }
+            Ok(Value::EnumValue(
+                "Result".to_string(),
+                "Ok".to_string(),
+                EnumData::Tuple(args),
+            ))
+        }),
+        false,
+    );
+
+    e.define(
+        "Err".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() != 1 {
+                return Err("Err expects exactly 1 argument".to_string());
+            }
+            Ok(Value::EnumValue(
+                "Result".to_string(),
+                "Err".to_string(),
+                EnumData::Tuple(args),
+            ))
+        }),
+        false,
+    );
 
     // Register global constructors for Option
-    e.define("Some".to_string(), Value::NativeCallback(|args| {
-        if args.len() != 1 {
-            return Err("Some expects exactly 1 argument".to_string());
-        }
-        Ok(Value::EnumValue("Option".to_string(), "Some".to_string(), EnumData::Tuple(args)))
-    }), false);
+    e.define(
+        "Some".to_string(),
+        Value::NativeCallback(|args| {
+            if args.len() != 1 {
+                return Err("Some expects exactly 1 argument".to_string());
+            }
+            Ok(Value::EnumValue(
+                "Option".to_string(),
+                "Some".to_string(),
+                EnumData::Tuple(args),
+            ))
+        }),
+        false,
+    );
 
-    e.define("None".to_string(), Value::EnumValue("Option".to_string(), "None".to_string(), EnumData::Unit), false);
+    e.define(
+        "None".to_string(),
+        Value::EnumValue("Option".to_string(), "None".to_string(), EnumData::Unit),
+        false,
+    );
 }
 pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option<PathBuf> {
     if import_path.is_empty() {
@@ -89,16 +127,11 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
         format!("{}.flame", raw_name),
     ];
 
-    let search_roots = [
-        "",
-        "src",
-        "test",
-        "tests"
-    ];
+    let search_roots = ["", "src", "test", "tests"];
 
     let mut candidates_to_search = Vec::new();
     let parent_dir = current_file.parent().unwrap_or_else(|| Path::new("."));
-    
+
     // Check for "import main" mapping to the workspace's "src" directory
     if import_path.len() == 1 && import_path[0] == "main" {
         let mut base_dir = parent_dir.to_path_buf();
@@ -145,12 +178,16 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
                 break;
             }
         }
-        
+
         // Check .flame/pkg for package imports starting from current_file's parent, then fallback to cwd
         let pkg_name = &import_path[0];
         let mut check_dir = parent_dir.to_path_buf();
         loop {
-            let pkg_dir = check_dir.join(".flame").join("pkg").join(pkg_name).join("src");
+            let pkg_dir = check_dir
+                .join(".flame")
+                .join("pkg")
+                .join(pkg_name)
+                .join("src");
             if pkg_dir.exists() {
                 if import_path.len() == 1 {
                     let p = pkg_dir.join("main.fm");
@@ -191,14 +228,14 @@ pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option
     None
 }
 
-fn function_value(params: Vec<Param>) -> Value {
-    Value::Function {
-        params,
-        body: vec![],
-        env: Arc::new(Mutex::new(Env::new())),
-        annotations: vec![],
-    }
-}
+// fn function_value(params: Vec<Param>) -> Value {
+//     Value::Function {
+//         params,
+//         body: vec![],
+//         env: Arc::new(Mutex::new(Env::new())),
+//         annotations: vec![],
+//     }
+// }
 
 pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
     let module_val = match mod_name {
@@ -221,7 +258,7 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
             map.extend(crate::native_std::net::init("url"));
             map.extend(crate::native_std::net::init("interface"));
             Some(map)
-        },
+        }
         #[cfg(feature = "net")]
         "std.net.tcp" => Some(crate::native_std::net::init("tcp")),
         #[cfg(feature = "net")]
@@ -238,17 +275,19 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.net.url" => Some(crate::native_std::net::init("url")),
         #[cfg(feature = "net")]
         "std.net.interface" => Some(crate::native_std::net::init("interface")),
-        #[cfg(feature = "time")]
+        #[cfg(feature = "utils")]
         "std.time" => Some(crate::native_std::time::init()),
         "std.math" => Some(crate::native_std::math::init()),
         "std.fmt" => Some(crate::native_std::fmt::init()),
+        #[cfg(feature = "utils")]
+        "std.json" => Some(crate::native_std::json::init()),
         #[cfg(feature = "os")]
         "std.os" => Some(crate::native_std::os::init()),
+        "std.env" => Some(crate::native_std::env::init()),
+        #[cfg(feature = "os")]
+        "std.desktop" => Some(crate::native_std::desktop::init()),
         #[cfg(feature = "hardware")]
         "std.hardware" => Some(crate::native_std::hardware::init()),
-        #[cfg(feature = "robot")]
-        "std.desktop" => Some(crate::native_std::desktop::init()),
-        "std.env" => Some(crate::native_std::env::init()),
         #[cfg(feature = "hardware")]
         "std.hid" => Some(crate::native_std::hid::init()),
         #[cfg(feature = "camera")]
@@ -258,7 +297,6 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         #[cfg(feature = "hardware")]
         "std.serial" => Some(crate::native_std::serial::init()),
         "std.embedded" => Some(crate::native_std::embedded::init()),
-        "std.json" => Some(crate::native_std::json::init()),
         _ => None,
     };
 
@@ -271,28 +309,28 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
     }
 }
 
-pub fn register_native_module(mod_name: &str, env: Arc<Mutex<Env>>) {
-    if mod_name == "native.bridge" {
-        register_native_bridge(env);
-    }
-}
+// pub fn register_native_module(mod_name: &str, env: Arc<Mutex<Env>>) {
+//     if mod_name == "native.bridge" {
+//         register_native_bridge(env);
+//     }
+// }
 
-pub fn register_native_bridge(env: Arc<Mutex<Env>>) {
-    let mut e = env.lock().unwrap();
-    e.define(
-        "__module__".to_string(),
-        Value::String("native.bridge".to_string()),
-        false,
-    );
-    e.define(
-        "http".to_string(),
-        function_value(vec![Param {
-            name: "port".to_string(),
-            type_name: "Int".to_string(),
-            default_val: None,
-            is_ref: false,
-            is_mut: false,
-        }]),
-        false,
-    );
-}
+// pub fn register_native_bridge(env: Arc<Mutex<Env>>) {
+//     let mut e = env.lock().unwrap();
+//     e.define(
+//         "__module__".to_string(),
+//         Value::String("native.bridge".to_string()),
+//         false,
+//     );
+//     e.define(
+//         "http".to_string(),
+//         function_value(vec![Param {
+//             name: "port".to_string(),
+//             type_name: "Int".to_string(),
+//             default_val: None,
+//             is_ref: false,
+//             is_mut: false,
+//         }]),
+//         false,
+//     );
+// }

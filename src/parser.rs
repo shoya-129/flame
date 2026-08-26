@@ -599,6 +599,11 @@ impl Parser {
         } else {
             let tok = self.advance();
             t.push_str(&tok.lexeme);
+            while self.match_token(TokenKind::Dot) {
+                t.push('.');
+                let next_tok = self.consume(TokenKind::Identifier, "expected identifier after '.' in type")?;
+                t.push_str(&next_tok.lexeme);
+            }
         }
 
         if self.match_token(TokenKind::Lt) {
@@ -1155,6 +1160,12 @@ impl Parser {
                 patterns.push(pat);
                 
                 if self.match_token(TokenKind::Pipe) || self.match_token(TokenKind::Pipe2) {
+                    continue;
+                }
+                
+                let peek_tok = self.peek();
+                if peek_tok.kind == TokenKind::Identifier && (peek_tok.lexeme == "or" || peek_tok.lexeme == "and") {
+                    self.advance();
                     continue;
                 }
                 break;

@@ -435,7 +435,7 @@ impl Value {
                 string_ptr: std::ptr::null_mut(),
                 obj_ptr: *ptr as *mut std::ffi::c_void,
             },
-            Value::Return(inner) => inner.pack(),
+            Value::Return(inner) | Value::Ref(inner) => inner.pack(),
             Value::Function { .. } | Value::NativeCallback(_) | Value::NativeClosure(_) => {
                 let fn_id = register_callback_value(self.clone());
                 CValue {

@@ -17,6 +17,7 @@ pub struct FlameParamMeta {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FlameFunctionMeta {
     pub name: String,
+    #[serde(default)]
     pub flame_name: String,
     pub params: Vec<FlameParamMeta>,
     pub return_type: String,
@@ -41,9 +42,20 @@ pub struct FlameFunctionMeta {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FlameStructFieldMeta {
+    pub name: String,
+    pub type_name: String,
+    pub docs: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FlameStructMeta {
     pub name: String,
+    #[serde(default)]
+    pub flame_name: String,
     pub methods: Vec<FlameFunctionMeta>,
+    #[serde(default)]
+    pub fields: Vec<FlameStructFieldMeta>,
     #[serde(default)]
     pub docs: Option<String>,
 }
@@ -585,7 +597,6 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
             if let Ok(fmi_mtime) = fmi_meta.modified() {
                 needs_update = false;
 
-                // Check src/lib.rs
                 if let Ok(src_meta) = fs::metadata(plugin_path.join("src").join("lib.rs")) {
                     if let Ok(src_mtime) = src_meta.modified() {
                         if src_mtime > fmi_mtime {
@@ -594,7 +605,6 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
                     }
                 }
 
-                // Check Cargo.toml
                 if let Ok(cargo_meta) = fs::metadata(plugin_path.join("Cargo.toml")) {
                     if let Ok(cargo_mtime) = cargo_meta.modified() {
                         if cargo_mtime > fmi_mtime {
@@ -611,40 +621,405 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
     }
 
     println!(
-        "\x1b[1;36m  Inspecting\x1b[0m native Rust plugin '{}' via cargo rustdoc...",
+        "\x1b[1;36m  Inspecting\x1b[0m native Rust plugin '{}' via internal parser...",
         target
     );
 
-    let output = std::process::Command::new("cargo")
-        .args([
-            "+nightly",
-            "rustdoc",
-            "--",
-            "--output-format",
-            "json",
-            "-Zunstable-options",
-        ])
-        .current_dir(plugin_path)
-        .output();
+    let lib_filename = if cfg!(target_os = "windows") {
+        format!("{}.dll", target)
+    } else if cfg!(target_os = "macos") {
+        format!("lib{}.dylib", target)
+    } else {
+        format!("lib{}.so", target)
+    };
 
-    if let Ok(output) = output {
-        if !output.status.success() {
-            println!("Rustdoc error: {}", String::from_utf8_lossy(&output.stderr));
+    let mut meta = FlameMeta {
+        module: target.to_string(),
+        kind: "native".to_string(),
+        lib: Some(lib_filename),
+        functions: Vec::new(),
+        structs: Vec::new(),
+        docs: None,
+    };
+
+    enrich_with_syn(&mut meta, plugin_path);
+
+    let _ = fs::create_dir_all(&pkg_dir);
+    if let Ok(meta_str) = serde_json::to_string_pretty(&meta) {
+        let _ = fs::write(&fmi_path, meta_str);
+    }
+}
+
+pub fn gen_fmi_from_rust_file(rust_file_path: &std::path::Path) {
+    if !rust_file_path.exists() {
+        println!("\x1b[1;31merror:\x1b[0m file '{}' not found", rust_file_path.display());
+        return;
+    }
+
+    let module_name = rust_file_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("module")
+        .to_string();
+
+    let plugin_path = rust_file_path.parent().unwrap().parent().unwrap();
+
+    let mut meta = FlameMeta {
+        module: module_name.clone(),
+        kind: "native".to_string(),
+        lib: None,
+        functions: Vec::new(),
+        structs: Vec::new(),
+        docs: None,
+    };
+
+    enrich_with_syn(&mut meta, plugin_path);
+
+    if let Ok(meta_str) = serde_json::to_string_pretty(&meta) {
+        let out_filename = format!("{}.fmi", module_name);
+        if std::fs::write(&out_filename, meta_str).is_ok() {
+            println!("\x1b[1;32mGenerated\x1b[0m {}", out_filename);
+        } else {
+            println!("\x1b[1;31merror:\x1b[0m failed to write to {}", out_filename);
+        }
+    } else {
+        println!("\x1b[1;31merror:\x1b[0m failed to serialize metadata");
+    }
+}
+
+pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
+    let src_dir = plugin_path.join("src");
+    if !src_dir.exists() {
+        return;
+    }
+
+    let mut files_to_scan = Vec::new();
+    if let Ok(entries) = fs::read_dir(&src_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("rs") {
+                files_to_scan.push(p);
+            }
         }
     }
 
-    let rustdoc_json_path = plugin_path
-        .join("target")
-        .join("doc")
-        .join(format!("{}.json", target.replace("-", "_")));
+    for file_path in files_to_scan {
+        if let Ok(code) = fs::read_to_string(&file_path) {
+            if let Ok(syntax_tree) = syn::parse_file(&code) {
+                for item in syntax_tree.items {
+                    match item {
+                        syn::Item::Fn(fn_item) => {
+                            let (rename, skip, constructor, persistent_runtime) =
+                                parse_flame_attrs(&fn_item.attrs);
+                            if skip || !matches!(fn_item.vis, syn::Visibility::Public(_)) {
+                                continue;
+                            }
+                            let fn_name = fn_item.sig.ident.to_string();
+                            let flame_name = rename.unwrap_or_else(|| fn_name.clone());
+                            let is_async = fn_item.sig.asyncness.is_some();
+                            let return_type = parse_syn_return(&fn_item.sig.output);
+                            let is_constructor = constructor || return_type == meta.module;
+                            let params =
+                                parse_syn_params(&fn_item.sig.inputs, &fn_item.sig.generics);
 
-    let mut meta = parse_rustdoc_json(&rustdoc_json_path, target);
-    enrich_with_syn(&mut meta, plugin_path);
+                            if let Some(existing) =
+                                meta.functions.iter_mut().find(|f| f.name == fn_name)
+                            {
+                                existing.flame_name = flame_name;
+                                existing.is_async = is_async;
+                                existing.is_constructor = is_constructor;
+                                existing.persistent_runtime = persistent_runtime;
+                                existing.params = params;
+                                existing.return_type = return_type;
+                            } else {
+                                meta.functions.push(FlameFunctionMeta {
+                                    name: fn_name,
+                                    flame_name,
+                                    params,
+                                    return_type,
+                                    is_static: true,
+                                    is_generic: !fn_item.sig.generics.params.is_empty(),
+                                    requires: vec![],
+                                    permissions: vec![],
+                                    is_async,
+                                    is_constructor,
+                                    persistent_runtime,
+                                    receiver: None,
+                                    docs: extract_syn_docs(&fn_item.attrs),
+                                });
+                            }
+                        }
+                        syn::Item::Struct(struct_item) => {
+                            let (rename, skip, _, _) = parse_flame_attrs(&struct_item.attrs);
+                            if skip {
+                                continue;
+                            }
+                            let struct_name = struct_item.ident.to_string();
+                            let flame_name = rename.unwrap_or_else(|| struct_name.clone());
+                            let fields = parse_syn_struct_fields(&struct_item.fields);
+                            if !meta.structs.iter().any(|s| s.name == struct_name) {
+                                meta.structs.push(FlameStructMeta {
+                                    name: struct_name,
+                                    flame_name,
+                                    methods: Vec::new(),
+                                    fields,
+                                    docs: extract_syn_docs(&struct_item.attrs),
+                                });
+                            }
+                        }
+                        syn::Item::Impl(impl_item) => {
+                            let self_ty = &impl_item.self_ty;
+                            let struct_name = quote::quote!(#self_ty)
+                                .to_string()
+                                .replace(" ", "");
+                            let struct_name_simple = struct_name
+                                .rsplit("::")
+                                .next()
+                                .unwrap_or(&struct_name)
+                                .split('<')
+                                .next()
+                                .unwrap_or(&struct_name)
+                                .to_string();
+                            if let Some(struct_meta) = meta.structs.iter_mut().find(|s| {
+                                s.name == struct_name
+                                    || s.name == struct_name_simple
+                                    || struct_name.ends_with(&s.name)
+                            }) {
+                                for item_in_impl in impl_item.items {
+                                    if let syn::ImplItem::Fn(method_item) = item_in_impl {
+                                        let (rename, skip, constructor, persistent_runtime) =
+                                            parse_flame_attrs(&method_item.attrs);
+                                        if skip {
+                                            continue;
+                                        }
+                                        let is_pub =
+                                            matches!(method_item.vis, syn::Visibility::Public(_));
+                                        if !is_pub {
+                                            continue;
+                                        }
 
-    let pkg_dir = Path::new(".flame").join("pkg").join(target);
-    let _ = fs::create_dir_all(&pkg_dir);
-    if let Ok(meta_str) = serde_json::to_string_pretty(&meta) {
-        let _ = fs::write(pkg_dir.join(format!("{}.fmi", target)), meta_str);
+                                        let m_name = method_item.sig.ident.to_string();
+                                        let flame_name = rename.unwrap_or_else(|| m_name.clone());
+                                        let is_async = method_item.sig.asyncness.is_some();
+                                        let return_type = parse_syn_return(&method_item.sig.output);
+
+                                        let mut receiver = None;
+                                        let mut is_static = true;
+                                        if let Some(first_arg) = method_item.sig.inputs.first() {
+                                            if let syn::FnArg::Receiver(rec) = first_arg {
+                                                is_static = false;
+                                                let rec_str = quote::quote!(#rec).to_string();
+                                                if rec_str.contains("mut") {
+                                                    receiver = Some("&mut self".to_string());
+                                                } else if rec_str.contains('&') {
+                                                    receiver = Some("&self".to_string());
+                                                } else {
+                                                    receiver = Some("self".to_string());
+                                                }
+                                            }
+                                        }
+
+                                        let is_constructor = constructor
+                                            || (is_static
+                                                && (return_type == "Self"
+                                                    || return_type == struct_name));
+                                        let params = parse_syn_params(
+                                            &method_item.sig.inputs,
+                                            &method_item.sig.generics,
+                                        );
+
+                                        if let Some(existing) = struct_meta
+                                            .methods
+                                            .iter_mut()
+                                            .find(|m| m.name == m_name)
+                                        {
+                                            existing.flame_name = flame_name;
+                                            existing.is_async = is_async;
+                                            existing.is_constructor = is_constructor;
+                                            existing.receiver = receiver;
+                                            existing.persistent_runtime = persistent_runtime;
+                                            existing.params = params;
+                                            existing.return_type = return_type;
+                                            existing.is_static = is_static;
+                                        } else {
+                                            struct_meta.methods.push(FlameFunctionMeta {
+                                                name: m_name,
+                                                flame_name,
+                                                params,
+                                                return_type,
+                                                is_static,
+                                                is_generic: !method_item
+                                                    .sig
+                                                    .generics
+                                                    .params
+                                                    .is_empty(),
+                                                requires: vec![],
+                                                permissions: vec![],
+                                                is_async,
+                                                is_constructor,
+                                                persistent_runtime,
+                                                receiver,
+                                                docs: extract_syn_docs(&method_item.attrs),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool, bool) {
+    let mut rename = None;
+    let mut skip = false;
+    let mut constructor = false;
+    let mut persistent_runtime = false;
+    for attr in attrs {
+        if attr.path().is_ident("flame") {
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                } else if meta.path.is_ident("constructor") {
+                    constructor = true;
+                } else if meta.path.is_ident("runtime") || meta.path.is_ident("daemon") {
+                    persistent_runtime = true;
+                } else if meta.path.is_ident("rename") {
+                    if let Ok(value) = meta.value() {
+                        if let Ok(s) = value.parse::<syn::LitStr>() {
+                            rename = Some(s.value());
+                        }
+                    }
+                }
+                Ok(())
+            });
+        }
+    }
+    (rename, skip, constructor, persistent_runtime)
+}
+
+fn parse_syn_return(output: &syn::ReturnType) -> String {
+    match output {
+        syn::ReturnType::Default => "()".to_string(),
+        syn::ReturnType::Type(_, ty) => {
+            let ty_str = quote::quote!(#ty).to_string();
+            ty_str.replace(" ", "")
+        }
+    }
+}
+
+fn parse_syn_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+    generics: &syn::Generics,
+) -> Vec<FlameParamMeta> {
+    let mut params = Vec::new();
+    let callback_generics = find_callback_generics(generics);
+
+    for input in inputs {
+        if let syn::FnArg::Typed(pat_type) = input {
+            let name = match &*pat_type.pat {
+                syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
+                _ => format!("arg{}", params.len()),
+            };
+            let ty_node = &*pat_type.ty;
+            let ty_str = quote::quote!(#ty_node).to_string();
+            let clean_ty = ty_str.replace(" ", "");
+            let is_ref = clean_ty.starts_with('&') && !clean_ty.starts_with("&mut");
+            let is_mut = clean_ty.starts_with("&mut") || clean_ty.starts_with("mut");
+            let is_callback = clean_ty.contains("Callback")
+                || clean_ty.contains("Handler")
+                || clean_ty.contains("Fn(")
+                || callback_generics.contains(&clean_ty);
+
+            params.push(FlameParamMeta {
+                name,
+                type_name: clean_ty,
+                is_callback,
+                is_ref,
+                is_mut,
+            });
+        }
+    }
+    params
+}
+
+fn find_callback_generics(generics: &syn::Generics) -> Vec<String> {
+    let mut cb_generics = Vec::new();
+    for param in &generics.params {
+        if let syn::GenericParam::Type(type_param) = param {
+            let ident = type_param.ident.to_string();
+            for bound in &type_param.bounds {
+                let b_str = quote::quote!(#bound).to_string();
+                if b_str.contains("Handler") || b_str.contains("Fn") || b_str.contains("Callback") {
+                    cb_generics.push(ident.clone());
+                }
+            }
+        }
+    }
+    if let Some(where_clause) = &generics.where_clause {
+        for pred in &where_clause.predicates {
+            if let syn::WherePredicate::Type(pred_type) = pred {
+                let target = quote::quote!(#pred_type.bounded_ty).to_string();
+                for bound in &pred_type.bounds {
+                    let b_str = quote::quote!(#bound).to_string();
+                    if b_str.contains("Handler")
+                        || b_str.contains("Fn")
+                        || b_str.contains("Callback")
+                    {
+                        cb_generics.push(target.replace(" ", ""));
+                    }
+                }
+            }
+        }
+    }
+    cb_generics
+}
+
+fn parse_syn_struct_fields(fields: &syn::Fields) -> Vec<FlameStructFieldMeta> {
+    let mut parsed_fields = Vec::new();
+    for field in fields {
+        if let Some(ident) = &field.ident {
+            let is_pub = matches!(field.vis, syn::Visibility::Public(_));
+            if !is_pub {
+                continue;
+            }
+            let name = ident.to_string();
+            let ty_node = &field.ty;
+            let ty_str = quote::quote!(#ty_node).to_string().replace(" ", "");
+            let docs = extract_syn_docs(&field.attrs);
+            parsed_fields.push(FlameStructFieldMeta {
+                name,
+                type_name: ty_str,
+                docs,
+            });
+        }
+    }
+    parsed_fields
+}
+
+fn extract_syn_docs(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut doc_lines = Vec::new();
+    for attr in attrs {
+        if attr.path().is_ident("doc") {
+            if let syn::Meta::NameValue(meta) = &attr.meta {
+                if let syn::Expr::Lit(expr) = &meta.value {
+                    if let syn::Lit::Str(s) = &expr.lit {
+                        let line = s.value();
+                        let line = line.strip_prefix(' ').unwrap_or(&line);
+                        doc_lines.push(line.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if doc_lines.is_empty() {
+        None
+    } else {
+        Some(doc_lines.join("\n").trim().to_string())
     }
 }
 
@@ -1075,6 +1450,8 @@ pub fn parse_rustdoc_json(rustdoc_json_path: &Path, target: &str) -> FlameMeta {
                             }
                             structs.push(FlameStructMeta {
                                 name: name.to_string(),
+                                flame_name: name.to_string(),
+                                fields: Vec::new(),
                                 methods: s_methods,
                                 docs: item
                                     .get("docs")
@@ -1154,291 +1531,4 @@ fn parse_type(ty: &serde_json::Value) -> String {
         return generic.to_string();
     }
     "NativeObject".to_string()
-}
-
-pub fn enrich_with_syn(meta: &mut FlameMeta, plugin_path: &Path) {
-    let src_dir = plugin_path.join("src");
-    if !src_dir.exists() {
-        return;
-    }
-
-    let mut files_to_scan = Vec::new();
-    if let Ok(entries) = fs::read_dir(&src_dir) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.extension().and_then(|e| e.to_str()) == Some("rs") {
-                files_to_scan.push(p);
-            }
-        }
-    }
-
-    for file_path in files_to_scan {
-        if let Ok(code) = fs::read_to_string(&file_path) {
-            if let Ok(syntax_tree) = syn::parse_file(&code) {
-                for item in syntax_tree.items {
-                    match item {
-                        syn::Item::Fn(fn_item) => {
-                            let (rename, skip, constructor, persistent_runtime) =
-                                parse_flame_attrs(&fn_item.attrs);
-                            if skip || !matches!(fn_item.vis, syn::Visibility::Public(_)) {
-                                continue;
-                            }
-                            let fn_name = fn_item.sig.ident.to_string();
-                            let flame_name = rename.unwrap_or_else(|| fn_name.clone());
-                            let is_async = fn_item.sig.asyncness.is_some();
-                            let return_type = parse_syn_return(&fn_item.sig.output);
-                            let is_constructor = constructor || return_type == meta.module;
-                            let params =
-                                parse_syn_params(&fn_item.sig.inputs, &fn_item.sig.generics);
-
-                            if let Some(existing) =
-                                meta.functions.iter_mut().find(|f| f.name == fn_name)
-                            {
-                                existing.flame_name = flame_name;
-                                existing.is_async = is_async;
-                                existing.is_constructor = is_constructor;
-                                existing.persistent_runtime = persistent_runtime;
-                                existing.params = params;
-                                existing.return_type = return_type;
-                            } else {
-                                meta.functions.push(FlameFunctionMeta {
-                                    name: fn_name,
-                                    flame_name,
-                                    params,
-                                    return_type,
-                                    is_static: true,
-                                    is_generic: !fn_item.sig.generics.params.is_empty(),
-                                    requires: vec![],
-                                    permissions: vec![],
-                                    is_async,
-                                    is_constructor,
-                                    persistent_runtime,
-                                    receiver: None,
-                                    docs: None,
-                                });
-                            }
-                        }
-                        syn::Item::Struct(struct_item) => {
-                            let (_, skip, _, _) = parse_flame_attrs(&struct_item.attrs);
-                            if skip || !matches!(struct_item.vis, syn::Visibility::Public(_)) {
-                                continue;
-                            }
-                            let struct_name = struct_item.ident.to_string();
-                            if !meta.structs.iter().any(|s| s.name == struct_name) {
-                                meta.structs.push(FlameStructMeta {
-                                    name: struct_name,
-                                    methods: Vec::new(),
-                                    docs: None,
-                                });
-                            }
-                        }
-                        syn::Item::Impl(impl_item) => {
-                            let struct_name = quote::quote!(#impl_item.self_ty)
-                                .to_string()
-                                .replace(" ", "");
-                            let struct_name_simple = struct_name
-                                .rsplit("::")
-                                .next()
-                                .unwrap_or(&struct_name)
-                                .split('<')
-                                .next()
-                                .unwrap_or(&struct_name)
-                                .to_string();
-                            if let Some(struct_meta) = meta.structs.iter_mut().find(|s| {
-                                s.name == struct_name
-                                    || s.name == struct_name_simple
-                                    || struct_name.ends_with(&s.name)
-                            }) {
-                                for item_in_impl in impl_item.items {
-                                    if let syn::ImplItem::Fn(method_item) = item_in_impl {
-                                        let (rename, skip, constructor, persistent_runtime) =
-                                            parse_flame_attrs(&method_item.attrs);
-                                        if skip {
-                                            continue;
-                                        }
-                                        let is_pub =
-                                            matches!(method_item.vis, syn::Visibility::Public(_));
-                                        if !is_pub {
-                                            continue;
-                                        }
-
-                                        let m_name = method_item.sig.ident.to_string();
-                                        let flame_name = rename.unwrap_or_else(|| m_name.clone());
-                                        let is_async = method_item.sig.asyncness.is_some();
-                                        let return_type = parse_syn_return(&method_item.sig.output);
-
-                                        let mut receiver = None;
-                                        let mut is_static = true;
-                                        if let Some(first_arg) = method_item.sig.inputs.first() {
-                                            if let syn::FnArg::Receiver(rec) = first_arg {
-                                                is_static = false;
-                                                let rec_str = quote::quote!(#rec).to_string();
-                                                if rec_str.contains("mut") {
-                                                    receiver = Some("&mut self".to_string());
-                                                } else if rec_str.contains('&') {
-                                                    receiver = Some("&self".to_string());
-                                                } else {
-                                                    receiver = Some("self".to_string());
-                                                }
-                                            }
-                                        }
-
-                                        let is_constructor = constructor
-                                            || (is_static
-                                                && (return_type == "Self"
-                                                    || return_type == struct_name));
-                                        let params = parse_syn_params(
-                                            &method_item.sig.inputs,
-                                            &method_item.sig.generics,
-                                        );
-
-                                        if let Some(existing) = struct_meta
-                                            .methods
-                                            .iter_mut()
-                                            .find(|m| m.name == m_name)
-                                        {
-                                            existing.flame_name = flame_name;
-                                            existing.is_async = is_async;
-                                            existing.is_constructor = is_constructor;
-                                            existing.receiver = receiver;
-                                            existing.persistent_runtime = persistent_runtime;
-                                            existing.params = params;
-                                            existing.return_type = return_type;
-                                            existing.is_static = is_static;
-                                        } else {
-                                            struct_meta.methods.push(FlameFunctionMeta {
-                                                name: m_name,
-                                                flame_name,
-                                                params,
-                                                return_type,
-                                                is_static,
-                                                is_generic: !method_item
-                                                    .sig
-                                                    .generics
-                                                    .params
-                                                    .is_empty(),
-                                                requires: vec![],
-                                                permissions: vec![],
-                                                is_async,
-                                                is_constructor,
-                                                persistent_runtime,
-                                                receiver,
-                                                docs: None,
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn parse_flame_attrs(attrs: &[syn::Attribute]) -> (Option<String>, bool, bool, bool) {
-    let mut rename = None;
-    let mut skip = false;
-    let mut constructor = false;
-    let mut persistent_runtime = false;
-    for attr in attrs {
-        if attr.path().is_ident("flame") {
-            let _ = attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("skip") {
-                    skip = true;
-                } else if meta.path.is_ident("constructor") {
-                    constructor = true;
-                } else if meta.path.is_ident("runtime") || meta.path.is_ident("daemon") {
-                    persistent_runtime = true;
-                } else if meta.path.is_ident("rename") {
-                    if let Ok(value) = meta.value() {
-                        if let Ok(s) = value.parse::<syn::LitStr>() {
-                            rename = Some(s.value());
-                        }
-                    }
-                }
-                Ok(())
-            });
-        }
-    }
-    (rename, skip, constructor, persistent_runtime)
-}
-
-fn parse_syn_return(output: &syn::ReturnType) -> String {
-    match output {
-        syn::ReturnType::Default => "()".to_string(),
-        syn::ReturnType::Type(_, ty) => {
-            let ty_str = quote::quote!(#ty).to_string();
-            ty_str.replace(" ", "")
-        }
-    }
-}
-
-fn parse_syn_params(
-    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    generics: &syn::Generics,
-) -> Vec<FlameParamMeta> {
-    let mut params = Vec::new();
-    let callback_generics = find_callback_generics(generics);
-
-    for input in inputs {
-        if let syn::FnArg::Typed(pat_type) = input {
-            let name = match &*pat_type.pat {
-                syn::Pat::Ident(pat_ident) => pat_ident.ident.to_string(),
-                _ => format!("arg{}", params.len()),
-            };
-            let ty_node = &*pat_type.ty;
-            let ty_str = quote::quote!(#ty_node).to_string();
-            let clean_ty = ty_str.replace(" ", "");
-            let is_ref = clean_ty.starts_with('&') && !clean_ty.starts_with("&mut");
-            let is_mut = clean_ty.starts_with("&mut") || clean_ty.starts_with("mut");
-            let is_callback = clean_ty.contains("Callback")
-                || clean_ty.contains("Handler")
-                || clean_ty.contains("Fn(")
-                || callback_generics.contains(&clean_ty);
-
-            params.push(FlameParamMeta {
-                name,
-                type_name: clean_ty,
-                is_callback,
-                is_ref,
-                is_mut,
-            });
-        }
-    }
-    params
-}
-
-fn find_callback_generics(generics: &syn::Generics) -> Vec<String> {
-    let mut cb_generics = Vec::new();
-    for param in &generics.params {
-        if let syn::GenericParam::Type(type_param) = param {
-            let ident = type_param.ident.to_string();
-            for bound in &type_param.bounds {
-                let b_str = quote::quote!(#bound).to_string();
-                if b_str.contains("Handler") || b_str.contains("Fn") || b_str.contains("Callback") {
-                    cb_generics.push(ident.clone());
-                }
-            }
-        }
-    }
-    if let Some(where_clause) = &generics.where_clause {
-        for pred in &where_clause.predicates {
-            if let syn::WherePredicate::Type(pred_type) = pred {
-                let target = quote::quote!(#pred_type.bounded_ty).to_string();
-                for bound in &pred_type.bounds {
-                    let b_str = quote::quote!(#bound).to_string();
-                    if b_str.contains("Handler")
-                        || b_str.contains("Fn")
-                        || b_str.contains("Callback")
-                    {
-                        cb_generics.push(target.replace(" ", ""));
-                    }
-                }
-            }
-        }
-    }
-    cb_generics
 }

@@ -1,6 +1,6 @@
 [package]
 name = "flamelang"
-version = "0.3.7"
+version = "0.3.8"
 edition = "2024"
 description = "A statically typed, fast, and modern programming language built in Rust."
 license = "ISC"
@@ -17,7 +17,7 @@ exclude = [
 ]
 
 [features]
-default = ["cli", "net", "http", "ws", "mqtt", "time", "os", "regex", "robot", "hardware", "camera", "bluetooth", "base64", "gpio"]
+default = ["cli", "net", "http", "ws", "mqtt", "utils", "os", "regex", "hardware", "camera", "bluetooth", "base64", "gpio"]
 cli = ["dep:reqwest", "dep:zip"]
 avr = []
 esp32 = []
@@ -27,10 +27,9 @@ net = ["dep:tokio", "dep:reqwest", "dep:tungstenite", "dep:url", "dep:default-ne
 mqtt = ["net", "dep:rumqttc"]
 http = ["net"]
 ws = ["net"]
-time = ["dep:chrono"]
-os = ["dep:sysinfo"]
+utils = ["dep:chrono", "dep:base64"]
+os = ["dep:sysinfo", "dep:enigo"]
 regex = ["dep:regex"]
-robot = ["dep:enigo"]
 hardware = ["dep:hidapi", "dep:serialport", "dep:btleplug"]
 camera = ["dep:nokhwa", "dep:image"]
 bluetooth = ["dep:btleplug", "dep:futures"]
