@@ -1,4 +1,3 @@
-use crate::parser::Param;
 use crate::vm::{Env, Value};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

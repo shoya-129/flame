@@ -93,10 +93,7 @@ const KEYWORDS: &[(&str, &str)] = &[
         "as",
         "Type casting or import alias keyword. Example: `let n = val as Int`",
     ),
-    (
-        "type",
-        "Defines a type alias. Example: `type UserID = Int`",
-    ),
+    ("type", "Defines a type alias. Example: `type UserID = Int`"),
     (
         "where",
         "Generic type constraint clause. Example: `fn test<T>(x: T) where T: Debug {}`",
@@ -116,8 +113,14 @@ const KEYWORDS: &[(&str, &str)] = &[
         "Defers execution until the end of the scope. Example: `defer file.close()`",
     ),
     ("import", "Imports a module. Example: `import std.fs`"),
-    ("export", "Exports a function, struct, enum, or annotation for external modules. Example: `export fn process() {}`"),
-    ("package", "Declares the package namespace for the current file. Required for folder-based imports. Example: `package utils`"),
+    (
+        "export",
+        "Exports a function, struct, enum, or annotation for external modules. Example: `export fn process() {}`",
+    ),
+    (
+        "package",
+        "Declares the package namespace for the current file. Required for folder-based imports. Example: `package utils`",
+    ),
     (
         "native",
         "Native dependencies import prefix. Example: `import native.mysql`",
@@ -479,19 +482,71 @@ const KEYWORDS: &[(&str, &str)] = &[
 ];
 
 const EMBEDDED_LITERALS: &[(&str, &str, &str)] = &[
-    ("arduino-uno", "Hardware Target (AVR ATmega328P)", "Zero-cost `#![no_std]` compiler target for classic Arduino Uno boards."),
-    ("esp32", "Hardware Target (Xtensa/RISC-V)", "Zero-cost compiler target for ESP32 Wi-Fi & Bluetooth chips."),
-    ("stm32", "Hardware Target (ARM Cortex-M)", "Zero-cost compiler target for STM32 32-bit microcontrollers."),
-    ("rp2040", "Hardware Target (Raspberry Pi Silicon)", "Zero-cost compiler target for dual-core ARM Cortex-M0+ RP2040 chips."),
-    ("atmega328p", "Hardware Target (Bare AVR IC)", "Direct chip compiler target for standalone ATmega328P microcontrollers."),
-    ("mega", "Hardware Target (Arduino Mega 2560)", "Compiler target for ATmega2560 extended GPIO boards."),
-    ("avr-nano", "Hardware Target (Arduino Nano)", "Compiler target for compact ATmega328P Nano breakout boards."),
-    ("OUTPUT", "Pin Mode Parameter", "Configures digital pin as push-pull output driver."),
-    ("INPUT", "Pin Mode Parameter", "Configures pin as high-impedance floating input."),
-    ("INPUT_PULLUP", "Pin Mode Parameter", "Configures pin input with internal 20K pull-up resistor active."),
-    ("PWM", "Pin Mode Parameter", "Configures pin for Pulse-Width Modulation wave output."),
-    ("HIGH", "Digital Output Level", "Drives pin voltage to VCC (5V / 3.3V)."),
-    ("LOW", "Digital Output Level", "Drives pin voltage to Ground (0V)."),
+    (
+        "arduino-uno",
+        "Hardware Target (AVR ATmega328P)",
+        "Zero-cost `#![no_std]` compiler target for classic Arduino Uno boards.",
+    ),
+    (
+        "esp32",
+        "Hardware Target (Xtensa/RISC-V)",
+        "Zero-cost compiler target for ESP32 Wi-Fi & Bluetooth chips.",
+    ),
+    (
+        "stm32",
+        "Hardware Target (ARM Cortex-M)",
+        "Zero-cost compiler target for STM32 32-bit microcontrollers.",
+    ),
+    (
+        "rp2040",
+        "Hardware Target (Raspberry Pi Silicon)",
+        "Zero-cost compiler target for dual-core ARM Cortex-M0+ RP2040 chips.",
+    ),
+    (
+        "atmega328p",
+        "Hardware Target (Bare AVR IC)",
+        "Direct chip compiler target for standalone ATmega328P microcontrollers.",
+    ),
+    (
+        "mega",
+        "Hardware Target (Arduino Mega 2560)",
+        "Compiler target for ATmega2560 extended GPIO boards.",
+    ),
+    (
+        "avr-nano",
+        "Hardware Target (Arduino Nano)",
+        "Compiler target for compact ATmega328P Nano breakout boards.",
+    ),
+    (
+        "OUTPUT",
+        "Pin Mode Parameter",
+        "Configures digital pin as push-pull output driver.",
+    ),
+    (
+        "INPUT",
+        "Pin Mode Parameter",
+        "Configures pin as high-impedance floating input.",
+    ),
+    (
+        "INPUT_PULLUP",
+        "Pin Mode Parameter",
+        "Configures pin input with internal 20K pull-up resistor active.",
+    ),
+    (
+        "PWM",
+        "Pin Mode Parameter",
+        "Configures pin for Pulse-Width Modulation wave output.",
+    ),
+    (
+        "HIGH",
+        "Digital Output Level",
+        "Drives pin voltage to VCC (5V / 3.3V).",
+    ),
+    (
+        "LOW",
+        "Digital Output Level",
+        "Drives pin voltage to Ground (0V).",
+    ),
 ];
 
 pub fn get_literal_completions(prefix: &str) -> Vec<JsonCompletion> {
@@ -499,7 +554,8 @@ pub fn get_literal_completions(prefix: &str) -> Vec<JsonCompletion> {
     EMBEDDED_LITERALS
         .iter()
         .filter(|(val, _, _)| val.starts_with(clean) || clean.is_empty())
-        .map(|(val, kind, doc)| JsonCompletion { sort_text: None,
+        .map(|(val, kind, doc)| JsonCompletion {
+            sort_text: None,
             label: format!("\"{}\"", val),
             kind: "value".to_string(),
             detail: kind.to_string(),
@@ -518,7 +574,7 @@ pub fn get_keyword_completions(
 
     if raw_word.starts_with('@') {
         let clean_prefix = prefix.trim_start_matches('@');
-        
+
         // Workspace annotations first
         if let Some(tc) = tc_opt {
             for ann_name in &tc.annotations {
@@ -528,19 +584,35 @@ pub fn get_keyword_completions(
                         label: format!("@{}", ann_name),
                         kind: "annotation".to_string(),
                         detail: "workspace annotation".to_string(),
-                        documentation: tc.hover_info.values().find(|doc| doc.contains(&format!("annotation @{}", ann_name))).cloned(),
+                        documentation: tc
+                            .hover_info
+                            .values()
+                            .find(|doc| doc.contains(&format!("annotation @{}", ann_name)))
+                            .cloned(),
                     });
                 }
             }
         }
 
-        let annotations = ["@Application", "@Test", "@Embedded", "@Cli", "@Command", "@Requires", "@Permission", "@Suggestions", "@Docs", "@Platform"];
+        let annotations = [
+            "@Application",
+            "@Test",
+            "@Embedded",
+            "@Cli",
+            "@Command",
+            "@Requires",
+            "@Permission",
+            "@Suggestions",
+            "@Docs",
+            "@Platform",
+        ];
         for ann in annotations {
             if ann.starts_with(raw_word) {
                 let label = ann.to_string();
                 let clean_label = ann.trim_start_matches('@');
                 if clean_label.starts_with(clean_prefix) || clean_prefix.is_empty() {
-                    comps.push(JsonCompletion { sort_text: Some("1_".to_string()),
+                    comps.push(JsonCompletion {
+                        sort_text: Some("1_".to_string()),
                         label,
                         kind: "annotation".to_string(),
                         detail: "built-in annotation".to_string(),
@@ -552,8 +624,13 @@ pub fn get_keyword_completions(
         return comps;
     }
 
-    if current_line.contains("@Application") && current_line.contains("features") && current_line.contains('[') {
-        let features = ["\"http\"", "\"tcp\"", "\"udp\"", "\"ws\"", "\"mqtt\"", "\"url\""];
+    if current_line.contains("@Application")
+        && current_line.contains("features")
+        && current_line.contains('[')
+    {
+        let features = [
+            "\"http\"", "\"tcp\"", "\"udp\"", "\"ws\"", "\"mqtt\"", "\"url\"",
+        ];
         for feat in features {
             if feat.starts_with(prefix) || prefix.is_empty() || feat.contains(prefix) {
                 // If prefix already has a quote, we don't want to insert double quotes.
@@ -562,7 +639,8 @@ pub fn get_keyword_completions(
                 } else {
                     feat.to_string()
                 };
-                comps.push(JsonCompletion { sort_text: None,
+                comps.push(JsonCompletion {
+                    sort_text: None,
                     label,
                     kind: "value".to_string(),
                     detail: "feature module".to_string(),
@@ -573,19 +651,35 @@ pub fn get_keyword_completions(
         return comps;
     }
 
-    comps.extend(KEYWORDS
-        .iter()
-        .filter(|(kw, _)| {
-            let is_alphabetic = kw.chars().all(|c| c.is_alphabetic() || c == '_' || c == '@');
-            is_alphabetic && (kw.starts_with(prefix) || prefix.is_empty())
-        })
-        .map(|(kw, doc)| JsonCompletion {
-            sort_text: if kw.starts_with('@') { Some("2_".to_string()) } else { None },
-            label: kw.to_string(),
-            kind: if kw.starts_with('@') { "annotation".to_string() } else { "keyword".to_string() },
-            detail: if kw.starts_with('@') { "built-in annotation".to_string() } else { "keyword".to_string() },
-            documentation: Some(doc.to_string()),
-        }));
+    comps.extend(
+        KEYWORDS
+            .iter()
+            .filter(|(kw, _)| {
+                let is_alphabetic = kw
+                    .chars()
+                    .all(|c| c.is_alphabetic() || c == '_' || c == '@');
+                is_alphabetic && (kw.starts_with(prefix) || prefix.is_empty())
+            })
+            .map(|(kw, doc)| JsonCompletion {
+                sort_text: if kw.starts_with('@') {
+                    Some("2_".to_string())
+                } else {
+                    None
+                },
+                label: kw.to_string(),
+                kind: if kw.starts_with('@') {
+                    "annotation".to_string()
+                } else {
+                    "keyword".to_string()
+                },
+                detail: if kw.starts_with('@') {
+                    "built-in annotation".to_string()
+                } else {
+                    "keyword".to_string()
+                },
+                documentation: Some(doc.to_string()),
+            }),
+    );
 
     if current_line.contains("target:") || current_line.contains("@Embedded") {
         let lits = get_literal_completions(prefix);
@@ -599,7 +693,6 @@ pub fn get_keyword_completions(
 
     comps
 }
-
 
 pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
     let clean_word = word.trim_start_matches('@');
@@ -643,7 +736,10 @@ pub fn get_keyword_hover(word: &str) -> Option<JsonHover> {
 
     if hover.is_none() {
         let clean_lit = word.trim_matches('"').trim_matches('\'');
-        if let Some((val, kind, doc)) = EMBEDDED_LITERALS.iter().find(|(val, _, _)| *val == clean_lit) {
+        if let Some((val, kind, doc)) = EMBEDDED_LITERALS
+            .iter()
+            .find(|(val, _, _)| *val == clean_lit)
+        {
             hover = Some(JsonHover {
                 label: format!("\"{}\"", val),
                 documentation: Some(format!("```flame\n\"{}\"\n```\n**{}**\n{}", val, kind, doc)),
@@ -713,7 +809,7 @@ fn strip_comments_and_strings(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let mut lexer = crate::lexer::Lexer::new(source);
     let mut last_idx = 0;
-    
+
     loop {
         let t = lexer.next_token();
         if t.kind == crate::lexer::TokenKind::EOF {
@@ -722,11 +818,11 @@ fn strip_comments_and_strings(source: &str) -> String {
             }
             break;
         }
-        
+
         match t.kind {
-            crate::lexer::TokenKind::Comment 
-            | crate::lexer::TokenKind::StringLiteral 
-            | crate::lexer::TokenKind::InterpolatedStringContent 
+            crate::lexer::TokenKind::Comment
+            | crate::lexer::TokenKind::StringLiteral
+            | crate::lexer::TokenKind::InterpolatedStringContent
             | crate::lexer::TokenKind::StringEnd => {
                 if t.span.start > last_idx {
                     out.push_str(&source[last_idx..t.span.start]);
@@ -749,7 +845,7 @@ fn strip_comments_and_strings(source: &str) -> String {
             _ => {}
         }
     }
-    
+
     out
 }
 
@@ -815,7 +911,24 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
                 cap.get(4).map(|m| m.as_str().to_string())
             }
         });
-        vars.push(ScannedVar { name, typ, doc: None });
+        vars.push(ScannedVar {
+            name,
+            typ,
+            doc: None,
+        });
+    }
+
+    // Scan for annotations to inject implicit variables
+    let annotation_re = Regex::new(r"@([a-zA-Z_]\w*)\s*(?:\(|$)").unwrap();
+    for cap in annotation_re.captures_iter(content) {
+        let name = cap[1].to_string();
+        let var_name = name.to_lowercase();
+        // Set typ to a special marker so main.rs knows it's from an annotation
+        vars.push(ScannedVar {
+            name: var_name.clone(),
+            typ: Some(format!("annotation_plugin:{}", var_name)),
+            doc: None,
+        });
     }
 
     // Scan for variables with formula bodies to extract fields
@@ -893,8 +1006,11 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
             None => String::new(),
             Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
         };
-        
-        let typ = annotation_returns.get(ann_name).cloned().unwrap_or_else(|| ann_name.to_string());
+
+        let typ = annotation_returns
+            .get(ann_name)
+            .cloned()
+            .unwrap_or_else(|| ann_name.to_string());
 
         vars.push(ScannedVar {
             name: lower_name,
@@ -913,23 +1029,47 @@ pub fn get_native_module_def(module: &str) -> Option<crate::vm::NativeModuleDef>
     } else {
         format!("std.{}", module)
     };
-    defs.into_iter().find(|d| d.name == search || d.name == module)
+    defs.into_iter()
+        .find(|d| d.name == search || d.name == module)
 }
 
 pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
     let mut parts = module.split('.');
     let base = parts.next()?;
 
-    let base_module = if base == "std" { 
+    let base_module = if base == "std" {
         match parts.next() {
             Some(m) if !m.is_empty() => m,
             _ => {
                 // If it's just "std" or "std.", suggest the standard modules
-                return Some(vec!["thread", "process", "fs", "byte", "net", "json", "math", "time", "os", "hardware", "desktop", "env", "hid", "camera", "bluetooth", "serial", "embedded"].into_iter().map(String::from).collect());
+                return Some(
+                    vec![
+                        "thread",
+                        "process",
+                        "fs",
+                        "byte",
+                        "net",
+                        "json",
+                        "math",
+                        "time",
+                        "os",
+                        "hardware",
+                        "desktop",
+                        "env",
+                        "hid",
+                        "camera",
+                        "bluetooth",
+                        "serial",
+                        "embedded",
+                    ]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                );
             }
         }
-    } else { 
-        base 
+    } else {
+        base
     };
 
     let mut map = match base_module {
@@ -978,21 +1118,23 @@ pub struct SemanticToken {
 pub fn get_semantic_tokens(source: &str) -> Vec<SemanticToken> {
     let mut tokens = Vec::new();
     let mut lexer = crate::lexer::Lexer::new(source);
-    
+
     loop {
         let t = lexer.next_token();
         if t.kind == crate::lexer::TokenKind::EOF {
             break;
         }
-        
+
         let mut token_type = None;
         let modifiers = 0;
-        
+
         match t.kind {
             crate::lexer::TokenKind::Comment => {
                 token_type = Some(3); // comment
             }
-            crate::lexer::TokenKind::StringLiteral | crate::lexer::TokenKind::InterpolatedStringContent | crate::lexer::TokenKind::StringEnd => {
+            crate::lexer::TokenKind::StringLiteral
+            | crate::lexer::TokenKind::InterpolatedStringContent
+            | crate::lexer::TokenKind::StringEnd => {
                 token_type = Some(4); // string
             }
             crate::lexer::TokenKind::Annotation => {
@@ -1001,27 +1143,51 @@ pub fn get_semantic_tokens(source: &str) -> Vec<SemanticToken> {
             crate::lexer::TokenKind::Fn => {
                 token_type = Some(0); // keyword
             }
-            crate::lexer::TokenKind::Let | crate::lexer::TokenKind::Const | 
-            crate::lexer::TokenKind::Struct | crate::lexer::TokenKind::Enum | crate::lexer::TokenKind::Trait |
-            crate::lexer::TokenKind::Impl | crate::lexer::TokenKind::Export | crate::lexer::TokenKind::Import |
-            crate::lexer::TokenKind::Mut | crate::lexer::TokenKind::As | crate::lexer::TokenKind::Type |
-            crate::lexer::TokenKind::Where | crate::lexer::TokenKind::Formula | crate::lexer::TokenKind::If |
-            crate::lexer::TokenKind::Else | crate::lexer::TokenKind::Match | crate::lexer::TokenKind::For |
-            crate::lexer::TokenKind::In | crate::lexer::TokenKind::While | crate::lexer::TokenKind::Loop |
-            crate::lexer::TokenKind::Break | crate::lexer::TokenKind::Continue | crate::lexer::TokenKind::Defer |
-            crate::lexer::TokenKind::Return | crate::lexer::TokenKind::Yield | crate::lexer::TokenKind::Await |
-            crate::lexer::TokenKind::Async | crate::lexer::TokenKind::Thread | crate::lexer::TokenKind::Ampersand2 |
-            crate::lexer::TokenKind::Pipe2 | crate::lexer::TokenKind::Exclamation | crate::lexer::TokenKind::True |
-            crate::lexer::TokenKind::False | crate::lexer::TokenKind::Nil => {
+            crate::lexer::TokenKind::Let
+            | crate::lexer::TokenKind::Const
+            | crate::lexer::TokenKind::Struct
+            | crate::lexer::TokenKind::Enum
+            | crate::lexer::TokenKind::Trait
+            | crate::lexer::TokenKind::Impl
+            | crate::lexer::TokenKind::Export
+            | crate::lexer::TokenKind::Import
+            | crate::lexer::TokenKind::Mut
+            | crate::lexer::TokenKind::As
+            | crate::lexer::TokenKind::Type
+            | crate::lexer::TokenKind::Where
+            | crate::lexer::TokenKind::Formula
+            | crate::lexer::TokenKind::If
+            | crate::lexer::TokenKind::Else
+            | crate::lexer::TokenKind::Match
+            | crate::lexer::TokenKind::For
+            | crate::lexer::TokenKind::In
+            | crate::lexer::TokenKind::While
+            | crate::lexer::TokenKind::Loop
+            | crate::lexer::TokenKind::Break
+            | crate::lexer::TokenKind::Continue
+            | crate::lexer::TokenKind::Defer
+            | crate::lexer::TokenKind::Return
+            | crate::lexer::TokenKind::Yield
+            | crate::lexer::TokenKind::Await
+            | crate::lexer::TokenKind::Async
+            | crate::lexer::TokenKind::Thread
+            | crate::lexer::TokenKind::Ampersand2
+            | crate::lexer::TokenKind::Pipe2
+            | crate::lexer::TokenKind::Exclamation
+            | crate::lexer::TokenKind::True
+            | crate::lexer::TokenKind::False
+            | crate::lexer::TokenKind::Nil => {
                 token_type = Some(0); // keyword
             }
             _ => {
-                if t.kind == crate::lexer::TokenKind::Identifier && (t.lexeme == "self" || t.lexeme == "Self") {
+                if t.kind == crate::lexer::TokenKind::Identifier
+                    && (t.lexeme == "self" || t.lexeme == "Self")
+                {
                     token_type = Some(0); // keyword
                 }
             }
         }
-        
+
         if let Some(ty) = token_type {
             tokens.push(SemanticToken {
                 line: t.span.line.saturating_sub(1),
@@ -1032,6 +1198,6 @@ pub fn get_semantic_tokens(source: &str) -> Vec<SemanticToken> {
             });
         }
     }
-    
+
     tokens
 }

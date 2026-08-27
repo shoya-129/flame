@@ -3,6 +3,15 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.3.9] - 2026-08-27 (Codename: *Third Spark*)
+
+### ✨ Typechecker Enhancements & Bug Fixes
+- **Auto-Referencing**: Added robust support for implicit references in method calls (e.g., safely passing a `Vector2` where a `&Vector2` is expected without strict syntax errors).
+- **Enum Upcasting & Equality**: Fixed initialization of variables with Enum variants so they seamlessly upcast to the parent Enum. Added rules enabling variants to be accurately compared via `==`.
+- **Closure Coercion**: Allowed empty tuple `()` arguments to automatically match empty closure types (`() -> Unknown`), restoring idiomatic callback shorthand for event handlers.
+- **IDE Hover Resilience**: Repaired a glitch where the IDE's tooltip hover documentation would abruptly stop displaying midway through files. Variables now resist cascading into `Unknown` types on minor reference mismatches, retaining their strong typing and inline documentation throughout the entire execution context.
+
+---
 ## [0.3.8] - 2026-08-26 (Codename: *Third Spark*)
 
 ### ✨ New Features & Enhancements

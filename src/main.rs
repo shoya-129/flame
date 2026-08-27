@@ -28,7 +28,8 @@ use typechecker::TypeChecker;
 fn main() {
     ctrlc::set_handler(move || {
         std::process::exit(0);
-    }).unwrap_or_else(|_| ());
+    })
+    .unwrap_or_else(|_| ());
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -127,22 +128,29 @@ fn main() {
                 return;
             }
             let force_local = args.contains(&"--local".to_string());
-            
+
             let (filepath, script_args_start) = if args.len() > 2 {
                 let potential_file_idx = if args[2] == "--local" { 3 } else { 2 };
-                
-                if args.len() > potential_file_idx && (Path::new(&args[potential_file_idx]).exists() || args[potential_file_idx].ends_with(".fm")) {
+
+                if args.len() > potential_file_idx
+                    && (Path::new(&args[potential_file_idx]).exists()
+                        || args[potential_file_idx].ends_with(".fm"))
+                {
                     (args[potential_file_idx].clone(), potential_file_idx + 1)
                 } else if Path::new("src/main.fm").exists() {
                     ("src/main.fm".to_string(), potential_file_idx)
                 } else {
-                    println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm");
+                    println!(
+                        "\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm"
+                    );
                     return;
                 }
             } else if Path::new("src/main.fm").exists() {
                 ("src/main.fm".to_string(), 2)
             } else {
-                println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm");
+                println!(
+                    "\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm"
+                );
                 println!("usage: flame run [file_path.fm]");
                 return;
             };
@@ -153,7 +161,7 @@ fn main() {
                     filtered_script_args.push(arg.clone());
                 }
             }
-            
+
             run_file(&filepath, force_local, &filtered_script_args);
         }
         "test" => {
@@ -205,7 +213,7 @@ fn main() {
                 } else {
                     command
                 };
-                
+
                 let script_args_start = if command == "--local" { 3 } else { 2 };
                 // Wait, if it's `flame target.fm --local`, `--local` might be args[2] and `target.fm` is args[1] (command).
                 // Let's just filter out `--local` entirely from script_args!
@@ -215,7 +223,7 @@ fn main() {
                         filtered_script_args.push(arg.clone());
                     }
                 }
-                
+
                 run_file(actual_cmd, force_local, &filtered_script_args);
             } else {
                 println!("\x1b[1;31merror:\x1b[0m unknown command '{}'", command);
@@ -233,8 +241,22 @@ fn run_doctor_command() {
     }
 
     println!("{} Blaze compiler", if true { "✓" } else { "✗" });
-    println!("{} Rust toolchain", if check_cmd("rustc", &["--version"]) { "✓" } else { "✗" });
-    println!("{} Cargo", if check_cmd("cargo", &["--version"]) { "✓" } else { "✗" });
+    println!(
+        "{} Rust toolchain",
+        if check_cmd("rustc", &["--version"]) {
+            "✓"
+        } else {
+            "✗"
+        }
+    );
+    println!(
+        "{} Cargo",
+        if check_cmd("cargo", &["--version"]) {
+            "✓"
+        } else {
+            "✗"
+        }
+    );
     println!("{} Native plugin support", "✓");
     println!("{} Standard library", "✓");
     println!("{} Package manager", "✓");
@@ -257,7 +279,16 @@ fn run_doctor_command() {
     println!("{} Camera", "✓");
     println!("{} Bluetooth", "✓");
     println!("{} Serial", "✓");
-    println!("{} QEMU", if check_cmd("qemu-system-x86_64", &["--version"]) || check_cmd("qemu-system-aarch64", &["--version"]) { "✓" } else { "✗" });
+    println!(
+        "{} QEMU",
+        if check_cmd("qemu-system-x86_64", &["--version"])
+            || check_cmd("qemu-system-aarch64", &["--version"])
+        {
+            "✓"
+        } else {
+            "✗"
+        }
+    );
     println!();
 }
 
@@ -268,7 +299,9 @@ fn print_help() {
 
     println!(
         "{}Flame Compiler & Package Manager (Version {}){} ",
-        bold, env!("CARGO_PKG_VERSION"), reset
+        bold,
+        env!("CARGO_PKG_VERSION"),
+        reset
     );
     println!("Designed for systems programming with supreme DX.");
     println!();
@@ -327,7 +360,10 @@ fn print_help() {
         "  {}version, --v, --version{} Print installed Flame compiler version",
         cyan, reset
     );
-    println!("  {}help, -h, --help{}        Print help details", cyan, reset);
+    println!(
+        "  {}help, -h, --help{}        Print help details",
+        cyan, reset
+    );
     println!();
 }
 
@@ -396,7 +432,6 @@ fn parse_file_stmts(path: &Path, content: &str) -> Result<Vec<Stmt>, Diagnostic>
     parser.parse()
 }
 
-
 fn typecheck_file_stmts(path: &Path, stmts: &[Stmt]) -> Result<(), Vec<Diagnostic>> {
     TypeChecker::new(path.to_string_lossy().to_string())
         .check_program(stmts)
@@ -459,7 +494,12 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     let src_dir = Path::new("src");
     let has_source_files = if src_dir.exists() {
         fs::read_dir(src_dir)
-            .map(|mut it| it.any(|e| e.map(|entry| entry.path().extension().map_or(false, |ext| ext == "fm")).unwrap_or(false)))
+            .map(|mut it| {
+                it.any(|e| {
+                    e.map(|entry| entry.path().extension().map_or(false, |ext| ext == "fm"))
+                        .unwrap_or(false)
+                })
+            })
             .unwrap_or(false)
     } else {
         false
@@ -479,10 +519,14 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                         if let Ok(pkg_files) = fs::read_dir(&pkg_src) {
                             for pkg_file in pkg_files.flatten() {
                                 let fpath = pkg_file.path();
-                                if fpath.is_file() && fpath.extension().map_or(false, |e| e == "fm") {
+                                if fpath.is_file() && fpath.extension().map_or(false, |e| e == "fm")
+                                {
                                     let content = fs::read_to_string(&fpath).unwrap_or_default();
                                     if let Ok(mut stmts) = parse_file_stmts(&fpath, &content) {
-                                        crate::parser::filter_platform_stmts(&mut stmts, target.as_deref());
+                                        crate::parser::filter_platform_stmts(
+                                            &mut stmts,
+                                            target.as_deref(),
+                                        );
                                         all_stmts.extend(stmts);
                                     }
                                 }
@@ -503,7 +547,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                         Ok(mut stmts) => {
                             crate::parser::filter_platform_stmts(&mut stmts, target.as_deref());
                             stmts
-                        },
+                        }
                         Err(diag) => {
                             diag.print(&content);
                             println!(
@@ -526,15 +570,21 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         }
 
         if target.is_none() {
-            if let Some((detected_target, _)) = embedded::codegen::detect_embedded_target(&all_stmts) {
+            if let Some((detected_target, _)) =
+                embedded::codegen::detect_embedded_target(&all_stmts)
+            {
                 target = Some(detected_target);
             }
         }
 
         if let Some(t) = target {
-            match embedded::codegen::generate_baremetal_firmware_project(&all_stmts, &t, &pkg_name) {
+            match embedded::codegen::generate_baremetal_firmware_project(&all_stmts, &t, &pkg_name)
+            {
                 Ok(build_dir) => {
-                    println!("\x1b[1;32m    Finished\x1b[0m embedded bare-metal firmware project at {}", build_dir.display());
+                    println!(
+                        "\x1b[1;32m    Finished\x1b[0m embedded bare-metal firmware project at {}",
+                        build_dir.display()
+                    );
                     return Some(build_dir);
                 }
                 Err(e) => {
@@ -544,9 +594,9 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             }
         }
 
-
         let manifest_content = fs::read_to_string("flame.toml").unwrap_or_default();
-        let mut native_deps_raw = parse_manifest_section(&manifest_content, "[native-dependencies]");
+        let mut native_deps_raw =
+            parse_manifest_section(&manifest_content, "[native-dependencies]");
         let mut plugins_raw = parse_manifest_section(&manifest_content, "[plugins]");
 
         if let Ok(entries) = fs::read_dir(".flame/pkg") {
@@ -556,12 +606,15 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                     let toml_path = pkg_path.join("flame.toml");
                     if toml_path.exists() {
                         let dep_manifest = fs::read_to_string(&toml_path).unwrap_or_default();
-                        for (name, mut path) in parse_manifest_section(&dep_manifest, "[native-dependencies]") {
+                        for (name, mut path) in
+                            parse_manifest_section(&dep_manifest, "[native-dependencies]")
+                        {
                             if path.starts_with('"') && path.ends_with('"') {
-                                path = path[1..path.len()-1].to_string();
+                                path = path[1..path.len() - 1].to_string();
                             }
                             if path.starts_with('.') || path.starts_with('/') {
-                                let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                                let abs = std::fs::canonicalize(pkg_path.join(&path))
+                                    .unwrap_or_else(|_| pkg_path.join(&path));
                                 crate::package_manager::inspect_native_plugin(&name, &abs);
                                 path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
                             } else {
@@ -571,10 +624,11 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                         }
                         for (name, mut path) in parse_manifest_section(&dep_manifest, "[plugins]") {
                             if path.starts_with('"') && path.ends_with('"') {
-                                path = path[1..path.len()-1].to_string();
+                                path = path[1..path.len() - 1].to_string();
                             }
                             if path.starts_with('.') || path.starts_with('/') {
-                                let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                                let abs = std::fs::canonicalize(pkg_path.join(&path))
+                                    .unwrap_or_else(|_| pkg_path.join(&path));
                                 crate::package_manager::inspect_native_plugin(&name, &abs);
                                 path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
                             } else {
@@ -594,7 +648,10 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             if path_str.starts_with('"') && path_str.ends_with('"') {
                 path_str = path_str[1..path_str.len() - 1].to_string();
             }
-            if path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute() {
+            if path_str.starts_with('.')
+                || path_str.starts_with('/')
+                || std::path::Path::new(&path_str).is_absolute()
+            {
                 let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
                     .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&path_str));
                 let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
@@ -614,7 +671,9 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
                 path_str = path_str[1..path_str.len() - 1].to_string();
             }
 
-            let is_local = path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute();
+            let is_local = path_str.starts_with('.')
+                || path_str.starts_with('/')
+                || std::path::Path::new(&path_str).is_absolute();
             let actual_path = if is_local {
                 path_str
             } else {
@@ -654,11 +713,28 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             mode_str, out_rel
         );
 
+        if is_release {
+            let dist_dir = Path::new("dist");
+            let _ = fs::create_dir_all(dist_dir);
+            let dist_exe = dist_dir.join(&exe_name);
+            let _ = fs::copy(&out_rel, &dist_exe);
+            
+            let common_asset_dirs = ["assets", "res", "resources", "public"];
+            for asset_dir in common_asset_dirs.iter() {
+                let p = Path::new(asset_dir);
+                if p.exists() && p.is_dir() {
+                    let _ = copy_dir_all(p, dist_dir.join(asset_dir));
+                }
+            }
+            println!(
+                "\x1b[1;32m   Packaged\x1b[0m distribution build successfully in \x1b[1m{}/\x1b[0m directory",
+                dist_dir.display()
+            );
+        }
+
         return Some(PathBuf::from(out_rel));
     } else {
-        println!(
-            "\x1b[1;32m    Finished\x1b[0m compilation: no source files found in src/"
-        );
+        println!("\x1b[1;32m    Finished\x1b[0m compilation: no source files found in src/");
         return None;
     }
 }
@@ -683,7 +759,7 @@ fn package_project(_args: &[String]) {
         println!("\x1b[1;31merror:\x1b[0m no flame.toml manifest file found.");
         return;
     }
-    
+
     let mut pkg_name = "app".to_string();
     let mut is_pkg = false;
     if let Ok(toml_str) = fs::read_to_string("flame.toml") {
@@ -695,7 +771,11 @@ fn package_project(_args: &[String]) {
                 }
             } else if t.starts_with("type =") {
                 if let Some(val) = t.split('=').nth(1) {
-                    let parsed_type = val.trim().trim_matches('"').trim_matches('\'').to_lowercase();
+                    let parsed_type = val
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_lowercase();
                     if parsed_type == "pkg" || parsed_type == "lib" {
                         is_pkg = true;
                     }
@@ -703,11 +783,11 @@ fn package_project(_args: &[String]) {
             }
         }
     }
-    
+
     if !is_pkg {
         println!("\x1b[1;33mwarning:\x1b[0m project type is not 'pkg'. packaging anyway.");
     }
-    
+
     println!("\x1b[1;36m Packaging\x1b[0m {} ...", pkg_name);
     let src_dir = Path::new("src");
     let mut has_exports = false;
@@ -729,16 +809,22 @@ fn package_project(_args: &[String]) {
             }
         }
     }
-    
+
     if !has_exports {
-        println!("\x1b[1;33mwarning:\x1b[0m package '{}' does not export anything. Is this intentional?", pkg_name);
+        println!(
+            "\x1b[1;33mwarning:\x1b[0m package '{}' does not export anything. Is this intentional?",
+            pkg_name
+        );
     } else {
-        println!("\x1b[1;32m  Verified\x1b[0m package '{}' exports valid symbols.", pkg_name);
+        println!(
+            "\x1b[1;32m  Verified\x1b[0m package '{}' exports valid symbols.",
+            pkg_name
+        );
     }
-    
+
     let pkg_out_dir = Path::new("target").join("pkg").join(&pkg_name);
     let _ = fs::create_dir_all(&pkg_out_dir);
-    
+
     if Path::new("flame.toml").exists() {
         let _ = fs::copy("flame.toml", pkg_out_dir.join("flame.toml"));
     }
@@ -753,7 +839,10 @@ fn package_project(_args: &[String]) {
             }
         }
     }
-    println!("\x1b[1;32m  Packaged\x1b[0m successfully to target/pkg/{}", pkg_name);
+    println!(
+        "\x1b[1;32m  Packaged\x1b[0m successfully to target/pkg/{}",
+        pkg_name
+    );
 }
 
 fn flash_project(args: &[String]) {
@@ -770,7 +859,8 @@ fn flash_project(args: &[String]) {
                     }
                 } else if t.starts_with("target =") {
                     if let Some(val) = t.split('=').nth(1) {
-                        toml_target = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                        toml_target =
+                            Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
                     }
                 }
             }
@@ -801,7 +891,7 @@ fn flash_project(args: &[String]) {
         Ok(mut s) => {
             crate::parser::filter_platform_stmts(&mut s, target.as_deref());
             s
-        },
+        }
         Err(e) => {
             e.print(&content);
             return;
@@ -809,7 +899,9 @@ fn flash_project(args: &[String]) {
     };
 
     let mut _baud = 115200;
-    if let Some((detected_target, detected_baud)) = embedded::codegen::detect_embedded_target(&stmts) {
+    if let Some((detected_target, detected_baud)) =
+        embedded::codegen::detect_embedded_target(&stmts)
+    {
         if target.is_none() {
             target = Some(detected_target);
         }
@@ -955,12 +1047,15 @@ fn run_tests(args: &[String]) {
                 let toml_path = pkg_path.join("flame.toml");
                 if toml_path.exists() {
                     let dep_manifest = fs::read_to_string(&toml_path).unwrap_or_default();
-                    for (name, mut path) in parse_manifest_section(&dep_manifest, "[native-dependencies]") {
+                    for (name, mut path) in
+                        parse_manifest_section(&dep_manifest, "[native-dependencies]")
+                    {
                         if path.starts_with('"') && path.ends_with('"') {
-                            path = path[1..path.len()-1].to_string();
+                            path = path[1..path.len() - 1].to_string();
                         }
                         if path.starts_with('.') || path.starts_with('/') {
-                            let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                            let abs = std::fs::canonicalize(pkg_path.join(&path))
+                                .unwrap_or_else(|_| pkg_path.join(&path));
                             path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
                         } else {
                             path = format!("\"{}\"", path);
@@ -969,10 +1064,11 @@ fn run_tests(args: &[String]) {
                     }
                     for (name, mut path) in parse_manifest_section(&dep_manifest, "[plugins]") {
                         if path.starts_with('"') && path.ends_with('"') {
-                            path = path[1..path.len()-1].to_string();
+                            path = path[1..path.len() - 1].to_string();
                         }
                         if path.starts_with('.') || path.starts_with('/') {
-                            let abs = std::fs::canonicalize(pkg_path.join(&path)).unwrap_or_else(|_| pkg_path.join(&path));
+                            let abs = std::fs::canonicalize(pkg_path.join(&path))
+                                .unwrap_or_else(|_| pkg_path.join(&path));
                             path = format!("\"{}\"", abs.to_string_lossy().replace("\\", "/"));
                         } else {
                             path = format!("\"{}\"", path);
@@ -1023,14 +1119,19 @@ fn run_tests(args: &[String]) {
     files_to_test.retain(|p| seen.insert(p.clone()));
 
     if !native_deps_raw.is_empty() || !plugins_raw.is_empty() {
-        println!("\x1b[1;36m     AOT Testing\x1b[0m Native plugins detected. Compiling test suite natively...");
+        println!(
+            "\x1b[1;36m     AOT Testing\x1b[0m Native plugins detected. Compiling test suite natively..."
+        );
         let mut processed_native_deps = Vec::new();
         for (plugin_name, plugin_path) in native_deps_raw {
             let mut path_str = plugin_path.clone();
             if path_str.starts_with('"') && path_str.ends_with('"') {
                 path_str = path_str[1..path_str.len() - 1].to_string();
             }
-            if path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute() {
+            if path_str.starts_with('.')
+                || path_str.starts_with('/')
+                || std::path::Path::new(&path_str).is_absolute()
+            {
                 let absolute_path = std::fs::canonicalize(std::path::Path::new(&path_str))
                     .unwrap_or_else(|_| std::env::current_dir().unwrap().join(&path_str));
                 let mut abs_path_str = absolute_path.to_string_lossy().replace("\\", "/");
@@ -1050,7 +1151,9 @@ fn run_tests(args: &[String]) {
                 path_str = path_str[1..path_str.len() - 1].to_string();
             }
 
-            let is_local = path_str.starts_with('.') || path_str.starts_with('/') || std::path::Path::new(&path_str).is_absolute();
+            let is_local = path_str.starts_with('.')
+                || path_str.starts_with('/')
+                || std::path::Path::new(&path_str).is_absolute();
             let actual_path = if is_local {
                 path_str
             } else {
@@ -1084,9 +1187,12 @@ fn run_tests(args: &[String]) {
 
         let exe_name = format!("{}_test{}", pkg_name, std::env::consts::EXE_SUFFIX);
         let target_exe = Path::new("target").join("dev").join(&exe_name);
-        
+
         if target_exe.exists() {
-            println!("\x1b[1;32m    Finished\x1b[0m test executable -> {}", target_exe.display());
+            println!(
+                "\x1b[1;32m    Finished\x1b[0m test executable -> {}",
+                target_exe.display()
+            );
             let status = std::process::Command::new(&target_exe).status();
             if let Ok(st) = status {
                 if !st.success() {
@@ -1096,7 +1202,6 @@ fn run_tests(args: &[String]) {
         }
         return;
     }
-
 
     if files_to_test.is_empty() {
         println!("No `.fm` test files found.");
@@ -1176,17 +1281,34 @@ fn run_tests(args: &[String]) {
 
         let mut runner = crate::runner::Runner::new(path.clone());
         if let Ok(content) = fs::read_to_string("flame.toml") {
-            runner.granted_permissions = crate::package_manager::parse_manifest_permissions(&content);
+            runner.granted_permissions =
+                crate::package_manager::parse_manifest_permissions(&content);
         }
         runner.interactive = false;
         runner.test_mode = true;
         if let Err(e) = runner.run(&stmts) {
             println!("  \x1b[1;31m[FAIL]\x1b[0m \x1b[1;36mGlobal\x1b[0m setup failed");
-            let span = runner.current_span.clone().unwrap_or(crate::lexer::Span { start: 0, end: 0, line: 1, col: 1 });
-            crate::diagnostics::Diagnostic::new_error(e, runner.filepath.display().to_string(), span, None, None).print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
+            let span = runner.current_span.clone().unwrap_or(crate::lexer::Span {
+                start: 0,
+                end: 0,
+                line: 1,
+                col: 1,
+            });
+            crate::diagnostics::Diagnostic::new_error(
+                e,
+                runner.filepath.display().to_string(),
+                span,
+                None,
+                None,
+            )
+            .print(&std::fs::read_to_string(&runner.filepath).unwrap_or_default());
         }
 
-        let stats = crate::test_engine::execute_test_suite(&mut runner, &stmts, &path.display().to_string());
+        let stats = crate::test_engine::execute_test_suite(
+            &mut runner,
+            &stmts,
+            &path.display().to_string(),
+        );
         total_passed += stats.passed;
         total_failed += stats.failed;
         total_ignored += stats.ignored;
@@ -1396,7 +1518,7 @@ fn run_check_command(args: &[String]) {
         println!("\x1b[1;32mcheck:\x1b[0m no diagnostics");
     } else {
         let content = if args.iter().any(|arg| arg == "--stdin") {
-            // Already read from stdin earlier, but we consumed it. 
+            // Already read from stdin earlier, but we consumed it.
             // In non-json mode, we probably aren't using stdin, but let's fall back to reading the file.
             std::fs::read_to_string(file).unwrap_or_default()
         } else {
@@ -1410,9 +1532,15 @@ fn run_check_command(args: &[String]) {
                 "info" => "\x1b[1;34m",
                 _ => "\x1b[1;31m",
             };
-            println!("{}{} :\x1b[0m \x1b[1m{}\x1b[0m", color, diagnostic.severity, diagnostic.message);
-            println!("  \x1b[1;36m-->\x1b[0m {}:{}:{}", diagnostic.file, diagnostic.line, diagnostic.column);
-            
+            println!(
+                "{}{} :\x1b[0m \x1b[1m{}\x1b[0m",
+                color, diagnostic.severity, diagnostic.message
+            );
+            println!(
+                "  \x1b[1;36m-->\x1b[0m {}:{}:{}",
+                diagnostic.file, diagnostic.line, diagnostic.column
+            );
+
             let line_idx = diagnostic.line.saturating_sub(1);
             if line_idx < file_lines.len() {
                 let line_str = diagnostic.line.to_string();
@@ -1442,7 +1570,12 @@ fn list_plugins_command(args: &[String]) {
     }
 }
 
-fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, stdin_content: Option<String>) -> JsonCheckOutput {
+fn analyze_file_for_json(
+    file: &str,
+    line: Option<usize>,
+    col: Option<usize>,
+    stdin_content: Option<String>,
+) -> JsonCheckOutput {
     let content = stdin_content.unwrap_or_else(|| fs::read_to_string(file).unwrap_or_default());
     let manifest_dir = find_manifest_root(Path::new(file)).unwrap_or_else(|| {
         Path::new(file)
@@ -1538,7 +1671,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
     let lines = content.lines().collect::<Vec<_>>();
     let current_line = if let Some(l) = line {
         let line = content.lines().nth(l.saturating_sub(1)).unwrap_or("");
-        eprintln!("DEBUG_EXTRACT: req.line={}, content.len={}, lines={}, line='{}'", l, content.len(), content.lines().count(), line);
+        eprintln!(
+            "DEBUG_EXTRACT: req.line={}, content.len={}, lines={}, line='{}'",
+            l,
+            content.len(),
+            content.lines().count(),
+            line
+        );
         line
     } else {
         ""
@@ -1547,13 +1686,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
     let mut completions = Vec::new();
     if current_line.trim_end().ends_with("import") {
-        completions.push(JsonCompletion { sort_text: None,
+        completions.push(JsonCompletion {
+            sort_text: None,
             label: "native".to_string(),
             kind: "module".to_string(),
             detail: "native dependencies".to_string(),
             documentation: None,
         });
-        completions.push(JsonCompletion { sort_text: None,
+        completions.push(JsonCompletion {
+            sort_text: None,
             label: "std".to_string(),
             kind: "module".to_string(),
             detail: "standard library".to_string(),
@@ -1561,7 +1702,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         });
     } else if current_line.contains("import native.") {
         for module in &native_modules {
-            completions.push(JsonCompletion { sort_text: None,
+            completions.push(JsonCompletion {
+                sort_text: None,
                 label: module.clone(),
                 kind: "plugin".to_string(),
                 detail: "native plugin".to_string(),
@@ -1570,16 +1712,20 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         }
     } else if current_line.contains("import std.") {
         for module in &std_modules {
-            completions.push(JsonCompletion { sort_text: None,
+            completions.push(JsonCompletion {
+                sort_text: None,
                 label: module.clone(),
                 kind: "module".to_string(),
                 detail: "standard library".to_string(),
                 documentation: None,
             });
         }
-    } else if current_line.trim().starts_with("@Requires(") && current_line[..cursor_col as usize].matches('"').count() % 2 == 1 {
+    } else if current_line.trim().starts_with("@Requires(")
+        && current_line[..cursor_col as usize].matches('"').count() % 2 == 1
+    {
         for module in &std_modules {
-            completions.push(JsonCompletion { sort_text: None,
+            completions.push(JsonCompletion {
+                sort_text: None,
                 label: format!("std.{}", module),
                 kind: "module".to_string(),
                 detail: "standard library".to_string(),
@@ -1587,7 +1733,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             });
         }
         for module in &native_modules {
-            completions.push(JsonCompletion { sort_text: None,
+            completions.push(JsonCompletion {
+                sort_text: None,
                 label: module.clone(),
                 kind: "plugin".to_string(),
                 detail: "native plugin".to_string(),
@@ -1596,7 +1743,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         }
     } else if current_line.contains("@p") || current_line.contains("@plugin") {
         for plugin in &plugins {
-            completions.push(JsonCompletion { sort_text: None,
+            completions.push(JsonCompletion {
+                sort_text: None,
                 label: "plugin".to_string(),
                 kind: "plugin".to_string(),
                 detail: plugin.source.clone(),
@@ -1610,7 +1758,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
     // Scan for variables and structs
     let (mut scanned_vars, mut scanned_structs) = ide::scan_document(&content);
-    
+
     let mut cursor_byte_idx = 0;
     if let Some(l) = line {
         let mut curr_line = 1;
@@ -1629,7 +1777,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
         }
     }
-    
+
     let impl_re = regex::Regex::new(r"impl\s+([a-zA-Z_]\w*)").unwrap();
     let mut current_impl = None;
     for cap in impl_re.captures_iter(&content) {
@@ -1639,10 +1787,10 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
         }
     }
-    if let Some(impl_name) = current_impl {
+    if let Some(ref impl_name) = current_impl {
         scanned_vars.push(crate::ide::ScannedVar {
             name: "self".to_string(),
-            typ: Some(impl_name),
+            typ: Some(impl_name.clone()),
             doc: None,
         });
     }
@@ -1657,7 +1805,9 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 annotations,
                 ..
             } => Some((name, params, return_type.as_deref(), false, annotations)),
-            crate::parser::Stmt::PackageDecl { name, annotations, .. } => {
+            crate::parser::Stmt::PackageDecl {
+                name, annotations, ..
+            } => {
                 let mut doc_str = String::new();
                 for ann in annotations {
                     if ann.name == "Docs" {
@@ -1669,9 +1819,13 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 if !doc_str.is_empty() {
                     if let Some(var) = scanned_vars.iter_mut().find(|v| {
                         v.name == *name
-                            && v.typ.as_deref() == Some(&format!("```flame\nimport package {}\n```", name))
+                            && v.typ.as_deref()
+                                == Some(&format!("```flame\nimport package {}\n```", name))
                     }) {
-                        var.doc = Some(format!("```flame\nimport package {}\n```\n{}", name, doc_str));
+                        var.doc = Some(format!(
+                            "```flame\nimport package {}\n```\n{}",
+                            name, doc_str
+                        ));
                     }
                 }
                 None
@@ -1683,58 +1837,93 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 annotations,
                 ..
             } => Some((name, params, return_type.as_deref(), true, annotations)),
-            crate::parser::Stmt::ExportDecl(inner, _) => {
-                match &**inner {
-                    crate::parser::Stmt::FuncDecl {
-                        name, params, return_type, annotations, ..
-                    } => Some((name, params, return_type.as_deref(), false, annotations)),
-                    crate::parser::Stmt::AnnotationDecl {
-                        name, params, return_type, annotations, ..
-                    } => Some((name, params, return_type.as_deref(), true, annotations)),
-                    crate::parser::Stmt::StructDecl {
-                        name, fields, ..
-                    } => {
-                        let mut struct_methods = Vec::new();
-                        for stmt in &imported_module_decls {
-                            if let crate::parser::Stmt::ImplDecl { target_type, methods, .. } = stmt {
-                                if target_type == name {
-                                    for m in methods {
-                                        if let crate::parser::Stmt::FuncDecl { name: m_name, params, return_type, annotations, .. } = m {
-                                            let mut doc_str = String::new();
-                                            for ann in annotations {
-                                                if ann.name == "Docs" {
-                                                    if let Some(s) = ann.args.get(0) {
-                                                        doc_str = s.trim_matches('"').to_string();
-                                                    }
+            crate::parser::Stmt::ExportDecl(inner, _) => match &**inner {
+                crate::parser::Stmt::FuncDecl {
+                    name,
+                    params,
+                    return_type,
+                    annotations,
+                    ..
+                } => Some((name, params, return_type.as_deref(), false, annotations)),
+                crate::parser::Stmt::AnnotationDecl {
+                    name,
+                    params,
+                    return_type,
+                    annotations,
+                    ..
+                } => Some((name, params, return_type.as_deref(), true, annotations)),
+                crate::parser::Stmt::StructDecl { name, fields, .. } => {
+                    let mut struct_methods = Vec::new();
+                    for stmt in &imported_module_decls {
+                        if let crate::parser::Stmt::ImplDecl {
+                            target_type,
+                            methods,
+                            ..
+                        } = stmt
+                        {
+                            if target_type == name {
+                                for m in methods {
+                                    if let crate::parser::Stmt::FuncDecl {
+                                        name: m_name,
+                                        params,
+                                        return_type,
+                                        annotations,
+                                        ..
+                                    } = m
+                                    {
+                                        let mut doc_str = String::new();
+                                        for ann in annotations {
+                                            if ann.name == "Docs" {
+                                                if let Some(s) = ann.args.get(0) {
+                                                    doc_str = s.trim_matches('"').to_string();
                                                 }
                                             }
-                                            let p_str = params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
-                                            let sig = format!("fn {}({}) -> {}", m_name, p_str, return_type.as_deref().unwrap_or("Nil"));
-                                            struct_methods.push(m_name.clone());
                                         }
+                                        let p_str = params
+                                            .iter()
+                                            .map(|p| format!("{}: {}", p.name, p.type_name))
+                                            .collect::<Vec<_>>()
+                                            .join(", ");
+                                        let sig = format!(
+                                            "fn {}({}) -> {}",
+                                            m_name,
+                                            p_str,
+                                            return_type.as_deref().unwrap_or("Nil")
+                                        );
+                                        struct_methods.push(m_name.clone());
                                     }
                                 }
                             }
                         }
-                        scanned_structs.push(ide::ScannedStruct {
-                            name: name.clone(),
-                            fields: fields.clone(),
-                            methods: struct_methods,
-                        });
-                        None
                     }
-                    _ => None,
+                    scanned_structs.push(ide::ScannedStruct {
+                        name: name.clone(),
+                        fields: fields.clone(),
+                        methods: struct_methods,
+                    });
+                    None
                 }
-            }
-            crate::parser::Stmt::StructDecl {
-                name, fields, ..
-            } => {
+                _ => None,
+            },
+            crate::parser::Stmt::StructDecl { name, fields, .. } => {
                 let mut struct_methods = Vec::new();
                 for stmt in &imported_module_decls {
-                    if let crate::parser::Stmt::ImplDecl { target_type, methods, .. } = stmt {
+                    if let crate::parser::Stmt::ImplDecl {
+                        target_type,
+                        methods,
+                        ..
+                    } = stmt
+                    {
                         if target_type == name {
                             for m in methods {
-                                if let crate::parser::Stmt::FuncDecl { name: m_name, params, return_type, annotations, .. } = m {
+                                if let crate::parser::Stmt::FuncDecl {
+                                    name: m_name,
+                                    params,
+                                    return_type,
+                                    annotations,
+                                    ..
+                                } = m
+                                {
                                     let mut doc_str = String::new();
                                     for ann in annotations {
                                         if ann.name == "Docs" {
@@ -1743,8 +1932,17 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                             }
                                         }
                                     }
-                                    let p_str = params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
-                                    let sig = format!("fn {}({}) -> {}", m_name, p_str, return_type.as_deref().unwrap_or("Nil"));
+                                    let p_str = params
+                                        .iter()
+                                        .map(|p| format!("{}: {}", p.name, p.type_name))
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
+                                    let sig = format!(
+                                        "fn {}({}) -> {}",
+                                        m_name,
+                                        p_str,
+                                        return_type.as_deref().unwrap_or("Nil")
+                                    );
                                     struct_methods.push(m_name.clone());
                                 }
                             }
@@ -1781,7 +1979,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     format!("annotation @{}({})", name, params_str)
                 }
             } else {
-                format!("fn {}({}) -> {}", name, params_str, return_type.unwrap_or("Nil"))
+                format!(
+                    "fn {}({}) -> {}",
+                    name,
+                    params_str,
+                    return_type.unwrap_or("Nil")
+                )
             };
 
             let doc_text = doc_str.clone().unwrap_or(sig.clone());
@@ -1813,6 +2016,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
     // Enrich scanned_vars with return types from native module function calls
     for mod_name in &native_modules {
         if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+            // Resolve annotation plugins
+            if let Some(init_func) = meta.functions.iter().find(|f| f.flame_name == "init") {
+                for var in &mut scanned_vars {
+                    if var.typ.as_deref() == Some(&format!("annotation_plugin:{}", mod_name)) {
+                        var.typ = Some(init_func.return_type.clone());
+                    }
+                }
+            }
+
             for func in &meta.functions {
                 let pattern1 = format!("= {}.{}(", mod_name, func.flame_name);
                 let pattern2 = format!("= await {}.{}(", mod_name, func.flame_name);
@@ -1837,11 +2049,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     }
                 }
             }
-            
+
             for struct_meta in &meta.structs {
                 for func in &struct_meta.methods {
-                    let pattern1 = format!("= {}.{}.{}(", mod_name, struct_meta.name, func.flame_name);
-                    let pattern2 = format!("= await {}.{}.{}(", mod_name, struct_meta.name, func.flame_name);
+                    let pattern1 =
+                        format!("= {}.{}.{}(", mod_name, struct_meta.name, func.flame_name);
+                    let pattern2 = format!(
+                        "= await {}.{}.{}(",
+                        mod_name, struct_meta.name, func.flame_name
+                    );
                     for line in content.lines() {
                         if line.contains(&pattern1) || line.contains(&pattern2) {
                             if let Some(eq_idx) = line.find('=') {
@@ -1889,12 +2105,16 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 }
             }
             if cursor_byte_idx == 0 && curr_line == l && cursor_col >= curr_col {
-                 cursor_byte_idx = content.len();
+                cursor_byte_idx = content.len();
             }
 
             let mut best_span: Option<&crate::lexer::Span> = None;
             let mut best_ty_str = None;
-            eprintln!("DEBUG_HOVER: byte_idx={}, tc.hover_info keys: {:?}", cursor_byte_idx, tc.hover_info.keys());
+            eprintln!(
+                "DEBUG_HOVER: byte_idx={}, tc.hover_info keys: {:?}",
+                cursor_byte_idx,
+                tc.hover_info.keys()
+            );
 
             for (span, ty_str) in &tc.hover_info {
                 if cursor_byte_idx >= span.start && cursor_byte_idx <= span.end {
@@ -1912,18 +2132,23 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
 
             if let Some(ty_str) = best_ty_str {
                 if ty_str != "Unknown" {
-                    if ty_str.starts_with("```") || ty_str.starts_with('@') || ty_str.contains('\n') {
+                    if ty_str.starts_with("```") || ty_str.starts_with('@') || ty_str.contains('\n')
+                    {
                         exact_ast_hover = Some(JsonHover {
                             label: word_under_cursor.clone(),
                             documentation: Some(ty_str.clone()),
                         });
                     } else if ty_str.starts_with("fn(") {
-                        if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
+                        if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor)
+                        {
                             if let Some(t) = &var.typ {
                                 if t.starts_with("fn ") {
                                     exact_ast_hover = Some(JsonHover {
                                         label: word_under_cursor.clone(),
-                                        documentation: Some(format!("```flame\n{}\n```\nDefined in project", t)),
+                                        documentation: Some(format!(
+                                            "```flame\n{}\n```\nDefined in project",
+                                            t
+                                        )),
                                     });
                                 }
                             }
@@ -1988,10 +2213,9 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         }
     }
 
-
     if let Some(namespace) = namespace {
         let mut resolved_as_var = false;
-        
+
         // First check if it's a known variable! If so, it might be a struct or native type (e.g. FlameServer)
         if let Some(var) = scanned_vars.iter().find(|v| v.name == namespace) {
             if let Some(typ) = &var.typ {
@@ -2000,8 +2224,12 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     for s in &scanned_structs {
                         if s.name == *typ {
                             for func_name in &s.methods {
-                                if member_prefix.as_deref().map_or(true, |p| func_name.starts_with(p)) {
-                                    completions.push(JsonCompletion { sort_text: None,
+                                if member_prefix
+                                    .as_deref()
+                                    .map_or(true, |p| func_name.starts_with(p))
+                                {
+                                    completions.push(JsonCompletion {
+                                        sort_text: None,
                                         label: func_name.clone(),
                                         kind: "method".to_string(),
                                         detail: format!("struct {}", typ),
@@ -2015,10 +2243,16 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     if !provided {
                         for mod_name in &native_modules {
                             if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
-                                if let Some(struct_meta) = meta.structs.iter().find(|s| s.name == *typ) {
+                                if let Some(struct_meta) =
+                                    meta.structs.iter().find(|s| s.name == *typ)
+                                {
                                     for func in &struct_meta.methods {
-                                        if member_prefix.as_deref().map_or(true, |p| func.flame_name.starts_with(p)) {
-                                            completions.push(JsonCompletion { sort_text: None,
+                                        if member_prefix
+                                            .as_deref()
+                                            .map_or(true, |p| func.flame_name.starts_with(p))
+                                        {
+                                            completions.push(JsonCompletion {
+                                                sort_text: None,
                                                 label: func.flame_name.clone(),
                                                 kind: "method".to_string(),
                                                 detail: format!("native {}.{}", mod_name, typ),
@@ -2034,29 +2268,72 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     }
                     if provided {
                         resolved_as_var = true;
-                        
+
                         if !word_under_cursor.is_empty() {
-                            for s in &scanned_structs {
-                                if s.name == *typ {
-                                    if let Some(func_name) = s.methods.iter().find(|&f| f == &word_under_cursor) {
-                                        let sig = format!("fn {}(...)", func_name);
+                            if let Some(tc) = &tc_opt {
+                                if let Some(methods) = tc.methods.get(typ) {
+                                    if let Some((_, sig)) = methods.iter().find(|(name, _)| *name == &word_under_cursor) {
                                         hover_found = Some(JsonHover {
-                                            label: format!("{}.{}", typ, func_name),
-                                            documentation: Some(format!("```flame\n{}\n```\nDefined in project", sig)),
+                                            label: format!("{}::{}()", typ, word_under_cursor),
+                                            documentation: sig.hover_doc.clone().or_else(|| Some(format!("```flame\nfn {}(...)\n```", word_under_cursor)))
                                         });
+                                    }
+                                }
+                            }
+                            
+                            if hover_found.is_none() {
+                                for s in &scanned_structs {
+                                    if s.name == *typ {
+                                        if let Some(func_name) =
+                                            s.methods.iter().find(|&f| f == &word_under_cursor)
+                                        {
+                                            let sig = format!("fn {}(...)", func_name);
+                                            hover_found = Some(JsonHover {
+                                                label: format!("{}::{}()", typ, func_name),
+                                                documentation: Some(format!(
+                                                    "```flame\n{}\n```\nDefined in project",
+                                                    sig
+                                                )),
+                                            });
+                                        }
                                     }
                                 }
                             }
                             if hover_found.is_none() {
                                 for mod_name in &native_modules {
-                                    if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
-                                        if let Some(struct_meta) = meta.structs.iter().find(|s| s.name == *typ) {
-                                            if let Some(function) = struct_meta.methods.iter().find(|f| f.flame_name == word_under_cursor) {
-                                                let params_str = function.params.iter().map(|p| format!("{}: {}", p.name, p.type_name)).collect::<Vec<_>>().join(", ");
-                                                let sig = format!("fn {}({}) -> {}", function.flame_name, params_str, function.return_type);
+                                    if let Some(meta) =
+                                        load_meta_from_project(&manifest_dir, mod_name)
+                                    {
+                                        if let Some(struct_meta) =
+                                            meta.structs.iter().find(|s| s.name == *typ)
+                                        {
+                                            if let Some(function) = struct_meta
+                                                .methods
+                                                .iter()
+                                                .find(|f| f.flame_name == word_under_cursor)
+                                            {
+                                                let params_str = function
+                                                    .params
+                                                    .iter()
+                                                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ");
+                                                let sig = format!(
+                                                    "fn {}({}) -> {}",
+                                                    function.flame_name,
+                                                    params_str,
+                                                    function.return_type
+                                                );
                                                 hover_found = Some(JsonHover {
-                                                    label: format!("{}.{}", typ, function.flame_name),
-                                                    documentation: Some(format!("```flame\n{}\n```\n{}", sig, function.docs.clone().unwrap_or_default())),
+                                                    label: format!(
+                                                        "{}.{}",
+                                                        typ, function.flame_name
+                                                    ),
+                                                    documentation: Some(format!(
+                                                        "```flame\n{}\n```\n{}",
+                                                        sig,
+                                                        function.docs.clone().unwrap_or_default()
+                                                    )),
                                                 });
                                                 break;
                                             }
@@ -2071,96 +2348,763 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         }
 
         if !resolved_as_var {
-        if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
-            for function in &meta.functions {
-                if member_prefix
-                    .as_deref()
-                    .map(|prefix| function.flame_name.starts_with(prefix))
-                    .unwrap_or(true)
-                {
-                    completions.push(JsonCompletion { sort_text: None,
-                        label: function.flame_name.clone(),
-                        kind: "function".to_string(),
-                        detail: format!("native.{}", namespace),
-                        documentation: function.docs.clone().or_else(|| {
-                            load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
-                        }),
-                    });
+            if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
+                for function in &meta.functions {
+                    if member_prefix
+                        .as_deref()
+                        .map(|prefix| function.flame_name.starts_with(prefix))
+                        .unwrap_or(true)
+                    {
+                        completions.push(JsonCompletion {
+                            sort_text: None,
+                            label: function.flame_name.clone(),
+                            kind: "function".to_string(),
+                            detail: format!("native.{}", namespace),
+                            documentation: function.docs.clone().or_else(|| {
+                                load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
+                            }),
+                        });
+                    }
                 }
-            }
-            // Add struct names themselves as completions
-            for struct_meta in &meta.structs {
-                if member_prefix
-                    .as_deref()
-                    .map_or(true, |prefix| struct_meta.name.starts_with(prefix))
-                {
-                    completions.push(JsonCompletion { sort_text: Some("2_".to_string()),
-                        label: struct_meta.name.clone(),
-                        kind: "class".to_string(),
-                        detail: format!("struct (from {})", namespace),
-                        documentation: struct_meta.docs.clone(),
-                    });
+                // Add struct names themselves as completions
+                for struct_meta in &meta.structs {
+                    if member_prefix
+                        .as_deref()
+                        .map_or(true, |prefix| struct_meta.name.starts_with(prefix))
+                    {
+                        completions.push(JsonCompletion {
+                            sort_text: Some("2_".to_string()),
+                            label: struct_meta.name.clone(),
+                            kind: "class".to_string(),
+                            detail: format!("struct (from {})", namespace),
+                            documentation: struct_meta.docs.clone(),
+                        });
+                    }
+
+                    if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
+                        for function in &struct_meta.methods {
+                            if member_prefix
+                                .as_deref()
+                                .map(|prefix| function.flame_name.starts_with(prefix))
+                                .unwrap_or(true)
+                            {
+                                completions.push(JsonCompletion {
+                                    sort_text: None,
+                                    label: function.flame_name.clone(),
+                                    kind: "function".to_string(),
+                                    detail: format!("native.{}", namespace),
+                                    documentation: function.docs.clone().or_else(|| {
+                                        load_local_rust_doc(
+                                            &manifest_dir,
+                                            &namespace,
+                                            &function.flame_name,
+                                        )
+                                    }),
+                                });
+                            }
+                        }
+                    }
                 }
-                
-                if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
-                    for function in &struct_meta.methods {
-                        if member_prefix
-                            .as_deref()
-                            .map(|prefix| function.flame_name.starts_with(prefix))
-                            .unwrap_or(true)
+                if !word_under_cursor.is_empty() {
+                    hover_found = meta
+                        .functions
+                        .iter()
+                        .find(|function| function.flame_name == word_under_cursor)
+                        .map(|function| {
+                            let params_str = function
+                                .params
+                                .iter()
+                                .map(|p| format!("{}: {}", p.name, p.type_name))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let sig = format!(
+                                "fn {}({}) -> {}",
+                                function.flame_name, params_str, function.return_type
+                            );
+                            let doc = function.docs.clone().unwrap_or_else(|| {
+                                load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
+                                    .unwrap_or_default()
+                            });
+                            JsonHover {
+                                label: format!("{}.{}", namespace, function.flame_name),
+                                documentation: Some(format!(
+                                    "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
+                                    sig, doc, function.return_type
+                                )),
+                            }
+                        });
+
+                    if hover_found.is_none() {
+                        for struct_meta in &meta.structs {
+                            if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
+                                if let Some(function) = struct_meta
+                                    .methods
+                                    .iter()
+                                    .find(|f| f.flame_name == word_under_cursor)
+                                {
+                                    let params_str = function
+                                        .params
+                                        .iter()
+                                        .map(|p| format!("{}: {}", p.name, p.type_name))
+                                        .collect::<Vec<_>>()
+                                        .join(", ");
+                                    let sig = format!(
+                                        "fn {}({}) -> {}",
+                                        function.flame_name, params_str, function.return_type
+                                    );
+                                    let doc = function.docs.clone().unwrap_or_else(|| {
+                                        load_local_rust_doc(
+                                            &manifest_dir,
+                                            &namespace,
+                                            &function.flame_name,
+                                        )
+                                        .unwrap_or_default()
+                                    });
+                                    hover_found = Some(JsonHover {
+                                        label: format!("{}.{}", namespace, function.flame_name),
+                                        documentation: Some(format!(
+                                            "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
+                                            sig, doc, function.return_type
+                                        )),
+                                    });
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if hover_found.is_none() {
+                        if let Some(struct_meta) =
+                            meta.structs.iter().find(|s| s.name == word_under_cursor)
                         {
-                            completions.push(JsonCompletion { sort_text: None,
-                                label: function.flame_name.clone(),
-                                kind: "function".to_string(),
-                                detail: format!("native.{}", namespace),
-                                documentation: function.docs.clone().or_else(|| {
-                                    load_local_rust_doc(
-                                        &manifest_dir,
-                                        &namespace,
-                                        &function.flame_name,
-                                    )
-                                }),
+                            let doc = struct_meta.docs.clone().unwrap_or_default();
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}", namespace, struct_meta.name),
+                                documentation: Some(format!(
+                                    "```flame\nstruct {}\n```\n{}",
+                                    struct_meta.name, doc
+                                )),
                             });
                         }
                     }
                 }
-            }
-            if !word_under_cursor.is_empty() {
-                hover_found = meta
-                    .functions
-                    .iter()
-                    .find(|function| function.flame_name == word_under_cursor)
-                    .map(|function| {
-                        let params_str = function
-                            .params
+            } else if let Some(def) = ide::get_native_module_def(&namespace) {
+                for func in &def.functions {
+                    if member_prefix
+                        .as_deref()
+                        .map_or(true, |p| func.name.starts_with(p))
+                    {
+                        completions.push(JsonCompletion {
+                            sort_text: None,
+                            label: func.name.clone(),
+                            kind: "function".to_string(),
+                            detail: format!("{}", func.return_type),
+                            documentation: Some(format!(
+                                "```flame\nfn {}({}) -> {}\n```\n{}",
+                                func.name,
+                                func.params
+                                    .iter()
+                                    .map(|(n, t)| format!("{}: {}", n, t))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                func.return_type,
+                                func.description
+                            )),
+                        });
+                    }
+                    if !word_under_cursor.is_empty() && func.name == word_under_cursor {
+                        hover_found = Some(JsonHover {
+                            label: format!("{}::{}()", namespace, func.name),
+                            documentation: Some(format!(
+                                "```flame\nfn {}({}) -> {}\n```\n{}",
+                                func.name,
+                                func.params
+                                    .iter()
+                                    .map(|(n, t)| format!("{}: {}", n, t))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                func.return_type,
+                                func.description
+                            )),
+                        });
+                    }
+                }
+                for typ in &def.types {
+                    if member_prefix
+                        .as_deref()
+                        .map_or(true, |p| typ.name.starts_with(p))
+                    {
+                        completions.push(JsonCompletion {
+                            sort_text: None,
+                            label: typ.name.clone(),
+                            kind: "class".to_string(),
+                            detail: "type".to_string(),
+                            documentation: Some(format!(
+                                "```flame\ntype {}\n```\n{}",
+                                typ.name, typ.description
+                            )),
+                        });
+                    }
+                }
+
+                // For hover:
+                if !word_under_cursor.is_empty() {
+                    if let Some(func) = def.functions.iter().find(|f| f.name == word_under_cursor) {
+                        hover_found = Some(JsonHover {
+                            label: format!("{}.{}()", def.name, func.name),
+                            documentation: Some(format!(
+                                "```flame\nfn {}({}) -> {}\n```\n{}",
+                                func.name,
+                                func.params
+                                    .iter()
+                                    .map(|(n, t)| format!("{}: {}", n, t))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                func.return_type,
+                                func.description
+                            )),
+                        });
+                    } else if let Some(typ) = def.types.iter().find(|t| t.name == word_under_cursor)
+                    {
+                        hover_found = Some(JsonHover {
+                            label: format!("{}.{}", def.name, typ.name),
+                            documentation: Some(format!(
+                                "```flame\ntype {}\n```\n{}",
+                                typ.name, typ.description
+                            )),
+                        });
+                    }
+                }
+            } else if let Some(tc) = &tc_opt {
+                if let Some(enum_info) = tc.enums.get(&namespace) {
+                    if !word_under_cursor.is_empty() {
+                        if let Some((variant_name, variant_info)) = enum_info.variants.iter().find(|(n, _)| *n == &word_under_cursor) {
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}", namespace, variant_name),
+                                documentation: variant_info.hover_doc.clone().or_else(|| Some(format!("```flame\n{}::{} variant\n```", namespace, variant_name)))
+                            });
+                        }
+                    }
+                }
+                
+                if let Some(methods) = tc.methods.iter().find(|(k, _)| k == &&namespace || k.ends_with(&format!(".{}", namespace))).map(|(_, v)| v) {
+                    for (method_name, sig) in methods {
+                        if sig.is_static {
+                            if member_prefix.as_deref().map_or(true, |p| method_name.starts_with(p)) {
+                                completions.push(JsonCompletion {
+                                    sort_text: None,
+                                    label: method_name.clone(),
+                                    kind: "function".to_string(),
+                                    detail: format!("{} method", namespace),
+                                    documentation: sig.hover_doc.clone()
+                                });
+                            }
+                        }
+                        if !word_under_cursor.is_empty() && method_name == &word_under_cursor {
+                            let params_str = sig.params.iter().map(|p| format!("{}: {:?}", p.name, p.ty)).collect::<Vec<_>>().join(", ");
+                            let return_str = if sig.return_type == crate::typechecker::Type::Nil { "".to_string() } else { format!(" -> {:?}", sig.return_type) };
+                            let fallback_doc = format!("```flame\nfn {}({}){}\n```", method_name, params_str, return_str);
+                            let final_doc = if let Some(doc) = &sig.hover_doc { format!("{}\n\n{}", fallback_doc, doc) } else { fallback_doc };
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}()", namespace, method_name),
+                                documentation: Some(final_doc)
+                            });
+                        }
+                    }
+                }
+            } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {
+                for method in &std_methods {
+                    if member_prefix
+                        .as_deref()
+                        .map_or(true, |prefix| method.starts_with(prefix))
+                    {
+                        completions.push(JsonCompletion {
+                            sort_text: None,
+                            label: method.clone(),
+                            kind: "function".to_string(),
+                            detail: format!("std.{}", namespace),
+                            documentation: crate::std_docs::get_std_function_doc(
+                                &namespace, method,
+                            )
+                            .map(|d| d.to_string()),
+                        });
+                    }
+                }
+
+                if !word_under_cursor.is_empty() && std_methods.contains(&word_under_cursor) {
+                    if let Some(doc) =
+                        crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor)
+                    {
+                        hover_found = Some(JsonHover {
+                            label: format!("{namespace}.{word_under_cursor}()"),
+                            documentation: Some(doc.to_string()),
+                        });
+                    } else {
+                        hover_found = Some(JsonHover {
+                            label: format!("{namespace}.{word_under_cursor}()"),
+                            documentation: Some(format!(
+                                "Standard library function: {namespace}.{word_under_cursor}"
+                            )),
+                        });
+                    }
+                }
+            } else if let Some(local_stmts) =
+                load_local_module_declarations(&manifest_dir, file, &namespace)
+            {
+                let mut provided_completions = false;
+
+                for stmt in &local_stmts {
+                    let func_info = match stmt {
+                        crate::parser::Stmt::FuncDecl {
+                            name,
+                            params,
+                            return_type,
+                            annotations,
+                            ..
+                        } => Some((name, params, return_type, false, annotations)),
+                        crate::parser::Stmt::AnnotationDecl {
+                            name,
+                            params,
+                            return_type,
+                            annotations,
+                            ..
+                        } => Some((name, params, return_type, true, annotations)),
+                        crate::parser::Stmt::ExportDecl(inner, _) => match &**inner {
+                            crate::parser::Stmt::FuncDecl {
+                                name,
+                                params,
+                                return_type,
+                                annotations,
+                                ..
+                            } => Some((name, params, return_type, false, annotations)),
+                            crate::parser::Stmt::AnnotationDecl {
+                                name,
+                                params,
+                                return_type,
+                                annotations,
+                                ..
+                            } => Some((name, params, return_type, true, annotations)),
+                            crate::parser::Stmt::StructDecl { name, .. } => {
+                                completions.push(JsonCompletion {
+                                    sort_text: None,
+                                    label: name.clone(),
+                                    kind: "class".to_string(),
+                                    detail: "struct".to_string(),
+                                    documentation: None,
+                                });
+                                provided_completions = true;
+                                None
+                            }
+                            _ => None,
+                        },
+                        crate::parser::Stmt::StructDecl { name, .. } => {
+                            completions.push(JsonCompletion {
+                                sort_text: None,
+                                label: name.clone(),
+                                kind: "class".to_string(),
+                                detail: "struct".to_string(),
+                                documentation: None,
+                            });
+                            provided_completions = true;
+                            None
+                        }
+                        _ => None,
+                    };
+
+                    if let Some((name, params, return_type, is_annotation, annotations)) = func_info
+                    {
+                        let param_strs = params
                             .iter()
-                            .map(|p| format!("{}: {}", p.name, p.type_name))
+                            .map(|p| {
+                                format!(
+                                    "{}{}: {}{}",
+                                    if p.is_mut { "mut " } else { "" },
+                                    p.name,
+                                    if p.is_ref { "&" } else { "" },
+                                    p.type_name
+                                )
+                            })
                             .collect::<Vec<_>>()
                             .join(", ");
-                        let sig = format!(
-                            "fn {}({}) -> {}",
-                            function.flame_name, params_str, function.return_type
-                        );
-                        let doc = function.docs.clone().unwrap_or_else(|| {
-                            load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
-                                .unwrap_or_default()
-                        });
-                        JsonHover {
-                            label: format!("{}.{}", namespace, function.flame_name),
-                            documentation: Some(format!(
-                                "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
-                                sig, doc, function.return_type
-                            )),
-                        }
-                    });
+                        let sig = if is_annotation {
+                            if let Some(ret) = return_type.as_deref() {
+                                format!("annotation @{}({}) -> {}", name, param_strs, ret)
+                            } else {
+                                format!("annotation @{}({})", name, param_strs)
+                            }
+                        } else {
+                            format!(
+                                "fn {}({}) -> {}",
+                                name,
+                                param_strs,
+                                return_type.as_deref().unwrap_or("Nil")
+                            )
+                        };
 
-                if hover_found.is_none() {
-                    for struct_meta in &meta.structs {
-                        if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
-                            if let Some(function) = struct_meta
-                                .methods
-                                .iter()
-                                .find(|f| f.flame_name == word_under_cursor)
+                        let actual_label = if is_annotation {
+                            format!("@{}", name)
+                        } else {
+                            name.clone()
+                        };
+
+                        let mut doc_str = String::new();
+                        for ann in annotations.iter() {
+                            if ann.name == "Docs" {
+                                if let Some(s) = ann.args.get(0) {
+                                    let unquoted = s.trim_matches('"').replace("\\n", "\n");
+                                    let lines: Vec<&str> = unquoted.lines().collect();
+                                    let mut min_indent = usize::MAX;
+                                    for line in &lines {
+                                        if line.trim().is_empty() {
+                                            continue;
+                                        }
+                                        let indent = line
+                                            .chars()
+                                            .take_while(|c| *c == ' ' || *c == '\t')
+                                            .count();
+                                        if indent < min_indent {
+                                            min_indent = indent;
+                                        }
+                                    }
+                                    let mut cleaned_doc = String::new();
+                                    for line in &lines {
+                                        if line.trim().is_empty() {
+                                            cleaned_doc.push('\n');
+                                        } else {
+                                            let indent = if min_indent == usize::MAX {
+                                                0
+                                            } else {
+                                                min_indent
+                                            };
+                                            let slice_start = std::cmp::min(indent, line.len());
+                                            cleaned_doc.push_str(&line[slice_start..]);
+                                            cleaned_doc.push('\n');
+                                        }
+                                    }
+                                    let trimmed = cleaned_doc.trim();
+                                    if !trimmed.is_empty() {
+                                        doc_str = format!("\n\n{}", trimmed);
+                                    }
+                                }
+                            }
+                        }
+
+                        if member_prefix
+                            .as_deref()
+                            .map_or(true, |prefix| name.starts_with(prefix))
+                        {
+                            if is_annotation && !word_under_cursor_raw.starts_with('@') {
+                                // Only suggest annotations when user types @
+                            } else {
+                                completions.push(JsonCompletion {
+                                    sort_text: Some("1_".to_string()),
+                                    label: actual_label,
+                                    kind: if is_annotation {
+                                        "annotation".to_string()
+                                    } else {
+                                        "function".to_string()
+                                    },
+                                    detail: format!("module {}", namespace),
+                                    documentation: Some(format!(
+                                        "```flame\n{}\n```{}",
+                                        sig, doc_str
+                                    )),
+                                });
+                                provided_completions = true;
+                            }
+                        }
+
+                        if !word_under_cursor.is_empty() && name == &word_under_cursor {
+                            hover_found = Some(JsonHover {
+                                label: format!("{}.{}()", namespace, name),
+                                documentation: Some(format!("```flame\n{}\n```{}", sig, doc_str)),
+                            });
+                        }
+                    }
+                }
+
+                if !provided_completions {
+                    // If the local file had no such functions matching the prefix, we just do nothing here.
+                }
+            } else {
+                let mut var_type = None;
+                let mut is_instance = false;
+                let mut pkg_suggestions = Vec::new();
+                if let Some(first_part) = namespace.split('.').next() {
+                    var_type = scanned_vars
+                        .iter()
+                        .find(|v| v.name == first_part)
+                        .and_then(|v| {
+                            is_instance = true;
+                            v.typ.clone()
+                        });
+
+                    for part in namespace.split('.').skip(1) {
+                        if let Some(vt) = var_type {
+                            var_type = None;
+                            if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == vt)
+                            {
+                                if let Some(field) = struct_def.fields.iter().find(|f| f.0 == part)
+                                {
+                                    var_type = Some(field.1.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If not found as a variable, maybe it's a struct name directly?
+                if var_type.is_none() {
+                    is_instance = false;
+                    if scanned_structs.iter().any(|s| s.name == namespace) {
+                        var_type = Some(namespace.to_string());
+                    } else if let Some(dot_idx) = namespace.find('.') {
+                        let mod_name = &namespace[..dot_idx];
+                        let struct_name = &namespace[dot_idx + 1..];
+                        if native_modules.contains(&mod_name.to_string()) {
+                            if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+                                if meta.structs.iter().any(|s| s.name == struct_name) {
+                                    var_type = Some(struct_name.to_string());
+                                }
+                            }
+                        }
+                    } else {
+                        let path_parts = vec![namespace.clone()];
+                        if let Some(candidate) =
+                            crate::stdlib::locate_import_file(Path::new(file), &path_parts).or_else(
+                                || {
+                                    let direct = manifest_dir.join(format!("{}.fm", namespace));
+                                    if direct.exists() {
+                                        return Some(direct);
+                                    }
+                                    let pkg_main = manifest_dir
+                                        .join(".flame")
+                                        .join("pkg")
+                                        .join(&namespace)
+                                        .join("src")
+                                        .join("main.fm");
+                                    if pkg_main.exists() {
+                                        return Some(pkg_main);
+                                    }
+                                    None
+                                },
+                            )
+                        {
+                            eprintln!("DEBUG_CANDIDATE: {:?}", candidate);
+                            match std::fs::read_to_string(&candidate) {
+                                Ok(content) => {
+                                    eprintln!("DEBUG_CANDIDATE_READ_OK, len={}", content.len());
+                                    let mut lexer = crate::lexer::Lexer::new(&content);
+                                    let mut tokens = Vec::new();
+                                    loop {
+                                        let tok = lexer.next_token();
+                                        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                                        tokens.push(tok);
+                                        if is_eof {
+                                            break;
+                                        }
+                                    }
+                                    let mut parser = crate::parser::Parser::new(
+                                        tokens,
+                                        candidate.to_string_lossy().to_string(),
+                                    );
+                                    if let Ok(stmts) = parser.parse() {
+                                        eprintln!("DEBUG_STMTS_LEN: {}", stmts.len());
+                                        for stmt in stmts {
+                                            if let crate::parser::Stmt::PackageDecl {
+                                                annotations,
+                                                ..
+                                            } = stmt
+                                            {
+                                                for ann in annotations {
+                                                    eprintln!(
+                                                        "DEBUG_ANN: name={}, args={:?}",
+                                                        ann.name, ann.args
+                                                    );
+                                                    if ann.name == "Suggestions"
+                                                        && !ann.args.is_empty()
+                                                    {
+                                                        let s_args = ann.args.join(" ");
+                                                        let re = regex::Regex::new(r"\{\s*name\s*:\s*([^,]+),\s*kind\s*:\s*([^,}]+)(?:,\s*doc\s*:\s*([^}]+))?\}").unwrap();
+                                                        for cap in re.captures_iter(&s_args) {
+                                                            let struct_name = cap[1]
+                                                                .trim()
+                                                                .trim_matches(|c| {
+                                                                    c == '"' || c == '\''
+                                                                })
+                                                                .to_string();
+                                                            let kind = cap[2]
+                                                                .trim()
+                                                                .trim_matches(|c| {
+                                                                    c == '"' || c == '\''
+                                                                })
+                                                                .to_string();
+                                                            let doc = cap.get(3).map(|m| {
+                                                                m.as_str()
+                                                                    .trim()
+                                                                    .trim_matches(|c| {
+                                                                        c == '"' || c == '\''
+                                                                    })
+                                                                    .to_string()
+                                                            });
+                                                            pkg_suggestions.push((
+                                                                struct_name,
+                                                                kind,
+                                                                doc,
+                                                            ));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("DEBUG_CANDIDATE_READ_ERR: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+                // eprintln!("DEBUG_COMPLETIONS_PRE: namespace={}, var_type={:?}", namespace, var_type);
+
+                let mut provided_completions = false;
+
+                if let Some(tc) = &tc_opt {
+                    if let Some(enum_info) = tc.enums.get(&namespace) {
+                        for (variant_name, _) in &enum_info.variants {
+                            if member_prefix
+                                .as_deref()
+                                .map_or(true, |p| variant_name.starts_with(p))
+                            {
+                                completions.push(JsonCompletion {
+                                    sort_text: Some("1_".to_string()),
+                                    label: variant_name.clone(),
+                                    kind: "enumMember".to_string(),
+                                    detail: format!("{} enum variant", namespace),
+                                    documentation: None,
+                                });
+                                provided_completions = true;
+                            }
+                        }
+                    } else if var_type.is_none() {
+                        for (enum_name, enum_info) in &tc.enums {
+                            if enum_name.starts_with(&format!("{}.", namespace)) {
+                                let short_name =
+                                    enum_name.strip_prefix(&format!("{}.", namespace)).unwrap();
+                                if !short_name.contains('.')
+                                    && member_prefix
+                                        .as_deref()
+                                        .map_or(true, |p| short_name.starts_with(p))
+                                {
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("1_".to_string()),
+                                        label: short_name.to_string(),
+                                        kind: "enum".to_string(),
+                                        detail: format!("{} enum", namespace),
+                                        documentation: enum_info.hover_doc.clone(),
+                                    });
+                                    provided_completions = true;
+                                }
+                            }
+                        }
+                        for (struct_name, s_info) in &tc.structs {
+                            if struct_name.starts_with(&format!("{}.", namespace)) {
+                                let short_name = struct_name
+                                    .strip_prefix(&format!("{}.", namespace))
+                                    .unwrap();
+                                if !short_name.contains('.')
+                                    && member_prefix
+                                        .as_deref()
+                                        .map_or(true, |p| short_name.starts_with(p))
+                                {
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("1_".to_string()),
+                                        label: short_name.to_string(),
+                                        kind: "struct".to_string(),
+                                        detail: format!("{} struct", namespace),
+                                        documentation: s_info.hover_doc.clone(),
+                                    });
+                                    provided_completions = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If it's a standard module directly (e.g. `json.`, `tcp.`, `http.`)
+                let is_std_module = std_modules.contains(&namespace)
+                    || matches!(
+                        namespace.as_str(),
+                        "json"
+                            | "tcp"
+                            | "udp"
+                            | "http"
+                            | "ws"
+                            | "mqtt"
+                            | "dns"
+                            | "url"
+                            | "interface"
+                    );
+                if var_type.is_none() {
+                    if is_std_module {
+                        if let Some(methods) = ide::get_std_module_methods(&namespace) {
+                            for method in methods {
+                                if member_prefix
+                                    .as_deref()
+                                    .map_or(true, |p| method.starts_with(p))
+                                {
+                                    let doc =
+                                        crate::std_docs::get_std_function_doc(&namespace, &method);
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("4_".to_string()),
+                                        label: method.clone(),
+                                        kind: "function".to_string(),
+                                        detail: format!("std.{} function", namespace),
+                                        documentation: doc.map(|d| d.to_string()),
+                                    });
+                                    provided_completions = true;
+                                }
+                                if !word_under_cursor.is_empty() && method == word_under_cursor {
+                                    let doc =
+                                        crate::std_docs::get_std_function_doc(&namespace, &method);
+                                    hover_found = Some(JsonHover {
+                                        label: format!("std.{}::{}()", namespace, method),
+                                        documentation: doc.map(|d| d.to_string()), // std_docs already provides good markdown
+                                    });
+                                }
+                            }
+                        }
+                    } else if !pkg_suggestions.is_empty() {
+                        for (s_name, s_kind, s_doc) in &pkg_suggestions {
+                            if member_prefix
+                                .as_deref()
+                                .map_or(true, |p| s_name.starts_with(p))
+                            {
+                                completions.push(JsonCompletion {
+                                    sort_text: Some("1_".to_string()),
+                                    label: s_name.clone(),
+                                    kind: s_kind.clone(),
+                                    detail: format!("{} {}", namespace, s_kind),
+                                    documentation: s_doc.clone(),
+                                });
+                                provided_completions = true;
+                            }
+                        }
+                    }
+                }
+
+                // If it's a native module directly (e.g. `flamer.`)
+                if !provided_completions
+                    && var_type.is_none()
+                    && native_modules.contains(&namespace)
+                {
+                    if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
+                        for function in &meta.functions {
+                            if member_prefix
+                                .as_deref()
+                                .map(|p| function.flame_name.starts_with(p))
+                                .unwrap_or(true)
                             {
                                 let params_str = function
                                     .params
@@ -2172,770 +3116,418 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                                     "fn {}({}) -> {}",
                                     function.flame_name, params_str, function.return_type
                                 );
-                                let doc = function.docs.clone().unwrap_or_else(|| {
-                                    load_local_rust_doc(
-                                        &manifest_dir,
-                                        &namespace,
-                                        &function.flame_name,
+
+                                completions.push(JsonCompletion {
+                                    sort_text: None,
+                                    label: function.flame_name.clone(),
+                                    kind: "function".to_string(),
+                                    detail: format!("{} (from {})", function.flame_name, namespace),
+                                    documentation: Some(
+                                        function.docs.clone().unwrap_or(sig.clone()),
+                                    ),
+                                });
+                                provided_completions = true;
+                            }
+
+                            if !word_under_cursor.is_empty()
+                                && function.flame_name == word_under_cursor
+                            {
+                                let params_str = function
+                                    .params
+                                    .iter()
+                                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let sig = format!(
+                                    "fn {}({}) -> {}",
+                                    function.flame_name, params_str, function.return_type
+                                );
+                                let doc = function.docs.clone().unwrap_or_default();
+                                let formatted_doc = if doc.trim().is_empty() {
+                                    format!(
+                                        "```flame\n{}\n```\n\n**Return Type**: `{}`",
+                                        sig, function.return_type
                                     )
-                                    .unwrap_or_default()
-                                });
+                                } else {
+                                    format!(
+                                        "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
+                                        sig,
+                                        doc.trim(),
+                                        function.return_type
+                                    )
+                                };
+
                                 hover_found = Some(JsonHover {
-                                    label: format!("{}.{}", namespace, function.flame_name),
-                                    documentation: Some(format!(
-                                        "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
-                                        sig, doc, function.return_type
-                                    )),
+                                    label: format!("{}::{}()", namespace, function.flame_name),
+                                    documentation: Some(formatted_doc),
                                 });
-                                break;
+                            }
+                        }
+
+                        for struct_meta in &meta.structs {
+                            // eprintln!("DEBUG_COMPLETIONS: Checking struct: {}", struct_meta.name);
+                            if member_prefix
+                                .as_deref()
+                                .map(|p| struct_meta.name.starts_with(p))
+                                .unwrap_or(true)
+                            {
+                                // eprintln!("DEBUG_COMPLETIONS: Adding struct: {}", struct_meta.name);
+                                completions.push(JsonCompletion {
+                                    sort_text: Some("2_".to_string()),
+                                    label: struct_meta.name.clone(),
+                                    kind: "class".to_string(),
+                                    detail: format!("struct (from {})", namespace),
+                                    documentation: struct_meta.docs.clone(),
+                                });
+                                provided_completions = true;
+                            }
+
+                            if !word_under_cursor.is_empty()
+                                && struct_meta.name == word_under_cursor
+                            {
+                                let doc = struct_meta.docs.clone().unwrap_or_default();
+                                let formatted_doc = if doc.trim().is_empty() {
+                                    format!("```flame\nstruct {}\n```", struct_meta.name)
+                                } else {
+                                    format!(
+                                        "```flame\nstruct {}\n```\n{}",
+                                        struct_meta.name,
+                                        doc.trim()
+                                    )
+                                };
+                                hover_found = Some(JsonHover {
+                                    label: format!("{}::{}", namespace, struct_meta.name),
+                                    documentation: Some(formatted_doc),
+                                });
                             }
                         }
                     }
                 }
-                
-                if hover_found.is_none() {
-                    if let Some(struct_meta) = meta.structs.iter().find(|s| s.name == word_under_cursor) {
-                        let doc = struct_meta.docs.clone().unwrap_or_default();
-                        hover_found = Some(JsonHover {
-                            label: format!("{}::{}", namespace, struct_meta.name),
-                            documentation: Some(format!(
-                                "```flame\nstruct {}\n```\n{}",
-                                struct_meta.name, doc
-                            )),
-                        });
-                    }
-                }
-            }
-        } else if let Some(def) = ide::get_native_module_def(&namespace) {
-            for func in &def.functions {
-                if member_prefix.as_deref().map_or(true, |p| func.name.starts_with(p)) {
-                    completions.push(JsonCompletion {
-                        sort_text: None,
-                        label: func.name.clone(),
-                        kind: "function".to_string(),
-                        detail: format!("{}", func.return_type),
-                        documentation: Some(format!("```flame\nfn {}({}) -> {}\n```\n{}", 
-                            func.name, 
-                            func.params.iter().map(|(n, t)| format!("{}: {}", n, t)).collect::<Vec<_>>().join(", "),
-                            func.return_type,
-                            func.description)),
-                    });
-                }
-            }
-            for typ in &def.types {
-                if member_prefix.as_deref().map_or(true, |p| typ.name.starts_with(p)) {
-                    completions.push(JsonCompletion {
-                        sort_text: None,
-                        label: typ.name.clone(),
-                        kind: "class".to_string(),
-                        detail: "type".to_string(),
-                        documentation: Some(format!("```flame\ntype {}\n```\n{}", typ.name, typ.description)),
-                    });
-                }
-            }
-            
-            // For hover:
-            if !word_under_cursor.is_empty() {
-                if let Some(func) = def.functions.iter().find(|f| f.name == word_under_cursor) {
-                    hover_found = Some(JsonHover {
-                        label: format!("{}.{}()", def.name, func.name),
-                        documentation: Some(format!("```flame\nfn {}({}) -> {}\n```\n{}", 
-                            func.name, 
-                            func.params.iter().map(|(n, t)| format!("{}: {}", n, t)).collect::<Vec<_>>().join(", "),
-                            func.return_type,
-                            func.description)),
-                    });
-                } else if let Some(typ) = def.types.iter().find(|t| t.name == word_under_cursor) {
-                    hover_found = Some(JsonHover {
-                        label: format!("{}.{}", def.name, typ.name),
-                        documentation: Some(format!("```flame\ntype {}\n```\n{}", typ.name, typ.description)),
-                    });
-                }
-            }
-        } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {
-            for method in &std_methods {
-                if member_prefix
-                    .as_deref()
-                    .map_or(true, |prefix| method.starts_with(prefix))
-                {
-                    completions.push(JsonCompletion { sort_text: None,
-                        label: method.clone(),
-                        kind: "function".to_string(),
-                        detail: format!("std.{}", namespace),
-                        documentation: crate::std_docs::get_std_function_doc(&namespace, method)
-                            .map(|d| d.to_string()),
-                    });
-                }
-            }
 
-            if !word_under_cursor.is_empty() && std_methods.contains(&word_under_cursor) {
-                if let Some(doc) =
-                    crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor)
-                {
-                    hover_found = Some(JsonHover {
-                        label: format!("{namespace}.{word_under_cursor}()"),
-                        documentation: Some(doc.to_string()),
-                    });
-                } else {
-                    hover_found = Some(JsonHover {
-                        label: format!("{namespace}.{word_under_cursor}()"),
-                        documentation: Some(format!(
-                            "Standard library function: {namespace}.{word_under_cursor}"
-                        )),
-                    });
-                }
-            }
-        } else if let Some(local_stmts) =
-            load_local_module_declarations(&manifest_dir, file, &namespace)
-        {
-            let mut provided_completions = false;
-
-            for stmt in &local_stmts {
-                let func_info = match stmt {
-                    crate::parser::Stmt::FuncDecl {
-                        name,
-                        params,
-                        return_type,
-                        annotations,
-                        ..
-                    } => Some((name, params, return_type, false, annotations)),
-                    crate::parser::Stmt::AnnotationDecl {
-                        name,
-                        params,
-                        return_type,
-                        annotations,
-                        ..
-                    } => Some((name, params, return_type, true, annotations)),
-                    crate::parser::Stmt::ExportDecl(inner, _) => {
-                        match &**inner {
-                            crate::parser::Stmt::FuncDecl {
-                                name, params, return_type, annotations, ..
-                            } => Some((name, params, return_type, false, annotations)),
-                            crate::parser::Stmt::AnnotationDecl {
-                                name, params, return_type, annotations, ..
-                            } => Some((name, params, return_type, true, annotations)),
-                            crate::parser::Stmt::StructDecl {
-                                name, ..
-                            } => {
-                                completions.push(JsonCompletion { sort_text: None,
-                                    label: name.clone(),
-                                    kind: "class".to_string(),
-                                    detail: "struct".to_string(),
+                if let Some(t) = &var_type {
+                    // eprintln!("DEBUG_COMPLETIONS: namespace={}, var_type={:?}, t={}, is_instance={}", namespace, var_type, t, is_instance);
+                    if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
+                        for field in &struct_def.fields {
+                            if member_prefix
+                                .as_deref()
+                                .map_or(true, |prefix| field.0.starts_with(prefix))
+                            {
+                                completions.push(JsonCompletion {
+                                    sort_text: Some("1_".to_string()),
+                                    label: field.0.clone(),
+                                    kind: "property".to_string(),
+                                    detail: format!("{} field", t),
                                     documentation: None,
                                 });
                                 provided_completions = true;
-                                None
-                            }
-                            _ => None,
-                        }
-                    }
-                    crate::parser::Stmt::StructDecl {
-                        name, ..
-                    } => {
-                        completions.push(JsonCompletion { sort_text: None,
-                            label: name.clone(),
-                            kind: "class".to_string(),
-                            detail: "struct".to_string(),
-                            documentation: None,
-                        });
-                        provided_completions = true;
-                        None
-                    }
-                    _ => None,
-                };
-
-                if let Some((name, params, return_type, is_annotation, annotations)) = func_info {
-                    let param_strs = params
-                        .iter()
-                        .map(|p| {
-                            format!(
-                                "{}{}: {}{}",
-                                if p.is_mut { "mut " } else { "" },
-                                p.name,
-                                if p.is_ref { "&" } else { "" },
-                                p.type_name
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let sig = if is_annotation {
-                        if let Some(ret) = return_type.as_deref() {
-                            format!("annotation @{}({}) -> {}", name, param_strs, ret)
-                        } else {
-                            format!("annotation @{}({})", name, param_strs)
-                        }
-                    } else {
-                        format!("fn {}({}) -> {}", name, param_strs, return_type.as_deref().unwrap_or("Nil"))
-                    };
-
-                    let actual_label = if is_annotation {
-                        format!("@{}", name)
-                    } else {
-                        name.clone()
-                    };
-
-                    let mut doc_str = String::new();
-                    for ann in annotations.iter() {
-                        if ann.name == "Docs" {
-                            if let Some(s) = ann.args.get(0) {
-                                let unquoted = s.trim_matches('"').replace("\\n", "\n");
-                                let lines: Vec<&str> = unquoted.lines().collect();
-                                let mut min_indent = usize::MAX;
-                                for line in &lines {
-                                    if line.trim().is_empty() { continue; }
-                                    let indent = line.chars().take_while(|c| *c == ' ' || *c == '\t').count();
-                                    if indent < min_indent { min_indent = indent; }
-                                }
-                                let mut cleaned_doc = String::new();
-                                for line in &lines {
-                                    if line.trim().is_empty() {
-                                        cleaned_doc.push('\n');
-                                    } else {
-                                        let indent = if min_indent == usize::MAX { 0 } else { min_indent };
-                                        let slice_start = std::cmp::min(indent, line.len());
-                                        cleaned_doc.push_str(&line[slice_start..]);
-                                        cleaned_doc.push('\n');
-                                    }
-                                }
-                                let trimmed = cleaned_doc.trim();
-                                if !trimmed.is_empty() {
-                                    doc_str = format!("\n\n{}", trimmed);
-                                }
                             }
                         }
-                    }
-
-                    if member_prefix
-                        .as_deref()
-                        .map_or(true, |prefix| name.starts_with(prefix))
-                    {
-                        if is_annotation && !word_under_cursor_raw.starts_with('@') {
-                            // Only suggest annotations when user types @
-                        } else {
-                            completions.push(JsonCompletion {
-                                sort_text: Some("1_".to_string()),
-                                label: actual_label,
-                                kind: if is_annotation { "annotation".to_string() } else { "function".to_string() },
-                                detail: format!("module {}", namespace),
-                                documentation: Some(format!("```flame\n{}\n```{}", sig, doc_str)),
-                            });
-                            provided_completions = true;
-                        }
-                    }
-
-                    if !word_under_cursor.is_empty() && name == &word_under_cursor {
-                        hover_found = Some(JsonHover {
-                            label: format!("{}.{}()", namespace, name),
-                            documentation: Some(format!("```flame\n{}\n```{}", sig, doc_str)),
-                        });
-                    }
-                }
-            }
-
-            if !provided_completions {
-                // If the local file had no such functions matching the prefix, we just do nothing here.
-            }
-        } else {
-            let mut var_type = None;
-            let mut is_instance = false;
-            let mut pkg_suggestions = Vec::new();
-            if let Some(first_part) = namespace.split('.').next() {
-                var_type = scanned_vars
-                    .iter()
-                    .find(|v| v.name == first_part)
-                    .and_then(|v| {
-                        is_instance = true;
-                        v.typ.clone()
-                    });
-                
-                for part in namespace.split('.').skip(1) {
-                    if let Some(vt) = var_type {
-                        var_type = None;
-                        if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == vt) {
-                            if let Some(field) = struct_def.fields.iter().find(|f| f.0 == part) {
-                                var_type = Some(field.1.clone());
-                            }
-                        }
-                    }
-                }
-            }
-
-            // If not found as a variable, maybe it's a struct name directly?
-            if var_type.is_none() {
-                is_instance = false;
-                if scanned_structs.iter().any(|s| s.name == namespace) {
-                    var_type = Some(namespace.to_string());
-                } else if let Some(dot_idx) = namespace.find('.') {
-                    let mod_name = &namespace[..dot_idx];
-                    let struct_name = &namespace[dot_idx + 1..];
-                    if native_modules.contains(&mod_name.to_string()) {
-                        if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
-                            if meta.structs.iter().any(|s| s.name == struct_name) {
-                                var_type = Some(struct_name.to_string());
-                            }
-                        }
-                    }
-                } else {
-                    let path_parts = vec![namespace.clone()];
-                    if let Some(candidate) = crate::stdlib::locate_import_file(Path::new(file), &path_parts).or_else(|| {
-                        let direct = manifest_dir.join(format!("{}.fm", namespace));
-                        if direct.exists() { return Some(direct); }
-                        let pkg_main = manifest_dir.join(".flame").join("pkg").join(&namespace).join("src").join("main.fm");
-                        if pkg_main.exists() { return Some(pkg_main); }
-                        None
-                    }) {
-                        eprintln!("DEBUG_CANDIDATE: {:?}", candidate);
-                        match std::fs::read_to_string(&candidate) {
-                            Ok(content) => {
-                                eprintln!("DEBUG_CANDIDATE_READ_OK, len={}", content.len());
-                                let mut lexer = crate::lexer::Lexer::new(&content);
-                            let mut tokens = Vec::new();
-                            loop {
-                                let tok = lexer.next_token();
-                                let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
-                                tokens.push(tok);
-                                if is_eof { break; }
-                            }
-                            let mut parser = crate::parser::Parser::new(tokens, candidate.to_string_lossy().to_string());
-                            if let Ok(stmts) = parser.parse() {
-                                eprintln!("DEBUG_STMTS_LEN: {}", stmts.len());
-                                for stmt in stmts {
-                                    if let crate::parser::Stmt::PackageDecl { annotations, .. } = stmt {
-                                        for ann in annotations {
-                                            eprintln!("DEBUG_ANN: name={}, args={:?}", ann.name, ann.args);
-                                            if ann.name == "Suggestions" && !ann.args.is_empty() {
-                                                let s_args = ann.args.join(" ");
-                                                let re = regex::Regex::new(r"\{\s*name\s*:\s*([^,]+),\s*kind\s*:\s*([^,}]+)(?:,\s*doc\s*:\s*([^}]+))?\}").unwrap();
-                                                for cap in re.captures_iter(&s_args) {
-                                                    let struct_name = cap[1].trim().trim_matches(|c| c == '"' || c == '\'').to_string();
-                                                    let kind = cap[2].trim().trim_matches(|c| c == '"' || c == '\'').to_string();
-                                                    let doc = cap.get(3).map(|m| m.as_str().trim().trim_matches(|c| c == '"' || c == '\'').to_string());
-                                                    pkg_suggestions.push((struct_name, kind, doc));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            }
-                            Err(e) => {
-                                eprintln!("DEBUG_CANDIDATE_READ_ERR: {}", e);
-                            }
-                        }
-                    }
-                }
-            }
-            // eprintln!("DEBUG_COMPLETIONS_PRE: namespace={}, var_type={:?}", namespace, var_type);
-
-            let mut provided_completions = false;
-
-            if let Some(tc) = &tc_opt {
-                if let Some(enum_info) = tc.enums.get(&namespace) {
-                    for (variant_name, _) in &enum_info.variants {
-                        if member_prefix.as_deref().map_or(true, |p| variant_name.starts_with(p)) {
-                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()), label: variant_name.clone(), kind: "enumMember".to_string(), detail: format!("{} enum variant", namespace), documentation: None });
-                            provided_completions = true;
-                        }
-                    }
-                } else if var_type.is_none() {
-                    for (enum_name, enum_info) in &tc.enums {
-                        if enum_name.starts_with(&format!("{}.", namespace)) {
-                            let short_name = enum_name.strip_prefix(&format!("{}.", namespace)).unwrap();
-                            if !short_name.contains('.') && member_prefix.as_deref().map_or(true, |p| short_name.starts_with(p)) {
-                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()), label: short_name.to_string(), kind: "enum".to_string(), detail: format!("{} enum", namespace), documentation: enum_info.hover_doc.clone() });
-                                provided_completions = true;
-                            }
-                        }
-                    }
-                    for (struct_name, s_info) in &tc.structs {
-                        if struct_name.starts_with(&format!("{}.", namespace)) {
-                            let short_name = struct_name.strip_prefix(&format!("{}.", namespace)).unwrap();
-                            if !short_name.contains('.') && member_prefix.as_deref().map_or(true, |p| short_name.starts_with(p)) {
-                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()), label: short_name.to_string(), kind: "struct".to_string(), detail: format!("{} struct", namespace), documentation: s_info.hover_doc.clone() });
-                                provided_completions = true;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // If it's a standard module directly (e.g. `json.`, `tcp.`, `http.`)
-            let is_std_module = std_modules.contains(&namespace) || matches!(namespace.as_str(), "json" | "tcp" | "udp" | "http" | "ws" | "mqtt" | "dns" | "url" | "interface");
-            if var_type.is_none() {
-                if is_std_module {
-                    if let Some(methods) = ide::get_std_module_methods(&namespace) {
-                        for method in methods {
-                            if member_prefix.as_deref().map_or(true, |p| method.starts_with(p)) {
-                                let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
-                                completions.push(JsonCompletion { sort_text: Some("4_".to_string()),
+                        for method in &struct_def.methods {
+                            if member_prefix
+                                .as_deref()
+                                .map_or(true, |prefix| method.starts_with(prefix))
+                            {
+                                completions.push(JsonCompletion {
+                                    sort_text: Some("1_".to_string()),
                                     label: method.clone(),
-                                    kind: "function".to_string(),
-                                    detail: format!("std.{} function", namespace),
-                                    documentation: doc.map(|d| d.to_string()),
-                                });
-                                provided_completions = true;
-                            }
-                            if !word_under_cursor.is_empty() && method == word_under_cursor {
-                                let doc = crate::std_docs::get_std_function_doc(&namespace, &method);
-                                hover_found = Some(JsonHover {
-                                    label: format!("std.{}::{}()", namespace, method),
-                                    documentation: doc.map(|d| d.to_string()), // std_docs already provides good markdown
-                                });
-                            }
-                        }
-                    }
-                } else if !pkg_suggestions.is_empty() {
-                    for (s_name, s_kind, s_doc) in &pkg_suggestions {
-                        if member_prefix.as_deref().map_or(true, |p| s_name.starts_with(p)) {
-                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
-                                label: s_name.clone(),
-                                kind: s_kind.clone(),
-                                detail: format!("{} {}", namespace, s_kind),
-                                documentation: s_doc.clone(),
-                            });
-                            provided_completions = true;
-                        }
-                    }
-                }
-            }
-
-            // If it's a native module directly (e.g. `flamer.`)
-            if !provided_completions && var_type.is_none() && native_modules.contains(&namespace) {
-                if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
-                    for function in &meta.functions {
-                        if member_prefix
-                            .as_deref()
-                            .map(|p| function.flame_name.starts_with(p))
-                            .unwrap_or(true)
-                        {
-                            let params_str = function
-                                .params
-                                .iter()
-                                .map(|p| format!("{}: {}", p.name, p.type_name))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            let sig = format!(
-                                "fn {}({}) -> {}",
-                                function.flame_name,
-                                params_str,
-                                function.return_type
-                            );
-                            
-                            completions.push(JsonCompletion { sort_text: None,
-                                label: function.flame_name.clone(),
-                                kind: "function".to_string(),
-                                detail: format!("{} (from {})", function.flame_name, namespace),
-                                documentation: Some(function.docs.clone().unwrap_or(sig.clone())),
-                            });
-                            provided_completions = true;
-                        }
-
-                        if !word_under_cursor.is_empty()
-                            && function.flame_name == word_under_cursor
-                        {
-                            let params_str = function
-                                .params
-                                .iter()
-                                .map(|p| format!("{}: {}", p.name, p.type_name))
-                                .collect::<Vec<_>>()
-                                .join(", ");
-                            let sig = format!(
-                                "fn {}({}) -> {}",
-                                function.flame_name,
-                                params_str,
-                                function.return_type
-                            );
-                            let doc = function.docs.clone().unwrap_or_default();
-                            let formatted_doc = if doc.trim().is_empty() {
-                                format!("```flame\n{}\n```\n\n**Return Type**: `{}`", sig, function.return_type)
-                            } else {
-                                format!("```flame\n{}\n```\n{}\n\n**Return Type**: `{}`", sig, doc.trim(), function.return_type)
-                            };
-
-                            hover_found = Some(JsonHover {
-                                label: format!("{}::{}()", namespace, function.flame_name),
-                                documentation: Some(formatted_doc),
-                            });
-                        }
-                    }
-                    
-                    for struct_meta in &meta.structs {
-                        // eprintln!("DEBUG_COMPLETIONS: Checking struct: {}", struct_meta.name);
-                        if member_prefix
-                            .as_deref()
-                            .map(|p| struct_meta.name.starts_with(p))
-                            .unwrap_or(true)
-                        {
-                            // eprintln!("DEBUG_COMPLETIONS: Adding struct: {}", struct_meta.name);
-                            completions.push(JsonCompletion {
-                                sort_text: Some("2_".to_string()),
-                                label: struct_meta.name.clone(),
-                                kind: "class".to_string(),
-                                detail: format!("struct (from {})", namespace),
-                                documentation: struct_meta.docs.clone(),
-                            });
-                            provided_completions = true;
-                        }
-                        
-                        if !word_under_cursor.is_empty()
-                            && struct_meta.name == word_under_cursor
-                        {
-                            let doc = struct_meta.docs.clone().unwrap_or_default();
-                            let formatted_doc = if doc.trim().is_empty() {
-                                format!("```flame\nstruct {}\n```", struct_meta.name)
-                            } else {
-                                format!("```flame\nstruct {}\n```\n{}", struct_meta.name, doc.trim())
-                            };
-                            hover_found = Some(JsonHover {
-                                label: format!("{}::{}", namespace, struct_meta.name),
-                                documentation: Some(formatted_doc),
-                            });
-                        }
-                    }
-                }
-            }
-
-            if let Some(t) = &var_type {
-                // eprintln!("DEBUG_COMPLETIONS: namespace={}, var_type={:?}, t={}, is_instance={}", namespace, var_type, t, is_instance);
-                if let Some(struct_def) = scanned_structs.iter().find(|s| s.name == *t) {
-                    for field in &struct_def.fields {
-                        if member_prefix
-                            .as_deref()
-                            .map_or(true, |prefix| field.0.starts_with(prefix))
-                        {
-                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
-                                label: field.0.clone(),
-                                kind: "property".to_string(),
-                                detail: format!("{} field", t),
-                                documentation: None,
-                            });
-                            provided_completions = true;
-                        }
-                    }
-                    for method in &struct_def.methods {
-                        if member_prefix
-                            .as_deref()
-                            .map_or(true, |prefix| method.starts_with(prefix))
-                        {
-                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
-                                label: method.clone(),
-                                kind: "method".to_string(),
-                                detail: format!("{} method", t),
-                                documentation: None,
-                            });
-                            provided_completions = true;
-                        }
-                    }
-                }
-
-                if let Some(tc) = &tc_opt {
-                    if let Some(s_info) = tc.structs.get(t) {
-                        for (field_name, _) in &s_info.fields {
-                            if member_prefix.as_deref().map_or(true, |prefix| field_name.starts_with(prefix)) {
-                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
-                                    label: field_name.clone(),
-                                    kind: "property".to_string(),
-                                    detail: format!("{} field", t),
-                                    documentation: s_info.hover_doc.clone(),
-                                });
-                                provided_completions = true;
-                            }
-                        }
-                    }
-                    if let Some(methods) = tc.methods.get(t) {
-                        for (method_name, m_sig) in methods {
-                            if member_prefix.as_deref().map_or(true, |prefix| method_name.starts_with(prefix)) {
-                                completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
-                                    label: method_name.clone(),
                                     kind: "method".to_string(),
                                     detail: format!("{} method", t),
-                                    documentation: m_sig.hover_doc.clone(),
+                                    documentation: None,
                                 });
                                 provided_completions = true;
                             }
                         }
                     }
-                }
 
-                // Also check native types like ThreadHandler or FlameServer across all modules
-                if !provided_completions {
-                    let modules_to_check = {
-                        let mut mods = native_modules.clone();
-                        if !mods.contains(&t) {
-                            mods.push(t.clone());
-                        }
-                        mods
-                    };
-                    for mod_name in modules_to_check {
-                        if let Some(meta) = load_meta_from_project(&manifest_dir, &mod_name) {
-                            // eprintln!("DEBUG_COMPLETIONS: loaded meta for {}", mod_name);
-                            for struct_meta in &meta.structs {
-                                if struct_meta.name == *t
-                                    || struct_meta.name.to_lowercase() == t.to_lowercase()
+                    if let Some(tc) = &tc_opt {
+                        if let Some(s_info) = tc.structs.get(t) {
+                            for (field_name, _) in &s_info.fields {
+                                if member_prefix
+                                    .as_deref()
+                                    .map_or(true, |prefix| field_name.starts_with(prefix))
                                 {
-                                    // eprintln!("DEBUG_COMPLETIONS: matched struct {}", struct_meta.name);
-                                    for function in &struct_meta.methods {
-                                        if is_instance && function.is_static {
-                                            continue;
-                                        }
-                                        if !is_instance && !function.is_static {
-                                            continue;
-                                        }
-
-                                        if member_prefix
-                                            .as_deref()
-                                            .map(|p| function.flame_name.starts_with(p))
-                                            .unwrap_or(true)
-                                        {
-                                            completions.push(JsonCompletion { sort_text: Some("1_".to_string()),
-                                                label: function.flame_name.clone(),
-                                                kind: "method".to_string(),
-                                                detail: format!(
-                                                    "{}::{} (from {})",
-                                                    struct_meta.name, function.flame_name, mod_name
-                                                ),
-                                                documentation: function.docs.clone().or_else(
-                                                    || {
-                                                        load_local_rust_doc(
-                                                            &manifest_dir,
-                                                            &mod_name,
-                                                            &function.flame_name,
-                                                        )
-                                                    },
-                                                ),
-                                            });
-                                            provided_completions = true;
-                                        }
-                                        if !word_under_cursor.is_empty()
-                                            && function.flame_name == word_under_cursor
-                                        {
-                                            let params_str = function
-                                                .params
-                                                .iter()
-                                                .map(|p| format!("{}: {}", p.name, p.type_name))
-                                                .collect::<Vec<_>>()
-                                                .join(", ");
-                                            let sig = format!(
-                                                "fn {}({}) -> {}",
-                                                function.flame_name,
-                                                params_str,
-                                                function.return_type
-                                            );
-                                            let doc = function.docs.clone().unwrap_or_else(|| {
-                                                load_local_rust_doc(
-                                                    &manifest_dir,
-                                                    &mod_name,
-                                                    &function.flame_name,
-                                                )
-                                                .unwrap_or_default()
-                                            });
-                                            let final_doc = if function.docs.is_some() {
-                                                doc
-                                            } else {
-                                                if doc.trim().is_empty() {
-                                                    format!("```flame\n{}\n```\n\n**Return Type / Structure**: `{}`", sig, function.return_type)
-                                                } else {
-                                                    format!("```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`", sig, doc.trim(), function.return_type)
-                                                }
-                                            };
-                                            hover_found = Some(JsonHover {
-                                                label: format!(
-                                                    "{}::{}()",
-                                                    struct_meta.name, function.flame_name
-                                                ),
-                                                documentation: Some(final_doc),
-                                            });
-                                        }
-                                    }
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("1_".to_string()),
+                                        label: field_name.clone(),
+                                        kind: "property".to_string(),
+                                        detail: format!("{} field", t),
+                                        documentation: s_info.hover_doc.clone(),
+                                    });
+                                    provided_completions = true;
                                 }
                             }
                         }
-                    }
-                }
-
-                if !provided_completions {
-                    let native_module_lookup = match t.as_str() {
-                        "ThreadHandler" => Some("thread"),
-                        "ProcessHandler" => Some("process"),
-                        "File" => Some("fs"),
-                        "TcpStream" | "TcpListener" | "UdpSocket" => Some("net"),
-                        _ => None,
-                    };
-
-                    if let Some(mod_name) = native_module_lookup {
-                        if let Some(std_methods) = ide::get_std_module_methods(mod_name) {
-                            for method in &std_methods {
+                        if let Some(methods) = tc.methods.get(t) {
+                            for (method_name, m_sig) in methods {
                                 if member_prefix
                                     .as_deref()
-                                    .map_or(true, |prefix| method.starts_with(prefix))
+                                    .map_or(true, |prefix| method_name.starts_with(prefix))
                                 {
-                                    completions.push(JsonCompletion { sort_text: None,
-                                        label: method.clone(),
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("1_".to_string()),
+                                        label: method_name.clone(),
                                         kind: "method".to_string(),
                                         detail: format!("{} method", t),
-                                        documentation: None,
+                                        documentation: m_sig.hover_doc.clone(),
                                     });
                                     provided_completions = true;
                                 }
                             }
                         }
                     }
+
+                    // Also check native types like ThreadHandler or FlameServer across all modules
+                    if !provided_completions {
+                        let modules_to_check = {
+                            let mut mods = native_modules.clone();
+                            if !mods.contains(&t) {
+                                mods.push(t.clone());
+                            }
+                            mods
+                        };
+                        for mod_name in modules_to_check {
+                            if let Some(meta) = load_meta_from_project(&manifest_dir, &mod_name) {
+                                // eprintln!("DEBUG_COMPLETIONS: loaded meta for {}", mod_name);
+                                for struct_meta in &meta.structs {
+                                    if struct_meta.name == *t
+                                        || struct_meta.name.to_lowercase() == t.to_lowercase()
+                                    {
+                                        // eprintln!("DEBUG_COMPLETIONS: matched struct {}", struct_meta.name);
+                                        for function in &struct_meta.methods {
+                                            if is_instance && function.is_static {
+                                                continue;
+                                            }
+                                            if !is_instance && !function.is_static {
+                                                continue;
+                                            }
+
+                                            if member_prefix
+                                                .as_deref()
+                                                .map(|p| function.flame_name.starts_with(p))
+                                                .unwrap_or(true)
+                                            {
+                                                completions.push(JsonCompletion {
+                                                    sort_text: Some("1_".to_string()),
+                                                    label: function.flame_name.clone(),
+                                                    kind: "method".to_string(),
+                                                    detail: format!(
+                                                        "{}::{} (from {})",
+                                                        struct_meta.name,
+                                                        function.flame_name,
+                                                        mod_name
+                                                    ),
+                                                    documentation: function.docs.clone().or_else(
+                                                        || {
+                                                            load_local_rust_doc(
+                                                                &manifest_dir,
+                                                                &mod_name,
+                                                                &function.flame_name,
+                                                            )
+                                                        },
+                                                    ),
+                                                });
+                                                provided_completions = true;
+                                            }
+                                            if !word_under_cursor.is_empty()
+                                                && function.flame_name == word_under_cursor
+                                            {
+                                                let params_str = function
+                                                    .params
+                                                    .iter()
+                                                    .map(|p| format!("{}: {}", p.name, p.type_name))
+                                                    .collect::<Vec<_>>()
+                                                    .join(", ");
+                                                let sig = format!(
+                                                    "fn {}({}) -> {}",
+                                                    function.flame_name,
+                                                    params_str,
+                                                    function.return_type
+                                                );
+                                                let doc =
+                                                    function.docs.clone().unwrap_or_else(|| {
+                                                        load_local_rust_doc(
+                                                            &manifest_dir,
+                                                            &mod_name,
+                                                            &function.flame_name,
+                                                        )
+                                                        .unwrap_or_default()
+                                                    });
+                                                let final_doc = if function.docs.is_some() {
+                                                    doc
+                                                } else {
+                                                    if doc.trim().is_empty() {
+                                                        format!(
+                                                            "```flame\n{}\n```\n\n**Return Type / Structure**: `{}`",
+                                                            sig, function.return_type
+                                                        )
+                                                    } else {
+                                                        format!(
+                                                            "```flame\n{}\n```\n{}\n\n**Return Type / Structure**: `{}`",
+                                                            sig,
+                                                            doc.trim(),
+                                                            function.return_type
+                                                        )
+                                                    }
+                                                };
+                                                hover_found = Some(JsonHover {
+                                                    label: format!(
+                                                        "{}::{}()",
+                                                        struct_meta.name, function.flame_name
+                                                    ),
+                                                    documentation: Some(final_doc),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !provided_completions {
+                        let native_module_lookup = match t.as_str() {
+                            "ThreadHandler" => Some("thread"),
+                            "ProcessHandler" => Some("process"),
+                            "File" => Some("fs"),
+                            "TcpStream" | "TcpListener" | "UdpSocket" => Some("net"),
+                            _ => None,
+                        };
+
+                        if let Some(mod_name) = native_module_lookup {
+                            if let Some(std_methods) = ide::get_std_module_methods(mod_name) {
+                                for method in &std_methods {
+                                    if member_prefix
+                                        .as_deref()
+                                        .map_or(true, |prefix| method.starts_with(prefix))
+                                    {
+                                        completions.push(JsonCompletion {
+                                            sort_text: None,
+                                            label: method.clone(),
+                                            kind: "method".to_string(),
+                                            detail: format!("{} method", t),
+                                            documentation: None,
+                                        });
+                                        provided_completions = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-            }
 
-            if !provided_completions {
-                // Fallback for primitive and collection methods
-                let mut builtin_methods = vec![
-                    ("type", "Returns the type of the value as a string"),
-                    ("toString", "Converts the value to a string representation"),
-                    ("toInt", "Converts the value to an integer, throws error if invalid"),
-                    ("tryInt", "Converts the value to an integer, returns nil if invalid"),
-                    ("toFloat", "Converts the value to a floating point number, throws error if invalid"),
-                    ("tryFloat", "Converts the value to a floating point number, returns nil if invalid"),
-                    ("toBool", "Converts the value to its truthy boolean representation"),
-                    ("tryBool", "Converts the value to its truthy boolean representation"),
-                    ("toByte", "Converts a String or Int into a binary Byte or Byte array."),
-                    ("toUtf8", "Decodes a Byte array into a UTF-8 String. Panics if invalid UTF-8."),
-                    ("tryUtf8", "Attempts to decode a Byte array into a UTF-8 String. Returns nil if invalid."),
-                    ("index", "Extracts the value at the given key/index (requires 1 argument)"),
-                    ("toJson", "Serializes a struct or object into a JSON string"),
-                    (
-                        "len",
-                        "Returns the length in bytes (String) or elements (Vec)",
-                    ),
-                    ("pushStr", "Appends a string slice (String)"),
-                    ("toUpperCase", "Returns uppercase string (String)"),
-                    ("toLowerCase", "Returns lowercase string (String)"),
-                    ("trim", "Returns trimmed string (String)"),
-                    ("new", "Creates a new instance (Vec, HashMap)"),
-                    ("push", "Appends an element (Vec)"),
-                    ("pop", "Removes and returns the last element (Vec)"),
-                    ("isEmpty", "Returns true if empty (Vec, HashMap)"),
-                    ("insert", "Inserts a key-value pair (HashMap)"),
-                    ("get", "Gets a value by key (HashMap)"),
-                    ("remove", "Removes a key (HashMap)"),
-                    (
-                        "map",
-                        "Transforms each element of the collection using the provided closure and returns a new collection.\n\nExample:\n```flame\narr.map((x) { return x * 2 })\n```",
-                    ),
-                    (
-                        "filter",
-                        "Returns a new collection containing only the elements for which the provided closure returns true.\n\nExample:\n```flame\narr.filter((x) { return x > 0 })\n```",
-                    ),
-                    ("mode", "Configures digital pin direction. Values: `\"OUTPUT\"`, `\"INPUT\"`, `\"INPUT_PULLUP\"`, `\"PWM\"` (Hardware Pin)"),
-                    ("high", "Drives digital pin voltage to logical HIGH (Hardware Pin)"),
-                    ("low", "Drives digital pin voltage to logical LOW (Hardware Pin)"),
-                    ("toggle", "Flips digital pin voltage to opposite state (Hardware Pin)"),
-                    ("read", "Reads digital/analog logic level or ADC raw value (Hardware Pin/ADC)"),
-                    ("angle", "Sets absolute target rotation angle in degrees (Hardware Servo)"),
-                    ("speed", "Sets throttle output as percentage (Hardware Motor)"),
-                    ("forward", "Sets directional polarization to forward (Hardware Motor)"),
-                    ("reverse", "Sets directional polarization to reverse (Hardware Motor)"),
-                    ("stop", "Electro-dynamically brakes shaft to halt (Hardware Motor/Servo)"),
-                ];
+                if !provided_completions {
+                    // Fallback for primitive and collection methods
+                    let mut builtin_methods = vec![
+                        ("type", "Returns the type of the value as a string"),
+                        ("toString", "Converts the value to a string representation"),
+                        (
+                            "toInt",
+                            "Converts the value to an integer, throws error if invalid",
+                        ),
+                        (
+                            "tryInt",
+                            "Converts the value to an integer, returns nil if invalid",
+                        ),
+                        (
+                            "toFloat",
+                            "Converts the value to a floating point number, throws error if invalid",
+                        ),
+                        (
+                            "tryFloat",
+                            "Converts the value to a floating point number, returns nil if invalid",
+                        ),
+                        (
+                            "toBool",
+                            "Converts the value to its truthy boolean representation",
+                        ),
+                        (
+                            "tryBool",
+                            "Converts the value to its truthy boolean representation",
+                        ),
+                        (
+                            "toByte",
+                            "Converts a String or Int into a binary Byte or Byte array.",
+                        ),
+                        (
+                            "toUtf8",
+                            "Decodes a Byte array into a UTF-8 String. Panics if invalid UTF-8.",
+                        ),
+                        (
+                            "tryUtf8",
+                            "Attempts to decode a Byte array into a UTF-8 String. Returns nil if invalid.",
+                        ),
+                        (
+                            "index",
+                            "Extracts the value at the given key/index (requires 1 argument)",
+                        ),
+                        ("toJson", "Serializes a struct or object into a JSON string"),
+                        (
+                            "len",
+                            "Returns the length in bytes (String) or elements (Vec)",
+                        ),
+                        ("pushStr", "Appends a string slice (String)"),
+                        ("toUpperCase", "Returns uppercase string (String)"),
+                        ("toLowerCase", "Returns lowercase string (String)"),
+                        ("trim", "Returns trimmed string (String)"),
+                        ("new", "Creates a new instance (Vec, HashMap)"),
+                        ("push", "Appends an element (Vec)"),
+                        ("pop", "Removes and returns the last element (Vec)"),
+                        ("isEmpty", "Returns true if empty (Vec, HashMap)"),
+                        ("insert", "Inserts a key-value pair (HashMap)"),
+                        ("get", "Gets a value by key (HashMap)"),
+                        ("remove", "Removes a key (HashMap)"),
+                        (
+                            "map",
+                            "Transforms each element of the collection using the provided closure and returns a new collection.\n\nExample:\n```flame\narr.map((x) { return x * 2 })\n```",
+                        ),
+                        (
+                            "filter",
+                            "Returns a new collection containing only the elements for which the provided closure returns true.\n\nExample:\n```flame\narr.filter((x) { return x > 0 })\n```",
+                        ),
+                        (
+                            "mode",
+                            "Configures digital pin direction. Values: `\"OUTPUT\"`, `\"INPUT\"`, `\"INPUT_PULLUP\"`, `\"PWM\"` (Hardware Pin)",
+                        ),
+                        (
+                            "high",
+                            "Drives digital pin voltage to logical HIGH (Hardware Pin)",
+                        ),
+                        (
+                            "low",
+                            "Drives digital pin voltage to logical LOW (Hardware Pin)",
+                        ),
+                        (
+                            "toggle",
+                            "Flips digital pin voltage to opposite state (Hardware Pin)",
+                        ),
+                        (
+                            "read",
+                            "Reads digital/analog logic level or ADC raw value (Hardware Pin/ADC)",
+                        ),
+                        (
+                            "angle",
+                            "Sets absolute target rotation angle in degrees (Hardware Servo)",
+                        ),
+                        (
+                            "speed",
+                            "Sets throttle output as percentage (Hardware Motor)",
+                        ),
+                        (
+                            "forward",
+                            "Sets directional polarization to forward (Hardware Motor)",
+                        ),
+                        (
+                            "reverse",
+                            "Sets directional polarization to reverse (Hardware Motor)",
+                        ),
+                        (
+                            "stop",
+                            "Electro-dynamically brakes shaft to halt (Hardware Motor/Servo)",
+                        ),
+                    ];
 
-                if content.contains("import std.math") {
-                    builtin_methods.extend(vec![
+                    if content.contains("import std.math") {
+                        builtin_methods.extend(vec![
                         ("abs", "Returns the absolute value (Math)"),
                         ("floor", "Returns the largest integer less than or equal to a number (Math)"),
                         ("ceil", "Returns the smallest integer greater than or equal to a number (Math)"),
@@ -2946,44 +3538,50 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         ("max", "Returns the larger of two numbers (Math)"),
                         ("clamp", "Clamps a number within the inclusive range specified (Math)"),
                     ]);
-                }
-                
-                if content.contains("import std.byte") {
-                    builtin_methods.extend(vec![
-                        ("toHex", "Returns the hexadecimal string representation (Bytes)"),
-                        ("toBase64", "Returns the Base64 string representation (Bytes)"),
-                        ("concat", "Concatenates another byte array (Bytes)"),
-                    ]);
-                }
+                    }
 
-                for (method, doc) in &builtin_methods {
-                    if member_prefix
-                        .as_deref()
-                        .map(|prefix| method.starts_with(prefix))
-                        .unwrap_or(true)
-                    {
-                        completions.push(JsonCompletion { sort_text: Some("3_".to_string()),
-                            label: method.to_string(),
-                            kind: "method".to_string(),
-                            detail: "built-in method".to_string(),
-                            documentation: Some(doc.to_string()),
-                        });
+                    if content.contains("import std.byte") {
+                        builtin_methods.extend(vec![
+                            (
+                                "toHex",
+                                "Returns the hexadecimal string representation (Bytes)",
+                            ),
+                            (
+                                "toBase64",
+                                "Returns the Base64 string representation (Bytes)",
+                            ),
+                            ("concat", "Concatenates another byte array (Bytes)"),
+                        ]);
+                    }
+
+                    for (method, doc) in &builtin_methods {
+                        if member_prefix
+                            .as_deref()
+                            .map(|prefix| method.starts_with(prefix))
+                            .unwrap_or(true)
+                        {
+                            completions.push(JsonCompletion {
+                                sort_text: Some("3_".to_string()),
+                                label: method.to_string(),
+                                kind: "method".to_string(),
+                                detail: "built-in method".to_string(),
+                                documentation: Some(doc.to_string()),
+                            });
+                        }
+                    }
+
+                    if !word_under_cursor.is_empty() {
+                        hover_found = builtin_methods
+                            .into_iter()
+                            .find(|(m, _)| *m == word_under_cursor)
+                            .map(|(m, doc)| JsonHover {
+                                label: format!("{m}()"),
+                                documentation: Some(format!("```flame\nfn {m}(...)\n```\n{}", doc)),
+                            });
                     }
                 }
-
-                if !word_under_cursor.is_empty() {
-                    hover_found = builtin_methods
-                        .into_iter()
-                        .find(|(m, _)| *m == word_under_cursor)
-                        .map(|(m, doc)| JsonHover {
-                            label: format!("{m}()"),
-                            documentation: Some(format!("```flame\nfn {m}(...)\n```\n{}", doc)),
-                        });
-                }
             }
-        }
         } // closes if !resolved_as_var
-
     } else {
         // Keyword completions for bare words
         completions.extend(ide::get_keyword_completions(
@@ -3020,16 +3618,22 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             documentation: Some(desc),
                         });
                     } else {
-                        let is_func_or_anno = typ.starts_with("fn ") || typ.starts_with("annotation ");
-                        
+                        let is_func_or_anno =
+                            typ.starts_with("fn ") || typ.starts_with("annotation ");
+
                         if is_func_or_anno {
-                            let doc = v.doc.clone().unwrap_or_else(|| format!("```flame\n{}\n```", typ));
+                            let doc = v
+                                .doc
+                                .clone()
+                                .unwrap_or_else(|| format!("```flame\n{}\n```", typ));
                             hover_found = Some(JsonHover {
                                 label: format!("{}", typ),
                                 documentation: Some(doc),
                             });
                         } else {
-                            let doc = v.doc.clone().unwrap_or_else(|| format!("```flame\nlet {}: {}\n```", v.name, typ));
+                            let doc = v.doc.clone().unwrap_or_else(|| {
+                                format!("```flame\nlet {}: {}\n```", v.name, typ)
+                            });
                             hover_found = Some(JsonHover {
                                 label: format!("{}: {}", v.name, typ),
                                 documentation: Some(doc),
@@ -3049,7 +3653,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         for v in &scanned_vars {
             let typ_str = v.typ.clone().unwrap_or_else(|| "unknown".to_string());
             let is_annotation = typ_str.starts_with("annotation ");
-            
+
             // If user typed `@`, ONLY show annotations!
             if word_under_cursor_raw.starts_with('@') && !is_annotation {
                 continue;
@@ -3059,7 +3663,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                 let mut kind = "variable".to_string();
                 let mut label = v.name.clone();
                 let mut sort_text = Some("0_".to_string());
-                
+
                 if typ_str.starts_with("fn ") {
                     kind = "function".to_string();
                     sort_text = Some("1_".to_string());
@@ -3070,8 +3674,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                         label = format!("@{}", label);
                     }
                 }
-                
-                completions.push(JsonCompletion { 
+
+                completions.push(JsonCompletion {
                     sort_text,
                     label,
                     kind,
@@ -3085,7 +3689,8 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         if !word_under_cursor_raw.starts_with('@') {
             for s in &scanned_structs {
                 if s.name.starts_with(&word_under_cursor) || word_under_cursor.is_empty() {
-                    completions.push(JsonCompletion { sort_text: None,
+                    completions.push(JsonCompletion {
+                        sort_text: None,
                         label: s.name.clone(),
                         kind: "class".to_string(),
                         detail: "struct".to_string(),
@@ -3095,41 +3700,96 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
         }
 
-        if hover_found.is_none() && exact_ast_hover.is_none() && scanned_var_hover.is_none() && !word_under_cursor.is_empty() {
-            // Check if the bare word is a function/annotation from any native module
-            for mod_name in &native_modules {
-                if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
-                    if let Some(function) = meta.functions.iter().find(|f| f.flame_name == word_under_cursor) {
-                        let params_str = function
-                            .params
-                            .iter()
-                            .map(|p| format!("{}: {}", p.name, p.type_name))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        let sig = format!(
-                            "fn {}({}) -> {}",
-                            function.flame_name,
-                            params_str,
-                            function.return_type
-                        );
-                        let doc = function.docs.clone().unwrap_or_else(|| "".to_string());
-                        let final_doc = if function.docs.is_some() {
-                            doc
-                        } else {
-                            format!(
-                                "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
-                                sig, doc, function.return_type
-                            )
-                        };
-                        hover_found = Some(JsonHover {
-                            label: format!("{}::{}()", mod_name, function.flame_name),
-                            documentation: Some(final_doc),
-                        });
-                        break;
+        if hover_found.is_none()
+            && exact_ast_hover.is_none()
+            && scanned_var_hover.is_none()
+            && !word_under_cursor.is_empty()
+        {
+            if let Some(tc) = &tc_opt {
+                if let Some(s) = tc.structs.iter().find(|(k, _)| k == &&word_under_cursor || k.ends_with(&format!(".{}", word_under_cursor))).map(|(_, v)| v) {
+                    let doc = s.hover_doc.clone().unwrap_or_default();
+                    let final_doc = format!("```flame\nstruct {}\n```\n{}", word_under_cursor, doc);
+                    hover_found = Some(JsonHover {
+                        label: word_under_cursor.clone(),
+                        documentation: Some(final_doc)
+                    });
+                } else if let Some(e) = tc.enums.iter().find(|(k, _)| k == &&word_under_cursor || k.ends_with(&format!(".{}", word_under_cursor))).map(|(_, v)| v) {
+                    let doc = e.hover_doc.clone().unwrap_or_default();
+                    let final_doc = format!("```flame\nenum {}\n```\n{}", word_under_cursor, doc);
+                    hover_found = Some(JsonHover {
+                        label: word_under_cursor.clone(),
+                        documentation: Some(final_doc)
+                    });
+                } else if let Some(f) = tc.functions.iter().find(|(k, _)| k == &&word_under_cursor || k.ends_with(&format!(".{}", word_under_cursor))).map(|(_, v)| v) {
+                    let params_str = f.params.iter().map(|p| format!("{}: {:?}", p.name, p.ty)).collect::<Vec<_>>().join(", ");
+                    let return_str = if f.return_type == crate::typechecker::Type::Nil { "".to_string() } else { format!(" -> {:?}", f.return_type) };
+                    let fallback_doc = format!("```flame\nfn {}({}){}\n```", word_under_cursor, params_str, return_str);
+                    let final_doc = if let Some(doc) = &f.hover_doc { format!("{}\n{}", fallback_doc, doc) } else { fallback_doc };
+                    hover_found = Some(JsonHover {
+                        label: format!("{}()", word_under_cursor),
+                        documentation: Some(final_doc)
+                    });
+                } else if let Some(impl_name) = &current_impl {
+                    if let Some(methods) = tc.methods.get(impl_name) {
+                        if let Some((_, f)) = methods.iter().find(|(k, _)| k == &&word_under_cursor) {
+                            let params_str = f.params.iter().map(|p| format!("{}: {:?}", p.name, p.ty)).collect::<Vec<_>>().join(", ");
+                            let return_str = if f.return_type == crate::typechecker::Type::Nil { "".to_string() } else { format!(" -> {:?}", f.return_type) };
+                            let fallback_doc = format!("```flame\nfn {}({}){}\n```", word_under_cursor, params_str, return_str);
+                            let final_doc = if let Some(doc) = &f.hover_doc { format!("{}\n{}", fallback_doc, doc) } else { fallback_doc };
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}()", impl_name, word_under_cursor),
+                                documentation: Some(final_doc)
+                            });
+                        }
                     }
                 }
             }
-        }
+            
+            if hover_found.is_none() {
+                // Check if the bare word is a function/annotation from any native module
+                for mod_name in &native_modules {
+                    if let Some(meta) = load_meta_from_project(&manifest_dir, mod_name) {
+                        if let Some(function) = meta
+                            .functions
+                            .iter()
+                            .find(|f| f.flame_name == word_under_cursor)
+                        {
+                            let params_str = function
+                                .params
+                                .iter()
+                                .map(|p| format!("{}: {}", p.name, p.type_name))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let sig = format!(
+                                "fn {}({}) -> {}",
+                                function.flame_name, params_str, function.return_type
+                            );
+                            let doc = function.docs.clone().unwrap_or_else(|| {
+                                load_local_rust_doc(
+                                    &manifest_dir,
+                                    mod_name,
+                                    &function.flame_name,
+                                )
+                                .unwrap_or_default()
+                            });
+                            let final_doc = if doc.trim().is_empty() {
+                                format!("```flame\n{}\n```\n\n**Return Type**: `{}`", sig, function.return_type)
+                            } else {
+                                format!(
+                                    "```flame\n{}\n```\n{}\n\n**Return Type**: `{}`",
+                                    sig, doc, function.return_type
+                                )
+                            };
+                            hover_found = Some(JsonHover {
+                                label: format!("{}::{}()", mod_name, function.flame_name),
+                                documentation: Some(final_doc),
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+        } // closes if !resolved_as_var
     };
 
     // Prioritize rich documentation (keywords, built-ins, standard library, decorators, native docs).
@@ -3141,7 +3801,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
         let mut found_call = false;
         let mut commas = 0;
         let mut call_start_idx = 0;
-        
+
         while let Some((i, c)) = chars.next() {
             if c == ')' {
                 open_parens += 1;
@@ -3173,11 +3833,15 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
             }
             if name_start < name_end {
                 let func_name = &func_name_str[name_start..name_end];
-                let clean_name = func_name.trim_start_matches('@').split('.').last().unwrap_or(func_name);
-                
+                let clean_name = func_name
+                    .trim_start_matches('@')
+                    .split('.')
+                    .last()
+                    .unwrap_or(func_name);
+
                 if let Some(tc) = &tc_opt {
                     let mut found_sig = tc.functions.get(clean_name);
-                    
+
                     if found_sig.is_none() {
                         for (_, methods) in &tc.methods {
                             if let Some(sig) = methods.get(clean_name) {
@@ -3186,7 +3850,7 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                             }
                         }
                     }
-                    
+
                     if found_sig.is_none() {
                         for (_, funcs) in &tc.plugin_functions {
                             if let Some(sig) = funcs.get(clean_name) {
@@ -3197,16 +3861,25 @@ fn analyze_file_for_json(file: &str, line: Option<usize>, col: Option<usize>, st
                     }
 
                     if let Some(func) = found_sig {
-                        let params_str = func.params.iter().map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
+                        let params_str = func
+                            .params
+                            .iter()
+                            .map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty)))
+                            .collect::<Vec<_>>()
+                            .join(", ");
                         let ret_str = format!(" -> {}", tc.format_type(&func.return_type));
-                        
+
                         let label = if func_name.starts_with('@') {
                             format!("@{}({})", clean_name, params_str)
                         } else {
                             format!("{}({}){}", clean_name, params_str, ret_str)
                         };
-                        let parameters = func.params.iter().map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty))).collect();
-                        
+                        let parameters = func
+                            .params
+                            .iter()
+                            .map(|p| format!("{}: {}", p.name, tc.format_type(&p.ty)))
+                            .collect();
+
                         signature_help = Some(JsonSignatureHelp {
                             label,
                             parameters,
@@ -3306,7 +3979,7 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
 fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<String>) {
     let end = col.min(line.len());
     let upto = line.chars().take(end).collect::<String>();
-    
+
     // If the character just after the extracted part is a dot (meaning the cursor is exactly ON the dot),
     // we should include it to properly trigger member completions.
     let upto = if end < line.len() && line[end..].starts_with('.') {
@@ -3317,7 +3990,10 @@ fn extract_member_context(line: &str, col: usize) -> (Option<String>, Option<Str
 
     if let Some(dot_index) = upto.rfind('.') {
         let after_dot = &upto[dot_index + 1..];
-        if !after_dot.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+        if !after_dot
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
             return (None, None);
         }
         let left = upto[..dot_index].trim();
@@ -3387,11 +4063,20 @@ fn load_local_module_declarations(
     let candidate = crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
         .or_else(|| {
             let direct = manifest_dir.join(format!("{}.fm", namespace));
-            if direct.exists() { return Some(direct); }
-            
-            let pkg_main = manifest_dir.join(".flame").join("pkg").join(namespace).join("src").join("main.fm");
-            if pkg_main.exists() { return Some(pkg_main); }
-            
+            if direct.exists() {
+                return Some(direct);
+            }
+
+            let pkg_main = manifest_dir
+                .join(".flame")
+                .join("pkg")
+                .join(namespace)
+                .join("src")
+                .join("main.fm");
+            if pkg_main.exists() {
+                return Some(pkg_main);
+            }
+
             None
         })?;
 
@@ -3432,7 +4117,7 @@ fn load_local_module_declarations(
             }
         }
     }
-    
+
     if exported_stmts.is_empty() {
         None
     } else {
@@ -3461,11 +4146,18 @@ fn load_imported_module_declarations(
         let path_parts: Vec<String> = module_path.split('.').map(|s| s.to_string()).collect();
         let file_path = crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
             .or_else(|| {
-                let pkg_main = _manifest_dir.join(".flame").join("pkg").join(&module_path).join("src").join("main.fm");
-                if pkg_main.exists() { return Some(pkg_main); }
+                let pkg_main = _manifest_dir
+                    .join(".flame")
+                    .join("pkg")
+                    .join(&module_path)
+                    .join("src")
+                    .join("main.fm");
+                if pkg_main.exists() {
+                    return Some(pkg_main);
+                }
                 None
             });
-        
+
         if let Some(file_path) = file_path {
             let mut paths_to_read = Vec::new();
             if file_path.is_dir() {

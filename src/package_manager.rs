@@ -244,15 +244,45 @@ pub fn add_package(args: &[String]) {
         (plugin_name, plugin_path, "[plugins]")
     } else {
         let raw_target = &args[0];
-        let name = raw_target
-            .rsplit('/')
-            .next()
-            .unwrap_or(raw_target)
-            .split('@')
-            .next()
-            .unwrap_or(raw_target)
-            .trim_end_matches(".git")
-            .to_string();
+        let mut name = if let Some(name_idx) = args.iter().position(|r| r == "--name") {
+            match args.get(name_idx + 1) {
+                Some(n) if !n.starts_with("--") => n.clone(),
+                _ => {
+                    println!(
+                        "\x1b[1;31merror:\x1b[0m --name requires a valid name argument."
+                    );
+                    return;
+                }
+            }
+        } else {
+            String::new()
+        };
+
+        if name.is_empty() {
+            if raw_target.contains("github.com/") && raw_target.contains("/archive/") {
+                let parts: Vec<&str> = raw_target.split('/').collect();
+                if let Some(idx) = parts.iter().position(|&p| p == "github.com") {
+                    if idx + 2 < parts.len() {
+                        name = parts[idx + 2].to_string();
+                    }
+                }
+            }
+            if name.is_empty() {
+                let base = raw_target
+                    .trim_end_matches(".zip")
+                    .trim_end_matches(".tar.gz")
+                    .trim_end_matches(".git");
+                name = base
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(base)
+                    .split('@')
+                    .next()
+                    .unwrap_or(base)
+                    .to_string();
+            }
+        }
+
         let val = if raw_target == &name {
             "*".to_string()
         } else {
@@ -300,41 +330,8 @@ pub fn add_package(args: &[String]) {
         }
     }
 
-    // Perform git cloning for github.com URLs
-    if !is_plugin && manifest_value.starts_with("github.com/") {
-        let mut parts = manifest_value.split('@');
-        let repo_url = format!("https://{}", parts.next().unwrap());
-        let version = parts.next();
-
-        let pkg_dir = Path::new(".flame").join("pkg").join(&manifest_key);
-        if pkg_dir.exists() {
-            println!("\x1b[1;33m   Warning:\x1b[0m package '{}' is already downloaded. To update, remove it first.", manifest_key);
-        } else {
-            println!(
-                "\x1b[1;36m   Fetching\x1b[0m {} from {}...",
-                manifest_key, repo_url
-            );
-            let _ = fs::create_dir_all(".flame/pkg");
-
-            let mut cmd = std::process::Command::new("git");
-            cmd.arg("clone").arg(&repo_url).arg(&pkg_dir);
-            if let Some(tag) = version {
-                cmd.arg("--branch").arg(tag);
-            }
-
-            let result = cmd.output();
-            if let Ok(output) = result {
-                if !output.status.success() {
-                    println!("\x1b[1;31merror:\x1b[0m failed to clone repository. Make sure git is installed and the repository exists.");
-                    if let Ok(err_str) = String::from_utf8(output.stderr) {
-                        println!("{}", err_str);
-                    }
-                }
-            } else {
-                println!("\x1b[1;31merror:\x1b[0m failed to execute git clone command.");
-            }
-        }
-    }
+    // Immediately fetch and resolve dependencies so IDEs and Language Servers can pick them up.
+    ensure_dependencies_installed(false);
 
     if is_plugin {
         let local_plugin = Path::new(&manifest_value);
@@ -476,16 +473,35 @@ pub fn ensure_dependencies_installed(is_release: bool) {
                     }
                 }
                 let download_url = if let Some(v) = &version {
-                    format!("{}/archive/refs/tags/{}.zip", url.trim_end_matches('/'), v)
+                    if url.contains("github.com") {
+                        let repo = url.replace("https://github.com/", "").replace("github.com/", "");
+                        format!("https://api.github.com/repos/{}/zipball/{}", repo, v)
+                    } else {
+                        format!("{}/archive/refs/tags/{}.zip", url.trim_end_matches('/'), v)
+                    }
                 } else {
-                    format!("{}/archive/refs/heads/main.zip", url.trim_end_matches('/'))
+                    if url.contains("github.com") {
+                        let repo = url.replace("https://github.com/", "").replace("github.com/", "");
+                        format!("https://api.github.com/repos/{}/zipball/HEAD", repo)
+                    } else {
+                        format!("{}/archive/refs/heads/main.zip", url.trim_end_matches('/'))
+                    }
                 };
 
                 let download_zip = |u: &str| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-                    let client = reqwest::blocking::Client::builder()
-                        .user_agent("Flamelang-Package-Manager")
-                        .build()?;
-                    let resp = client.get(u).send()?;
+                    let mut client_builder = reqwest::blocking::Client::builder()
+                        .user_agent("Flamelang-Package-Manager");
+                    
+                    let client = client_builder.build()?;
+                    let mut req = client.get(u);
+                    
+                    if u.contains("api.github.com") {
+                        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                            req = req.header("Authorization", format!("Bearer {}", token));
+                        }
+                    }
+                    
+                    let resp = req.send()?;
                     if resp.status().is_success() {
                         Ok(resp.bytes()?.to_vec())
                     } else {
@@ -625,12 +641,29 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
         target
     );
 
+    let cargo_toml_path = plugin_path.join("Cargo.toml");
+    let mut crate_name = target.to_string();
+    if let Ok(cargo_content) = fs::read_to_string(&cargo_toml_path) {
+        for line in cargo_content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("name") {
+                if let Some(idx) = trimmed.find('=') {
+                    crate_name = trimmed[idx+1..].trim().trim_matches('"').to_string();
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Convert crate_name hyphens to underscores as rustc outputs library names this way
+    let lib_crate_name = crate_name.replace('-', "_");
+
     let lib_filename = if cfg!(target_os = "windows") {
-        format!("{}.dll", target)
+        format!("{}.dll", lib_crate_name)
     } else if cfg!(target_os = "macos") {
-        format!("lib{}.dylib", target)
+        format!("lib{}.dylib", lib_crate_name)
     } else {
-        format!("lib{}.so", target)
+        format!("lib{}.so", lib_crate_name)
     };
 
     let mut meta = FlameMeta {

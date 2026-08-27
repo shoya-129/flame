@@ -60,7 +60,10 @@ pub fn format_code(source: &str) -> String {
             while last_idx > 0 {
                 last_idx -= 1;
                 if tokens[last_idx].kind != TokenKind::Newline {
-                    if matches!(tokens[last_idx].kind, TokenKind::Identifier | TokenKind::Type) {
+                    if matches!(
+                        tokens[last_idx].kind,
+                        TokenKind::Identifier | TokenKind::Type
+                    ) {
                         is_ident = true;
                     }
                     break;
@@ -80,12 +83,29 @@ pub fn format_code(source: &str) -> String {
                                 break;
                             }
                         }
-                        TokenKind::IntLiteral | TokenKind::FloatLiteral | TokenKind::StringLiteral 
-                        | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent 
-                        | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::ExclamationEqual 
-                        | TokenKind::Le | TokenKind::Ge | TokenKind::PlusEqual | TokenKind::MinusEqual 
-                        | TokenKind::StarEqual | TokenKind::SlashEqual | TokenKind::Let | TokenKind::Return 
-                        | TokenKind::If | TokenKind::While | TokenKind::For | TokenKind::Match => {
+                        TokenKind::IntLiteral
+                        | TokenKind::FloatLiteral
+                        | TokenKind::StringLiteral
+                        | TokenKind::Plus
+                        | TokenKind::Minus
+                        | TokenKind::Star
+                        | TokenKind::Slash
+                        | TokenKind::Percent
+                        | TokenKind::Equal
+                        | TokenKind::EqualEqual
+                        | TokenKind::ExclamationEqual
+                        | TokenKind::Le
+                        | TokenKind::Ge
+                        | TokenKind::PlusEqual
+                        | TokenKind::MinusEqual
+                        | TokenKind::StarEqual
+                        | TokenKind::SlashEqual
+                        | TokenKind::Let
+                        | TokenKind::Return
+                        | TokenKind::If
+                        | TokenKind::While
+                        | TokenKind::For
+                        | TokenKind::Match => {
                             is_valid = false;
                             break;
                         }
@@ -113,27 +133,51 @@ pub fn format_code(source: &str) -> String {
     let mut grouping_depth: usize = 0;
     let mut brace_stack: Vec<bool> = Vec::new(); // true = object, false = block
 
-    let indent_str = |level: usize| -> String {
-        "    ".repeat(level)
-    };
+    let indent_str = |level: usize| -> String { "    ".repeat(level) };
 
     let mut i = 0;
     while i < tokens.len() {
         let tok = &tokens[i];
 
         if tok.kind == TokenKind::Newline {
-            let last_kind = last_tok.as_ref().map(|t| t.kind.clone()).unwrap_or(TokenKind::EOF);
-            
+            let last_kind = last_tok
+                .as_ref()
+                .map(|t| t.kind.clone())
+                .unwrap_or(TokenKind::EOF);
+
             let is_continuation = matches!(
                 last_kind,
-                TokenKind::OpenParen | TokenKind::OpenBracket | TokenKind::OpenBrace | TokenKind::Comma | TokenKind::Equal | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Dot | TokenKind::Ampersand2 | TokenKind::Pipe2 | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Lt | TokenKind::Le | TokenKind::Gt | TokenKind::Ge | TokenKind::Colon | TokenKind::Return
+                TokenKind::OpenParen
+                    | TokenKind::OpenBracket
+                    | TokenKind::OpenBrace
+                    | TokenKind::Comma
+                    | TokenKind::Equal
+                    | TokenKind::Plus
+                    | TokenKind::Minus
+                    | TokenKind::Star
+                    | TokenKind::Slash
+                    | TokenKind::Percent
+                    | TokenKind::Dot
+                    | TokenKind::Ampersand2
+                    | TokenKind::Pipe2
+                    | TokenKind::EqualEqual
+                    | TokenKind::ExclamationEqual
+                    | TokenKind::Lt
+                    | TokenKind::Le
+                    | TokenKind::Gt
+                    | TokenKind::Ge
+                    | TokenKind::Colon
+                    | TokenKind::Return
             );
-            
-            if last_kind != TokenKind::Newline || empty_line_pending || Some(i) == last_import_line_end_idx {
+
+            if last_kind != TokenKind::Newline
+                || empty_line_pending
+                || Some(i) == last_import_line_end_idx
+            {
                 while out.ends_with(' ') || out.ends_with('\t') {
                     out.pop();
                 }
-                
+
                 if Some(i) == last_import_line_end_idx {
                     if !out.ends_with('\n') {
                         out.push_str("\n\n\n\n");
@@ -154,7 +198,7 @@ pub fn format_code(source: &str) -> String {
                         out.push('\n');
                     }
                 }
-                
+
                 needs_indent = true;
             }
             last_tok = Some(tok.clone());
@@ -176,7 +220,15 @@ pub fn format_code(source: &str) -> String {
                     break;
                 }
             }
-            let is_object = matches!(last_sig, TokenKind::Equal | TokenKind::Comma | TokenKind::Colon | TokenKind::Return | TokenKind::OpenParen | TokenKind::OpenBracket);
+            let is_object = matches!(
+                last_sig,
+                TokenKind::Equal
+                    | TokenKind::Comma
+                    | TokenKind::Colon
+                    | TokenKind::Return
+                    | TokenKind::OpenParen
+                    | TokenKind::OpenBracket
+            );
             brace_stack.push(is_object);
             if is_object {
                 grouping_depth += 1;
@@ -209,11 +261,26 @@ pub fn format_code(source: &str) -> String {
         }
 
         let original_text = &source[tok.span.start..tok.span.end];
-        let last_kind = last_tok.as_ref().map(|t| t.kind.clone()).unwrap_or(TokenKind::EOF);
+        let last_kind = last_tok
+            .as_ref()
+            .map(|t| t.kind.clone())
+            .unwrap_or(TokenKind::EOF);
 
         // Spacing before
         match tok.kind {
-            TokenKind::OpenBrace | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow | TokenKind::FatArrow => {
+            TokenKind::OpenBrace
+            | TokenKind::Equal
+            | TokenKind::EqualEqual
+            | TokenKind::ExclamationEqual
+            | TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::Le
+            | TokenKind::Ge
+            | TokenKind::Arrow
+            | TokenKind::FatArrow => {
                 if !out.ends_with(' ') && !out.ends_with('\n') {
                     out.push(' ');
                 }
@@ -227,34 +294,116 @@ pub fn format_code(source: &str) -> String {
             }
             _ => {
                 let mut needs_space = false;
-                
+
                 if let Some(ltok) = &last_tok {
                     let last_text = &source[ltok.span.start..ltok.span.end];
-                    
+
                     let last_char = last_text.chars().last().unwrap_or(' ');
                     let first_char = original_text.chars().next().unwrap_or(' ');
-                    
+
                     // If both end and start with identifier-like characters (alphanumeric or underscore),
                     // they MUST be separated by a space to prevent lexical merging.
-                    if (last_char.is_alphanumeric() || last_char == '_') && (first_char.is_alphanumeric() || first_char == '_') {
+                    if (last_char.is_alphanumeric() || last_char == '_')
+                        && (first_char.is_alphanumeric() || first_char == '_')
+                    {
                         needs_space = true;
                     }
                 }
-                
+
                 let is_last_ident_like = matches!(
                     last_kind,
-                    TokenKind::Identifier | TokenKind::Annotation | TokenKind::StringLiteral | TokenKind::IntLiteral | TokenKind::FloatLiteral | TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace | TokenKind::True | TokenKind::False
+                    TokenKind::Identifier
+                        | TokenKind::Annotation
+                        | TokenKind::StringLiteral
+                        | TokenKind::IntLiteral
+                        | TokenKind::FloatLiteral
+                        | TokenKind::CloseParen
+                        | TokenKind::CloseBracket
+                        | TokenKind::CloseBrace
+                        | TokenKind::True
+                        | TokenKind::False
                 );
                 let is_current_ident_like = matches!(
                     tok.kind,
-                    TokenKind::Identifier | TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Annotation | TokenKind::Type | TokenKind::Where | TokenKind::True | TokenKind::False
+                    TokenKind::Identifier
+                        | TokenKind::Let
+                        | TokenKind::Const
+                        | TokenKind::Fn
+                        | TokenKind::Struct
+                        | TokenKind::Enum
+                        | TokenKind::Trait
+                        | TokenKind::Impl
+                        | TokenKind::Export
+                        | TokenKind::Import
+                        | TokenKind::Return
+                        | TokenKind::Mut
+                        | TokenKind::In
+                        | TokenKind::As
+                        | TokenKind::Match
+                        | TokenKind::If
+                        | TokenKind::Else
+                        | TokenKind::For
+                        | TokenKind::While
+                        | TokenKind::Loop
+                        | TokenKind::Yield
+                        | TokenKind::Defer
+                        | TokenKind::Async
+                        | TokenKind::Await
+                        | TokenKind::Thread
+                        | TokenKind::Formula
+                        | TokenKind::Annotation
+                        | TokenKind::Type
+                        | TokenKind::Where
+                        | TokenKind::True
+                        | TokenKind::False
                 );
 
                 let mut is_last_keyword = matches!(
                     last_kind,
-                    TokenKind::Let | TokenKind::Const | TokenKind::Fn | TokenKind::Struct | TokenKind::Enum | TokenKind::Trait | TokenKind::Impl | TokenKind::Export | TokenKind::Import | TokenKind::Return | TokenKind::Mut | TokenKind::In | TokenKind::As | TokenKind::Match | TokenKind::If | TokenKind::Else | TokenKind::For | TokenKind::While | TokenKind::Loop | TokenKind::Yield | TokenKind::Defer | TokenKind::Async | TokenKind::Await | TokenKind::Thread | TokenKind::Formula | TokenKind::Annotation | TokenKind::Type | TokenKind::Where | TokenKind::Comma | TokenKind::Colon | TokenKind::Equal | TokenKind::EqualEqual | TokenKind::ExclamationEqual | TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::Le | TokenKind::Ge | TokenKind::Arrow | TokenKind::FatArrow
+                    TokenKind::Let
+                        | TokenKind::Const
+                        | TokenKind::Fn
+                        | TokenKind::Struct
+                        | TokenKind::Enum
+                        | TokenKind::Trait
+                        | TokenKind::Impl
+                        | TokenKind::Export
+                        | TokenKind::Import
+                        | TokenKind::Return
+                        | TokenKind::Mut
+                        | TokenKind::In
+                        | TokenKind::As
+                        | TokenKind::Match
+                        | TokenKind::If
+                        | TokenKind::Else
+                        | TokenKind::For
+                        | TokenKind::While
+                        | TokenKind::Loop
+                        | TokenKind::Yield
+                        | TokenKind::Defer
+                        | TokenKind::Async
+                        | TokenKind::Await
+                        | TokenKind::Thread
+                        | TokenKind::Formula
+                        | TokenKind::Annotation
+                        | TokenKind::Type
+                        | TokenKind::Where
+                        | TokenKind::Comma
+                        | TokenKind::Colon
+                        | TokenKind::Equal
+                        | TokenKind::EqualEqual
+                        | TokenKind::ExclamationEqual
+                        | TokenKind::Plus
+                        | TokenKind::Minus
+                        | TokenKind::Star
+                        | TokenKind::Slash
+                        | TokenKind::Percent
+                        | TokenKind::Le
+                        | TokenKind::Ge
+                        | TokenKind::Arrow
+                        | TokenKind::FatArrow
                 );
-                
+
                 if last_kind == TokenKind::Lt || last_kind == TokenKind::Gt {
                     if !last_tok_was_generic {
                         is_last_keyword = true;
@@ -265,10 +414,12 @@ pub fn format_code(source: &str) -> String {
                     needs_space = true;
                 }
 
-                if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot && !out.ends_with('.') {
+                if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot && !out.ends_with('.')
+                {
                     if needs_space {
                         // Exception: do not add a space before OpenParen if the last token was a keyword that acts like a function (e.g. type())
-                        let skip_space = tok.kind == TokenKind::OpenParen && matches!(last_kind, TokenKind::Type | TokenKind::Identifier);
+                        let skip_space = tok.kind == TokenKind::OpenParen
+                            && matches!(last_kind, TokenKind::Type | TokenKind::Identifier);
                         if !skip_space && !out.ends_with(' ') && !out.ends_with('\n') {
                             out.push(' ');
                         }
@@ -287,15 +438,24 @@ pub fn format_code(source: &str) -> String {
             while j < tokens.len() && tokens[j].kind == TokenKind::Newline {
                 j += 1;
             }
-            if j < tokens.len() && (tokens[j].kind == TokenKind::Else || tokens[j].kind == TokenKind::CloseParen) {
+            if j < tokens.len()
+                && (tokens[j].kind == TokenKind::Else || tokens[j].kind == TokenKind::CloseParen)
+            {
                 next_is_else = true;
             }
             if !next_is_else {
                 empty_line_pending = true;
             }
         }
-        if tok.kind == TokenKind::Let || (tok.kind == TokenKind::Identifier && (original_text == "print" || original_text == "println")) {
-            let is_start = i == 0 || matches!(tokens[i-1].kind, TokenKind::Newline | TokenKind::OpenBrace);
+        if tok.kind == TokenKind::Let
+            || (tok.kind == TokenKind::Identifier
+                && (original_text == "print" || original_text == "println"))
+        {
+            let is_start = i == 0
+                || matches!(
+                    tokens[i - 1].kind,
+                    TokenKind::Newline | TokenKind::OpenBrace
+                );
             if is_start {
                 let mut next_start = None;
                 let mut j = i + 1;
@@ -305,7 +465,10 @@ pub fn format_code(source: &str) -> String {
                         while k < tokens.len() && tokens[k].kind == TokenKind::Newline {
                             k += 1;
                         }
-                        if k < tokens.len() && tokens[k].kind != TokenKind::CloseBrace && tokens[k].kind != TokenKind::CloseParen {
+                        if k < tokens.len()
+                            && tokens[k].kind != TokenKind::CloseBrace
+                            && tokens[k].kind != TokenKind::CloseParen
+                        {
                             next_start = Some(&tokens[k]);
                         }
                         break;
@@ -317,7 +480,8 @@ pub fn format_code(source: &str) -> String {
                     let same_group = if tok.kind == TokenKind::Let {
                         nst.kind == TokenKind::Let
                     } else {
-                        nst.kind == TokenKind::Identifier && (nst_text == "print" || nst_text == "println")
+                        nst.kind == TokenKind::Identifier
+                            && (nst_text == "print" || nst_text == "println")
                     };
                     if !same_group {
                         empty_line_pending = true;
@@ -361,7 +525,7 @@ pub fn format_code(source: &str) -> String {
             }
             _ => {}
         }
-        
+
         i += 1;
     }
 

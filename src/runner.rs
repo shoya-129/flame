@@ -113,6 +113,16 @@ impl Runner {
                         Expr::Identifier(id, _) => id == "main",
                         _ => false,
                     },
+                    Stmt::ExprStmt(Expr::Await(inner, _)) => {
+                        if let Expr::Call(callee, ..) = &**inner {
+                            match &**callee {
+                                Expr::Identifier(id, _) => id == "main",
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        }
+                    }
                     _ => false,
                 });
                 if !explicitly_called {
@@ -198,29 +208,50 @@ impl Runner {
                     if anno.name == "Requires" {
                         for arg_str in &anno.args {
                             if arg_str.starts_with('"') && arg_str.ends_with('"') {
-                                let mod_name = arg_str[1..arg_str.len()-1].to_string();
-                                let parts: Vec<String> = mod_name.split('.').map(|s| s.to_string()).collect();
-                                let _ = self.execute_statement(&Stmt::ImportDecl {
-                                    path: parts,
-                                    glob: false,
-                                    span: anno.span.clone(),
-                                }, child_env.clone());
+                                let mod_name = arg_str[1..arg_str.len() - 1].to_string();
+                                let parts: Vec<String> =
+                                    mod_name.split('.').map(|s| s.to_string()).collect();
+                                let _ = self.execute_statement(
+                                    &Stmt::ImportDecl {
+                                        path: parts,
+                                        glob: false,
+                                        span: anno.span.clone(),
+                                    },
+                                    child_env.clone(),
+                                );
                             }
                         }
                     } else if anno.name == "Permission" {
                         for arg_str in &anno.args {
                             if arg_str.starts_with('"') && arg_str.ends_with('"') {
-                                let perm_name = arg_str[1..arg_str.len()-1].to_string();
+                                let perm_name = arg_str[1..arg_str.len() - 1].to_string();
                                 if !self.granted_permissions.contains(&perm_name) {
                                     if !self.interactive {
-                                        return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                        return Ok(Value::EnumValue(
+                                            "Result".to_string(),
+                                            "Err".to_string(),
+                                            crate::vm::EnumData::Tuple(vec![Value::String(
+                                                format!("PermissionDenied: {}", perm_name),
+                                            )]),
+                                        ));
                                     } else {
-                                        println!("Function requires permission for: {}. Allow? [y/N]", perm_name);
+                                        println!(
+                                            "Function requires permission for: {}. Allow? [y/N]",
+                                            perm_name
+                                        );
                                         let mut input = String::new();
-                                        if std::io::stdin().read_line(&mut input).is_ok() && input.trim().eq_ignore_ascii_case("y") {
+                                        if std::io::stdin().read_line(&mut input).is_ok()
+                                            && input.trim().eq_ignore_ascii_case("y")
+                                        {
                                             self.granted_permissions.insert(perm_name);
                                         } else {
-                                            return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                            return Ok(Value::EnumValue(
+                                                "Result".to_string(),
+                                                "Err".to_string(),
+                                                crate::vm::EnumData::Tuple(vec![Value::String(
+                                                    format!("PermissionDenied: {}", perm_name),
+                                                )]),
+                                            ));
                                         }
                                     }
                                 }
@@ -514,7 +545,7 @@ impl Runner {
                         for (i, var) in vars.iter().enumerate() {
                             let mut var_name = *var;
                             let mut extract_index = i;
-                            
+
                             if var.contains(':') {
                                 let parts: Vec<&str> = var.split(':').collect();
                                 var_name = parts[0].trim();
@@ -522,7 +553,7 @@ impl Runner {
                                     extract_index = idx;
                                 }
                             }
-                            
+
                             if extract_index < items.len() {
                                 env.lock().unwrap().define(
                                     var_name.to_string(),
@@ -530,7 +561,10 @@ impl Runner {
                                     *is_mut,
                                 );
                             } else {
-                                return Err(format!("index {} out of bounds for tuple/vector destructuring", extract_index));
+                                return Err(format!(
+                                    "index {} out of bounds for tuple/vector destructuring",
+                                    extract_index
+                                ));
                             }
                         }
                     } else {
@@ -540,7 +574,9 @@ impl Runner {
                     let trimmed = &name[1..name.len() - 1];
                     let vars: Vec<&str> = trimmed.split(',').map(|s| s.trim()).collect();
                     match val {
-                        Value::Formula(map) | Value::Object(map) | Value::StructInstance { fields: map, .. } => {
+                        Value::Formula(map)
+                        | Value::Object(map)
+                        | Value::StructInstance { fields: map, .. } => {
                             for var in vars {
                                 if let Some(field_val) = map.get(var) {
                                     env.lock().unwrap().define(
@@ -549,7 +585,10 @@ impl Runner {
                                         *is_mut,
                                     );
                                 } else {
-                                    return Err(format!("field '{}' not found in object destructuring", var));
+                                    return Err(format!(
+                                        "field '{}' not found in object destructuring",
+                                        var
+                                    ));
                                 }
                             }
                         }
@@ -836,11 +875,21 @@ impl Runner {
                                 }
                             }
                             Err(e) => {
-                                return Err(format!("Native package metadata '{}' invalid: {}", rel_meta, e));
+                                return Err(format!(
+                                    "Native package metadata '{}' invalid: {}",
+                                    rel_meta, e
+                                ));
                             }
                         }
                     } else {
-                        return Err(format!("Native package metadata '{}' not found", rel_meta));
+                        // In AOT (or when metadata is missing), we gracefully fallback
+                        // to an empty formula module. Native method bindings are statically
+                        // resolved through the `native_methods` map on method invocation.
+                        mod_env.lock().unwrap().define(
+                            "__crate__".to_string(),
+                            Value::String(raw_mod_name.to_string()),
+                            false,
+                        );
                     }
 
                     // Fallback registrations for known native modules (e.g. native.bridge)
@@ -873,19 +922,21 @@ impl Runner {
                     let mut files_to_run = Vec::new();
                     let mut error_msg = String::new();
                     let mut target_is_dir = false;
-                    
+
                     let mut target_path = None;
-                    let pkg_main = self.resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
+                    let pkg_main = self
+                        .resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
                     let f_fm = self.resolve_path(&format!("{}.fm", path.join("/")));
                     let f_flame = self.resolve_path(&format!("{}.flame", path.join("/")));
-                    
+
                     if self.vfs.is_some() {
                         let vfs = self.vfs.as_ref().unwrap();
-                        let pkg_main_str = format!(".flame/pkg/{}/src/main.fm", path.last().unwrap());
+                        let pkg_main_str =
+                            format!(".flame/pkg/{}/src/main.fm", path.last().unwrap());
                         let f_fm_str = format!("src/{}.fm", path.join("/"));
                         let f_flame_str = format!("src/{}.flame", path.join("/"));
                         let dir_prefix = format!("src/{}/", path.join("/"));
-                        
+
                         if vfs.contains_key(&pkg_main_str) {
                             target_path = Some(PathBuf::from(pkg_main_str));
                         } else if vfs.contains_key(&f_fm_str) {
@@ -906,7 +957,7 @@ impl Runner {
                                 target_is_dir = true;
                             }
                         }
-                        
+
                         if let Some(f) = target_path {
                             if target_is_dir {
                                 let prefix = format!("{}/", f.to_string_lossy().replace("\\", "/"));
@@ -922,7 +973,10 @@ impl Runner {
                                 }
                             }
                             if files_to_run.is_empty() {
-                                error_msg = format!("Module '{}' found in VFS but contains no readable .fm files", mod_name);
+                                error_msg = format!(
+                                    "Module '{}' found in VFS but contains no readable .fm files",
+                                    mod_name
+                                );
                             }
                         } else {
                             error_msg = format!("Module '{}' not found in VFS", mod_name);
@@ -945,7 +999,10 @@ impl Runner {
                                 if let Ok(entries) = std::fs::read_dir(&f) {
                                     for entry in entries.flatten() {
                                         let path = entry.path();
-                                        if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("fm") {
+                                        if path.is_file()
+                                            && path.extension().and_then(|s| s.to_str())
+                                                == Some("fm")
+                                        {
                                             if let Ok(c) = self.read_file_or_vfs(&path) {
                                                 files_to_run.push((path, c));
                                             }
@@ -958,7 +1015,10 @@ impl Runner {
                                 }
                             }
                             if files_to_run.is_empty() {
-                                error_msg = format!("Module '{}' found at {:?} but contains no readable .fm files", mod_name, f);
+                                error_msg = format!(
+                                    "Module '{}' found at {:?} but contains no readable .fm files",
+                                    mod_name, f
+                                );
                             }
                         } else {
                             error_msg = format!("Module '{}' not found", mod_name);
@@ -967,7 +1027,7 @@ impl Runner {
 
                     if !files_to_run.is_empty() {
                         let expected_pkg = path.last().unwrap();
-                        
+
                         let mod_env = Arc::new(Mutex::new(Env::new()));
                         crate::stdlib::register_global_builtins(mod_env.clone());
                         let mut all_modules = std::collections::HashMap::new();
@@ -979,11 +1039,14 @@ impl Runner {
                                 let tok = lexer.next_token();
                                 let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
                                 tokens.push(tok);
-                                if is_eof { break; }
+                                if is_eof {
+                                    break;
+                                }
                             }
-                            let mut parser = Parser::new(tokens, local_file.to_string_lossy().to_string());
+                            let mut parser =
+                                Parser::new(tokens, local_file.to_string_lossy().to_string());
                             let parsed_stmts = parser.parse().map_err(|e| e.message)?;
-                            
+
                             if target_is_dir {
                                 let mut found_pkg = None;
                                 for s in &parsed_stmts {
@@ -993,9 +1056,22 @@ impl Runner {
                                     }
                                 }
                                 match found_pkg {
-                                    Some(name) if &name == expected_pkg => {},
-                                    Some(name) => return Err(format!("File {} declared package '{}', but expected '{}'", local_file.display(), name, expected_pkg)),
-                                    None => return Err(format!("File {} in a folder import must declare 'package {}'", local_file.display(), expected_pkg)),
+                                    Some(name) if &name == expected_pkg => {}
+                                    Some(name) => {
+                                        return Err(format!(
+                                            "File {} declared package '{}', but expected '{}'",
+                                            local_file.display(),
+                                            name,
+                                            expected_pkg
+                                        ));
+                                    }
+                                    None => {
+                                        return Err(format!(
+                                            "File {} in a folder import must declare 'package {}'",
+                                            local_file.display(),
+                                            expected_pkg
+                                        ));
+                                    }
                                 }
                             }
 
@@ -1013,7 +1089,11 @@ impl Runner {
                                         | Stmt::StructDecl { name, .. }
                                         | Stmt::EnumDecl { name, .. } => {
                                             if let Some(val) = mod_env.lock().unwrap().get(name) {
-                                                env.lock().unwrap().define(name.clone(), val, false);
+                                                env.lock().unwrap().define(
+                                                    name.clone(),
+                                                    val,
+                                                    false,
+                                                );
                                             }
                                         }
                                         _ => {}
@@ -1024,7 +1104,7 @@ impl Runner {
                                 all_modules.insert(k, v);
                             }
                         }
-                        
+
                         for (k, v) in all_modules {
                             self.modules.insert(k, v);
                         }
@@ -1149,21 +1229,36 @@ impl Runner {
                                 let dot_pat = format!("{}.{}", enum_name, variant_name);
                                 let colon_pat = format!("{}::{}", enum_name, variant_name);
 
-                                if dot_pat == *pattern || colon_pat == *pattern || variant_name == pattern || pattern.ends_with(&format!(".{}", dot_pat)) || pattern.ends_with(&format!("::{}", colon_pat)) {
+                                if dot_pat == *pattern
+                                    || colon_pat == *pattern
+                                    || variant_name == pattern
+                                    || pattern.ends_with(&format!(".{}", dot_pat))
+                                    || pattern.ends_with(&format!("::{}", colon_pat))
+                                {
                                     is_match = true;
                                     let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
-                                    
+
                                     match data {
                                         EnumData::Tuple(vals) => {
                                             for (i, field) in arm.destructure.iter().enumerate() {
-                                                let field_val = vals.get(i).cloned().unwrap_or(Value::Nil);
-                                                child.lock().unwrap().define(field.clone(), field_val, false);
+                                                let field_val =
+                                                    vals.get(i).cloned().unwrap_or(Value::Nil);
+                                                child.lock().unwrap().define(
+                                                    field.clone(),
+                                                    field_val,
+                                                    false,
+                                                );
                                             }
                                         }
                                         EnumData::Struct(map) => {
                                             for field in &arm.destructure {
-                                                let field_val = map.get(field).cloned().unwrap_or(Value::Nil);
-                                                child.lock().unwrap().define(field.clone(), field_val, false);
+                                                let field_val =
+                                                    map.get(field).cloned().unwrap_or(Value::Nil);
+                                                child.lock().unwrap().define(
+                                                    field.clone(),
+                                                    field_val,
+                                                    false,
+                                                );
                                             }
                                         }
                                         EnumData::Unit => {}
@@ -1175,7 +1270,8 @@ impl Runner {
                                 if let Some(Value::String(variant)) = map.get("$variant") {
                                     if variant == pattern {
                                         is_match = true;
-                                        let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                                        let child =
+                                            Arc::new(Mutex::new(Env::new_child(env.clone())));
                                         for field in &arm.destructure {
                                             let field_val =
                                                 map.get(field).cloned().unwrap_or(Value::Nil);
@@ -1209,7 +1305,7 @@ impl Runner {
                     if is_match {
                         let exec_env = child_env_opt.unwrap_or_else(|| env.clone());
                         let mut guard_passed = true;
-                        
+
                         if let Some(guard_expr) = &arm.guard {
                             let guard_val = self.eval_expr(guard_expr, exec_env.clone())?;
                             if !guard_val.is_truthy() {
@@ -1311,7 +1407,8 @@ impl Runner {
                                         if matches!(val, Value::Nil) {
                                             break; // End of iteration
                                         }
-                                        let child = Arc::new(Mutex::new(Env::new_child(env.clone())));
+                                        let child =
+                                            Arc::new(Mutex::new(Env::new_child(env.clone())));
                                         child.lock().unwrap().define(var_name.clone(), val, false);
 
                                         for s in body {
@@ -1405,8 +1502,8 @@ impl Runner {
                     }
                 }
             }
-            "toFloat" | "toDouble" | "to_double" | "tryFloat" | "try_float"
-            | "tryDouble" | "try_double" => {
+            "toFloat" | "toDouble" | "to_double" | "tryFloat" | "try_float" | "tryDouble"
+            | "try_double" => {
                 let is_try = member.starts_with("try");
                 match val {
                     Value::Float(f) => Some(Ok(Value::Float(*f))),
@@ -1476,19 +1573,18 @@ impl Runner {
                 _ => Some(Err(format!("cannot convert {:?} to Char", val))),
             },
             "toByte" | "to_byte" => match val {
-                Value::String(s) => {
-                    Some(Ok(Value::Bytes(s.clone().into_bytes())))
-                }
+                Value::String(s) => Some(Ok(Value::Bytes(s.clone().into_bytes()))),
                 Value::Int(i) => {
                     if *i < 0 || *i > 255 {
-                        Some(Err(format!("toByte: value {} is out of bounds for Byte (0..255)", i)))
+                        Some(Err(format!(
+                            "toByte: value {} is out of bounds for Byte (0..255)",
+                            i
+                        )))
                     } else {
                         Some(Ok(Value::Byte(*i as u8)))
                     }
                 }
-                Value::Bytes(b) => {
-                    Some(Ok(Value::Bytes(b.clone())))
-                }
+                Value::Bytes(b) => Some(Ok(Value::Bytes(b.clone()))),
                 _ => Some(Err(format!("cannot convert {:?} to Byte", val))),
             },
             _ => None,
@@ -1545,7 +1641,12 @@ impl Runner {
                     }
                 }
             }
-            Expr::Closure { params, body, annotations, .. } => Ok(Value::Function {
+            Expr::Closure {
+                params,
+                body,
+                annotations,
+                ..
+            } => Ok(Value::Function {
                 params: params.clone(),
                 body: body.clone(),
                 env: env.clone(),
@@ -1790,57 +1891,64 @@ impl Runner {
                         | BinaryOp::ShlAssign
                         | BinaryOp::ShrAssign
                 ) {
-                    let compute_compound =
-                        |op: &BinaryOp, l_val: Value, r_val: &Value| -> Result<Value, String> {
-                            match (op, l_val, r_val) {
-                                (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => {
-                                    a.checked_add(*b).map(Value::Int).ok_or_else(|| "integer overflow in +=".to_string())
-                                }
-                                (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => {
-                                    Ok(Value::Float(a + b))
-                                }
-                                (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => {
-                                    Ok(Value::String(format!("{}{}", a, b)))
-                                }
-                                (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => {
-                                    a.checked_sub(*b).map(Value::Int).ok_or_else(|| "integer overflow in -=".to_string())
-                                }
-                                (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => {
-                                    Ok(Value::Float(a - b))
-                                }
-                                (BinaryOp::MulAssign, Value::Int(a), Value::Int(b)) => {
-                                    a.checked_mul(*b).map(Value::Int).ok_or_else(|| "integer overflow in *=".to_string())
-                                }
-                                (BinaryOp::MulAssign, Value::Float(a), Value::Float(b)) => {
-                                    Ok(Value::Float(a * b))
-                                }
-                                (BinaryOp::DivAssign, Value::Int(a), Value::Int(b)) => {
-                                    a.checked_div(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in /=".to_string())
-                                }
-                                (BinaryOp::DivAssign, Value::Float(a), Value::Float(b)) => {
-                                    Ok(Value::Float(a / b))
-                                }
-                                (BinaryOp::ModAssign, Value::Int(a), Value::Int(b)) => {
-                                    a.checked_rem(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in %=".to_string())
-                                }
-                                (BinaryOp::BitAndAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a & b))
-                                }
-                                (BinaryOp::BitOrAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a | b))
-                                }
-                                (BinaryOp::BitXorAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a ^ b))
-                                }
-                                (BinaryOp::ShlAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a << b))
-                                }
-                                (BinaryOp::ShrAssign, Value::Int(a), Value::Int(b)) => {
-                                    Ok(Value::Int(a >> b))
-                                }
-                                _ => Err("invalid operands for compound assignment".to_string()),
+                    let compute_compound = |op: &BinaryOp,
+                                            l_val: Value,
+                                            r_val: &Value|
+                     -> Result<Value, String> {
+                        match (op, l_val, r_val) {
+                            (BinaryOp::PlusAssign, Value::Int(a), Value::Int(b)) => a
+                                .checked_add(*b)
+                                .map(Value::Int)
+                                .ok_or_else(|| "integer overflow in +=".to_string()),
+                            (BinaryOp::PlusAssign, Value::Float(a), Value::Float(b)) => {
+                                Ok(Value::Float(a + b))
                             }
-                        };
+                            (BinaryOp::PlusAssign, Value::String(a), Value::String(b)) => {
+                                Ok(Value::String(format!("{}{}", a, b)))
+                            }
+                            (BinaryOp::MinusAssign, Value::Int(a), Value::Int(b)) => a
+                                .checked_sub(*b)
+                                .map(Value::Int)
+                                .ok_or_else(|| "integer overflow in -=".to_string()),
+                            (BinaryOp::MinusAssign, Value::Float(a), Value::Float(b)) => {
+                                Ok(Value::Float(a - b))
+                            }
+                            (BinaryOp::MulAssign, Value::Int(a), Value::Int(b)) => a
+                                .checked_mul(*b)
+                                .map(Value::Int)
+                                .ok_or_else(|| "integer overflow in *=".to_string()),
+                            (BinaryOp::MulAssign, Value::Float(a), Value::Float(b)) => {
+                                Ok(Value::Float(a * b))
+                            }
+                            (BinaryOp::DivAssign, Value::Int(a), Value::Int(b)) => a
+                                .checked_div(*b)
+                                .map(Value::Int)
+                                .ok_or_else(|| "division by zero or overflow in /=".to_string()),
+                            (BinaryOp::DivAssign, Value::Float(a), Value::Float(b)) => {
+                                Ok(Value::Float(a / b))
+                            }
+                            (BinaryOp::ModAssign, Value::Int(a), Value::Int(b)) => a
+                                .checked_rem(*b)
+                                .map(Value::Int)
+                                .ok_or_else(|| "division by zero or overflow in %=".to_string()),
+                            (BinaryOp::BitAndAssign, Value::Int(a), Value::Int(b)) => {
+                                Ok(Value::Int(a & b))
+                            }
+                            (BinaryOp::BitOrAssign, Value::Int(a), Value::Int(b)) => {
+                                Ok(Value::Int(a | b))
+                            }
+                            (BinaryOp::BitXorAssign, Value::Int(a), Value::Int(b)) => {
+                                Ok(Value::Int(a ^ b))
+                            }
+                            (BinaryOp::ShlAssign, Value::Int(a), Value::Int(b)) => {
+                                Ok(Value::Int(a << b))
+                            }
+                            (BinaryOp::ShrAssign, Value::Int(a), Value::Int(b)) => {
+                                Ok(Value::Int(a >> b))
+                            }
+                            _ => Err("invalid operands for compound assignment".to_string()),
+                        }
+                    };
 
                     // Support assignment to identifiers, references, and simple dot paths
                     if let Expr::Identifier(var_name, _) = &**left {
@@ -1910,9 +2018,13 @@ impl Runner {
                         } else if let Expr::Index(inner, idx, _) = &**left {
                             if let Expr::Identifier(owner, _) = &**inner {
                                 let idx_val = self.eval_expr(idx, env.clone())?;
-                                let idx_int = if let Value::Int(i) = idx_val { i as usize } else { return Err("Index must be an integer".to_string()); };
+                                let idx_int = if let Value::Int(i) = idx_val {
+                                    i as usize
+                                } else {
+                                    return Err("Index must be an integer".to_string());
+                                };
                                 let mut r_val = self.eval_expr(right, env.clone())?;
-                                
+
                                 if *op != BinaryOp::Assign {
                                     let l_val = self.eval_expr(left, env.clone())?;
                                     r_val = compute_compound(op, l_val, &r_val)?;
@@ -1932,7 +2044,8 @@ impl Runner {
                                 }
                                 return Ok(r_val);
                             } else {
-                                return Err("left-hand side assignment must be a variable array".to_string());
+                                return Err("left-hand side assignment must be a variable array"
+                                    .to_string());
                             }
                         } else {
                             return Err(
@@ -1971,11 +2084,26 @@ impl Runner {
                 let r = self.eval_expr(right, env.clone())?;
                 match (&l, &r) {
                     (Value::Int(a), Value::Int(b)) => match op {
-                        BinaryOp::Add => a.checked_add(*b).map(Value::Int).ok_or_else(|| "integer overflow in +".to_string()),
-                        BinaryOp::Sub => a.checked_sub(*b).map(Value::Int).ok_or_else(|| "integer overflow in -".to_string()),
-                        BinaryOp::Mul => a.checked_mul(*b).map(Value::Int).ok_or_else(|| "integer overflow in *".to_string()),
-                        BinaryOp::Div => a.checked_div(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in /".to_string()),
-                        BinaryOp::Mod => a.checked_rem(*b).map(Value::Int).ok_or_else(|| "division by zero or overflow in %".to_string()),
+                        BinaryOp::Add => a
+                            .checked_add(*b)
+                            .map(Value::Int)
+                            .ok_or_else(|| "integer overflow in +".to_string()),
+                        BinaryOp::Sub => a
+                            .checked_sub(*b)
+                            .map(Value::Int)
+                            .ok_or_else(|| "integer overflow in -".to_string()),
+                        BinaryOp::Mul => a
+                            .checked_mul(*b)
+                            .map(Value::Int)
+                            .ok_or_else(|| "integer overflow in *".to_string()),
+                        BinaryOp::Div => a
+                            .checked_div(*b)
+                            .map(Value::Int)
+                            .ok_or_else(|| "division by zero or overflow in /".to_string()),
+                        BinaryOp::Mod => a
+                            .checked_rem(*b)
+                            .map(Value::Int)
+                            .ok_or_else(|| "division by zero or overflow in %".to_string()),
                         BinaryOp::BitAnd => Ok(Value::Int(a & b)),
                         BinaryOp::BitOr => Ok(Value::Int(a | b)),
                         BinaryOp::BitXor => Ok(Value::Int(a ^ b)),
@@ -2040,7 +2168,10 @@ impl Runner {
                             let val = self.eval_expr(field_expr, env.clone())?;
                             map.insert(field_name.clone(), val);
                         }
-                        Ok(Value::StructInstance { name: name.clone(), fields: map })
+                        Ok(Value::StructInstance {
+                            name: name.clone(),
+                            fields: map,
+                        })
                     }
                     Value::VariantConstructor(enum_name, var) => {
                         if let crate::parser::EnumVariant::Struct(n, _) = var {
@@ -2059,7 +2190,11 @@ impl Runner {
             Expr::Index(inner, idx, _) => {
                 let inner_val = self.eval_expr(inner, env.clone())?;
                 let idx_val = self.eval_expr(idx, env.clone())?;
-                let idx_int = if let Value::Int(i) = idx_val { i as usize } else { return Err("Index must be an integer".to_string()); };
+                let idx_int = if let Value::Int(i) = idx_val {
+                    i as usize
+                } else {
+                    return Err("Index must be an integer".to_string());
+                };
 
                 match inner_val {
                     Value::Tuple(elems) => {
@@ -2134,7 +2269,10 @@ impl Runner {
                         if let Some(val) = map.get(member) {
                             Ok(val.clone())
                         } else {
-                            Err(format!("Property '{}' does not exist on dynamic API JSON/Object.", member))
+                            Err(format!(
+                                "Property '{}' does not exist on dynamic API JSON/Object.",
+                                member
+                            ))
                         }
                     }
                     Value::EnumMeta(enum_name, variants) => {
@@ -2196,16 +2334,23 @@ impl Runner {
                         )),
                     },
                     _ => {
-                        println!("DEBUG [runner:2017]: Expr::Dot evaluated directly! left = {:?}, member = {:?}", left, member);
+                        println!(
+                            "DEBUG [runner:2017]: Expr::Dot evaluated directly! left = {:?}, member = {:?}",
+                            left, member
+                        );
                         let bt = std::backtrace::Backtrace::force_capture();
                         println!("Backtrace: {:#?}", bt);
                         println!("DEBUG: left is {:?}", left);
                         return Err(format!(
                             "cannot access member '{}' on non-namespace value in '{}'",
-                            member, 
-                            if let Expr::Identifier(name, _) = &**inner { name } else { "unknown" }
+                            member,
+                            if let Expr::Identifier(name, _) = &**inner {
+                                name
+                            } else {
+                                "unknown"
+                            }
                         ));
-                    },
+                    }
                 }
             }
             Expr::Call(callee, args, _) => {
@@ -2467,7 +2612,9 @@ impl Runner {
                     {
                         return res;
                     }
-                    if let Value::StructConstructor { name, .. } | Value::StructInstance { name, .. } = &inner_val {
+                    if let Value::StructConstructor { name, .. }
+                    | Value::StructInstance { name, .. } = &inner_val
+                    {
                         let func_val_opt = self
                             .modules
                             .get(&format!("impl_{}", name))
@@ -2482,12 +2629,14 @@ impl Runner {
                                 } => {
                                     let child_env =
                                         Arc::new(Mutex::new(Env::new_child(closure_env.clone())));
-                                        
+
                                     let is_self_method = params.first().map_or(false, |p| {
-                                        p.name == "self" || p.name == "mut self" || p.name == "self_obj"
+                                        p.name == "self"
+                                            || p.name == "mut self"
+                                            || p.name == "self_obj"
                                     });
                                     let mut arg_offset = 0;
-                                    
+
                                     if is_self_method {
                                         let first_param = &params[0];
                                         let mut self_val = inner_val.clone();
@@ -2500,8 +2649,12 @@ impl Runner {
                                                     ),
                                                     true,
                                                 );
-                                            } else if let Expr::Dot(owner_expr, field_name, _) = &**inner_expr {
-                                                if let Expr::Identifier(owner_name, _) = &**owner_expr {
+                                            } else if let Expr::Dot(owner_expr, field_name, _) =
+                                                &**inner_expr
+                                            {
+                                                if let Expr::Identifier(owner_name, _) =
+                                                    &**owner_expr
+                                                {
                                                     self_val = Value::RefPath(
                                                         crate::vm::RefPath::Field {
                                                             owner: owner_name.clone(),
@@ -2516,14 +2669,17 @@ impl Runner {
                                         self.bind_param(child_env.clone(), first_param, self_val);
                                         arg_offset = 1;
                                     }
-                                    
+
                                     for (i, p) in params.iter().enumerate() {
-                                        if i == 0 && is_self_method { continue; }
+                                        if i == 0 && is_self_method {
+                                            continue;
+                                        }
                                         let src_idx = i - arg_offset;
                                         if src_idx < args.len() {
                                             let arg_val =
                                                 self.eval_expr(&args[src_idx].1, env.clone())?;
-                                            if let Expr::Identifier(src_name, _) = &args[src_idx].1 {
+                                            if let Expr::Identifier(src_name, _) = &args[src_idx].1
+                                            {
                                                 env.lock().unwrap().move_var(src_name);
                                             }
                                             self.bind_param(child_env.clone(), p, arg_val);
@@ -3129,7 +3285,9 @@ impl Runner {
                                         last_val
                                     }
                                     Value::NativeCallback(cb) => cb(vec![]).unwrap_or(Value::Nil),
-                                    Value::NativeClosure(crate::vm::NativeClosureType(cb)) => cb(vec![]).unwrap_or(Value::Nil),
+                                    Value::NativeClosure(crate::vm::NativeClosureType(cb)) => {
+                                        cb(vec![]).unwrap_or(Value::Nil)
+                                    }
                                     _ => Value::Nil,
                                 });
 
@@ -3424,7 +3582,10 @@ impl Runner {
                                         evaled_args.push(self.eval_expr(arg_expr, env.clone())?);
                                     }
                                     return cb(evaled_args);
-                                } else if let Value::NativeClosure(crate::vm::NativeClosureType(cb)) = val {
+                                } else if let Value::NativeClosure(crate::vm::NativeClosureType(
+                                    cb,
+                                )) = val
+                                {
                                     let mut evaled_args = Vec::new();
                                     if !map.contains_key("__module__") {
                                         evaled_args.push(inner_val.clone());
@@ -3517,7 +3678,8 @@ impl Runner {
                                     Value::NativeClosure(crate::vm::NativeClosureType(cb)) => {
                                         let mut evaled_args = Vec::new();
                                         for (_, arg_expr) in args {
-                                            evaled_args.push(self.eval_expr(arg_expr, env.clone())?);
+                                            evaled_args
+                                                .push(self.eval_expr(arg_expr, env.clone())?);
                                         }
                                         return cb(evaled_args);
                                     }
@@ -3536,7 +3698,10 @@ impl Runner {
                         } else if let Value::Float(f) = receiver_val {
                             return Ok(Value::Int(f as i64));
                         }
-                        return Err(format!("Cannot convert {} to Int", receiver_val.type_name()));
+                        return Err(format!(
+                            "Cannot convert {} to Int",
+                            receiver_val.type_name()
+                        ));
                     } else if member == "tryInt" {
                         if let Ok(i) = receiver_val.as_int() {
                             return Ok(Value::Int(i));
@@ -3558,7 +3723,10 @@ impl Runner {
                                 return Ok(Value::Float(f));
                             }
                         }
-                        return Err(format!("Cannot convert {} to Float", receiver_val.type_name()));
+                        return Err(format!(
+                            "Cannot convert {} to Float",
+                            receiver_val.type_name()
+                        ));
                     } else if member == "tryFloat" {
                         if let Value::Int(i) = receiver_val {
                             return Ok(Value::Float(i as f64));
@@ -3577,7 +3745,10 @@ impl Runner {
                     } else if member == "toByte" {
                         if let Value::Int(i) = receiver_val {
                             if i < 0 || i > 255 {
-                                return Err(format!("toByte: value {} is out of bounds for Byte (0..255)", i));
+                                return Err(format!(
+                                    "toByte: value {} is out of bounds for Byte (0..255)",
+                                    i
+                                ));
                             }
                             return Ok(Value::Byte(i as u8));
                         }
@@ -3588,9 +3759,14 @@ impl Runner {
                         return Ok(Value::Bytes(bytes_vec));
                     } else if member == "toUtf8" {
                         if let Value::Bytes(b) = receiver_val {
-                            return String::from_utf8(b).map(Value::String).map_err(|_| "toUtf8: invalid UTF-8 data".to_string());
+                            return String::from_utf8(b)
+                                .map(Value::String)
+                                .map_err(|_| "toUtf8: invalid UTF-8 data".to_string());
                         }
-                        return Err(format!("toUtf8 is only supported on Bytes, found {}", receiver_val.type_name()));
+                        return Err(format!(
+                            "toUtf8 is only supported on Bytes, found {}",
+                            receiver_val.type_name()
+                        ));
                     } else if member == "tryUtf8" {
                         if let Value::Bytes(b) = receiver_val {
                             return match String::from_utf8(b) {
@@ -3598,13 +3774,22 @@ impl Runner {
                                 Err(_) => Ok(Value::Nil),
                             };
                         }
-                        return Err(format!("tryUtf8 is only supported on Bytes, found {}", receiver_val.type_name()));
+                        return Err(format!(
+                            "tryUtf8 is only supported on Bytes, found {}",
+                            receiver_val.type_name()
+                        ));
                     } else if member == "toHex" {
                         if let Value::Bytes(b) = receiver_val {
-                            let hex = b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>();
+                            let hex = b
+                                .iter()
+                                .map(|byte| format!("{:02x}", byte))
+                                .collect::<String>();
                             return Ok(Value::String(hex));
                         }
-                        return Err(format!("toHex is only supported on Bytes, found {}", receiver_val.type_name()));
+                        return Err(format!(
+                            "toHex is only supported on Bytes, found {}",
+                            receiver_val.type_name()
+                        ));
                     }
                     #[cfg(feature = "base64")]
                     if member == "toBase64" {
@@ -3612,11 +3797,16 @@ impl Runner {
                             use base64::{Engine as _, engine::general_purpose};
                             return Ok(Value::String(general_purpose::STANDARD.encode(&b)));
                         }
-                        return Err(format!("toBase64 is only supported on Bytes, found {}", receiver_val.type_name()));
-                    } 
-                    
+                        return Err(format!(
+                            "toBase64 is only supported on Bytes, found {}",
+                            receiver_val.type_name()
+                        ));
+                    }
+
                     if member == "concat" {
-                        if args.is_empty() { return Err("concat expects 1 argument".to_string()); }
+                        if args.is_empty() {
+                            return Err("concat expects 1 argument".to_string());
+                        }
                         let other = self.eval_expr(&args[0].1, env.clone())?;
                         if let Value::Bytes(b1) = receiver_val {
                             if let Value::Bytes(b2) = other {
@@ -3624,7 +3814,10 @@ impl Runner {
                                 res.extend(b2);
                                 return Ok(Value::Bytes(res));
                             }
-                            return Err(format!("concat on Bytes expects Bytes argument, found {}", other.type_name()));
+                            return Err(format!(
+                                "concat on Bytes expects Bytes argument, found {}",
+                                other.type_name()
+                            ));
                         } else if let Value::String(s1) = receiver_val {
                             let s2 = other.to_string();
                             return Ok(Value::String(format!("{}{}", s1, s2)));
@@ -3634,9 +3827,15 @@ impl Runner {
                                 res.extend(t2);
                                 return Ok(Value::Tuple(res));
                             }
-                            return Err(format!("concat on Tuple expects Tuple argument, found {}", other.type_name()));
+                            return Err(format!(
+                                "concat on Tuple expects Tuple argument, found {}",
+                                other.type_name()
+                            ));
                         }
-                        return Err(format!("concat is not supported on {}", receiver_val.type_name()));
+                        return Err(format!(
+                            "concat is not supported on {}",
+                            receiver_val.type_name()
+                        ));
                     } else if member == "index" {
                         if args.len() < 1 {
                             return Err("index requires at least 1 argument (key)".to_string());
@@ -3659,134 +3858,251 @@ impl Runner {
                                 }
                                 return Ok(Value::Nil);
                             }
-                            Value::Object(map) | Value::Formula(map) | Value::StructInstance { fields: map, .. } => {
+                            Value::Object(map)
+                            | Value::Formula(map)
+                            | Value::StructInstance { fields: map, .. } => {
                                 let key_str = key_val.to_string();
                                 if let Some(v) = map.get(&key_str) {
                                     return Ok(v.clone());
                                 }
                                 return Ok(Value::Nil);
                             }
-                            _ => return Err(format!("cannot index on {}", receiver_val.type_name())),
+                            _ => {
+                                return Err(format!(
+                                    "cannot index on {}",
+                                    receiver_val.type_name()
+                                ));
+                            }
                         }
                     } else if member == "abs" {
-                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i.abs())); }
-                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.abs())); }
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Int(i.abs()));
+                        }
+                        if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f.abs()));
+                        }
                         return Err("abs requires a number".to_string());
                     } else if member == "floor" {
-                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i)); }
-                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.floor())); }
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Int(i));
+                        }
+                        if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f.floor()));
+                        }
                         return Err("floor requires a number".to_string());
                     } else if member == "ceil" {
-                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i)); }
-                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.ceil())); }
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Int(i));
+                        }
+                        if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f.ceil()));
+                        }
                         return Err("ceil requires a number".to_string());
                     } else if member == "round" {
-                        if let Value::Int(i) = receiver_val { return Ok(Value::Int(i)); }
-                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.round())); }
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Int(i));
+                        }
+                        if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f.round()));
+                        }
                         return Err("round requires a number".to_string());
                     } else if member == "sqrt" {
-                        if let Value::Int(i) = receiver_val { return Ok(Value::Float((i as f64).sqrt())); }
-                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.sqrt())); }
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Float((i as f64).sqrt()));
+                        }
+                        if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f.sqrt()));
+                        }
                         return Err("sqrt requires a number".to_string());
                     } else if member == "pow" {
-                        if args.len() < 1 { return Err("pow requires 1 argument (exponent)".to_string()); }
+                        if args.len() < 1 {
+                            return Err("pow requires 1 argument (exponent)".to_string());
+                        }
                         let exp_val = self.eval_expr(&args[0].1, env.clone())?;
-                        let exp_f = if let Value::Float(f) = exp_val { f } else if let Ok(i) = exp_val.as_int() { i as f64 } else { 0.0 };
-                        if let Value::Int(i) = receiver_val { return Ok(Value::Float((i as f64).powf(exp_f))); }
-                        if let Value::Float(f) = receiver_val { return Ok(Value::Float(f.powf(exp_f))); }
+                        let exp_f = if let Value::Float(f) = exp_val {
+                            f
+                        } else if let Ok(i) = exp_val.as_int() {
+                            i as f64
+                        } else {
+                            0.0
+                        };
+                        if let Value::Int(i) = receiver_val {
+                            return Ok(Value::Float((i as f64).powf(exp_f)));
+                        }
+                        if let Value::Float(f) = receiver_val {
+                            return Ok(Value::Float(f.powf(exp_f)));
+                        }
                         return Err("pow requires a number".to_string());
                     } else if member == "min" {
-                        if args.len() < 1 { return Err("min requires 1 argument".to_string()); }
+                        if args.len() < 1 {
+                            return Err("min requires 1 argument".to_string());
+                        }
                         let other = self.eval_expr(&args[0].1, env.clone())?;
-                        if let (Value::Int(a), Value::Int(b)) = (&receiver_val, &other) { return Ok(Value::Int(*a.min(b))); }
-                        let a_f = if let Value::Float(f) = receiver_val { f } else { receiver_val.as_int().unwrap_or(0) as f64 };
-                        let b_f = if let Value::Float(f) = other { f } else { other.as_int().unwrap_or(0) as f64 };
+                        if let (Value::Int(a), Value::Int(b)) = (&receiver_val, &other) {
+                            return Ok(Value::Int(*a.min(b)));
+                        }
+                        let a_f = if let Value::Float(f) = receiver_val {
+                            f
+                        } else {
+                            receiver_val.as_int().unwrap_or(0) as f64
+                        };
+                        let b_f = if let Value::Float(f) = other {
+                            f
+                        } else {
+                            other.as_int().unwrap_or(0) as f64
+                        };
                         return Ok(Value::Float(a_f.min(b_f)));
                     } else if member == "max" {
-                        if args.len() < 1 { return Err("max requires 1 argument".to_string()); }
+                        if args.len() < 1 {
+                            return Err("max requires 1 argument".to_string());
+                        }
                         let other = self.eval_expr(&args[0].1, env.clone())?;
-                        if let (Value::Int(a), Value::Int(b)) = (&receiver_val, &other) { return Ok(Value::Int(*a.max(b))); }
-                        let a_f = if let Value::Float(f) = receiver_val { f } else { receiver_val.as_int().unwrap_or(0) as f64 };
-                        let b_f = if let Value::Float(f) = other { f } else { other.as_int().unwrap_or(0) as f64 };
+                        if let (Value::Int(a), Value::Int(b)) = (&receiver_val, &other) {
+                            return Ok(Value::Int(*a.max(b)));
+                        }
+                        let a_f = if let Value::Float(f) = receiver_val {
+                            f
+                        } else {
+                            receiver_val.as_int().unwrap_or(0) as f64
+                        };
+                        let b_f = if let Value::Float(f) = other {
+                            f
+                        } else {
+                            other.as_int().unwrap_or(0) as f64
+                        };
                         return Ok(Value::Float(a_f.max(b_f)));
                     } else if member == "clamp" {
-                        if args.len() < 2 { return Err("clamp requires 2 arguments (min, max)".to_string()); }
+                        if args.len() < 2 {
+                            return Err("clamp requires 2 arguments (min, max)".to_string());
+                        }
                         let min_val = self.eval_expr(&args[0].1, env.clone())?;
                         let max_val = self.eval_expr(&args[1].1, env.clone())?;
-                        if let (Value::Int(v), Value::Int(min), Value::Int(max)) = (&receiver_val, &min_val, &max_val) {
+                        if let (Value::Int(v), Value::Int(min), Value::Int(max)) =
+                            (&receiver_val, &min_val, &max_val)
+                        {
                             return Ok(Value::Int(*v.max(min).min(max)));
                         }
-                        let v_f = if let Value::Float(f) = receiver_val { f } else { receiver_val.as_int().unwrap_or(0) as f64 };
-                        let min_f = if let Value::Float(f) = min_val { f } else { min_val.as_int().unwrap_or(0) as f64 };
-                        let max_f = if let Value::Float(f) = max_val { f } else { max_val.as_int().unwrap_or(0) as f64 };
+                        let v_f = if let Value::Float(f) = receiver_val {
+                            f
+                        } else {
+                            receiver_val.as_int().unwrap_or(0) as f64
+                        };
+                        let min_f = if let Value::Float(f) = min_val {
+                            f
+                        } else {
+                            min_val.as_int().unwrap_or(0) as f64
+                        };
+                        let max_f = if let Value::Float(f) = max_val {
+                            f
+                        } else {
+                            max_val.as_int().unwrap_or(0) as f64
+                        };
                         return Ok(Value::Float(v_f.max(min_f).min(max_f)));
                     }
                     #[cfg(feature = "utils")]
                     {
                         if member == "year" {
                             if let Value::Int(timestamp) = receiver_val {
-                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp)
+                                {
                                     return Ok(Value::Int(chrono::Datelike::year(&dt) as i64));
                                 }
                             }
                             return Err("year requires a valid timestamp".to_string());
                         } else if member == "month" {
                             if let Value::Int(timestamp) = receiver_val {
-                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp)
+                                {
                                     return Ok(Value::Int(chrono::Datelike::month(&dt) as i64));
                                 }
                             }
                             return Err("month requires a valid timestamp".to_string());
                         } else if member == "day" {
                             if let Value::Int(timestamp) = receiver_val {
-                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp) {
+                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(timestamp)
+                                {
                                     return Ok(Value::Int(chrono::Datelike::day(&dt) as i64));
                                 }
                             }
                             return Err("day requires a valid timestamp".to_string());
                         } else if member == "addDays" {
-                            if args.len() < 1 { return Err("addDays requires 1 argument".to_string()); }
+                            if args.len() < 1 {
+                                return Err("addDays requires 1 argument".to_string());
+                            }
                             let other = self.eval_expr(&args[0].1, env.clone())?;
-                            if let (Value::Int(timestamp), Value::Int(days)) = (&receiver_val, &other) {
-                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
-                                    if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::days(*days)) {
+                            if let (Value::Int(timestamp), Value::Int(days)) =
+                                (&receiver_val, &other)
+                            {
+                                if let Some(dt) =
+                                    chrono::DateTime::from_timestamp_millis(*timestamp)
+                                {
+                                    if let Some(new_dt) =
+                                        dt.checked_add_signed(chrono::Duration::days(*days))
+                                    {
                                         return Ok(Value::Int(new_dt.timestamp_millis()));
                                     }
                                 }
                             }
-                            return Err("addDays requires a valid timestamp and an integer".to_string());
+                            return Err(
+                                "addDays requires a valid timestamp and an integer".to_string()
+                            );
                         } else if member == "addHours" {
-                            if args.len() < 1 { return Err("addHours requires 1 argument".to_string()); }
+                            if args.len() < 1 {
+                                return Err("addHours requires 1 argument".to_string());
+                            }
                             let other = self.eval_expr(&args[0].1, env.clone())?;
-                            if let (Value::Int(timestamp), Value::Int(hours)) = (&receiver_val, &other) {
-                                if let Some(dt) = chrono::DateTime::from_timestamp_millis(*timestamp) {
-                                    if let Some(new_dt) = dt.checked_add_signed(chrono::Duration::hours(*hours)) {
+                            if let (Value::Int(timestamp), Value::Int(hours)) =
+                                (&receiver_val, &other)
+                            {
+                                if let Some(dt) =
+                                    chrono::DateTime::from_timestamp_millis(*timestamp)
+                                {
+                                    if let Some(new_dt) =
+                                        dt.checked_add_signed(chrono::Duration::hours(*hours))
+                                    {
                                         return Ok(Value::Int(new_dt.timestamp_millis()));
                                     }
                                 }
                             }
-                            return Err("addHours requires a valid timestamp and an integer".to_string());
+                            return Err(
+                                "addHours requires a valid timestamp and an integer".to_string()
+                            );
                         }
                     }
                     if member == "toJson" {
                         // Very simple JSON serializer
                         fn to_json(val: &Value) -> String {
                             match val {
-                                Value::String(s) => format!("\"{}\"", s.replace("\"", "\\\"").replace("\n", "\\n")),
+                                Value::String(s) => {
+                                    format!("\"{}\"", s.replace("\"", "\\\"").replace("\n", "\\n"))
+                                }
                                 Value::Int(i) => i.to_string(),
                                 Value::Float(f) => f.to_string(),
-                                Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                Value::Bool(b) => {
+                                    if *b {
+                                        "true".to_string()
+                                    } else {
+                                        "false".to_string()
+                                    }
+                                }
                                 Value::Nil => "null".to_string(),
                                 Value::Tuple(arr) => {
-                                    let items: Vec<String> = arr.iter().map(|v| to_json(v)).collect();
+                                    let items: Vec<String> =
+                                        arr.iter().map(|v| to_json(v)).collect();
                                     format!("[{}]", items.join(", "))
                                 }
                                 Value::Bytes(arr) => {
-                                    let items: Vec<String> = arr.iter().map(|v| v.to_string()).collect();
+                                    let items: Vec<String> =
+                                        arr.iter().map(|v| v.to_string()).collect();
                                     format!("[{}]", items.join(", "))
                                 }
-                                Value::StructInstance { fields, .. } | Value::Object(fields) | Value::Formula(fields) => {
-                                    let items: Vec<String> = fields.iter().map(|(k, v)| format!("\"{}\": {}", k, to_json(v))).collect();
+                                Value::StructInstance { fields, .. }
+                                | Value::Object(fields)
+                                | Value::Formula(fields) => {
+                                    let items: Vec<String> = fields
+                                        .iter()
+                                        .map(|(k, v)| format!("\"{}\": {}", k, to_json(v)))
+                                        .collect();
                                     format!("{{{}}}", items.join(", "))
                                 }
                                 _ => "\"<unserializable>\"".to_string(),
@@ -3794,24 +4110,31 @@ impl Runner {
                         }
                         return Ok(Value::String(to_json(&receiver_val)));
                     } else if member == "fromJson" {
-                        if args.len() < 1 { return Err("fromJson requires 1 argument (json string)".to_string()); }
+                        if args.len() < 1 {
+                            return Err("fromJson requires 1 argument (json string)".to_string());
+                        }
                         let json_val = self.eval_expr(&args[0].1, env.clone())?;
                         let json_str = json_val.to_string();
-                        
+
                         fn from_json(v: &serde_json::Value) -> Value {
                             match v {
                                 serde_json::Value::Null => Value::Nil,
                                 serde_json::Value::Bool(b) => Value::Bool(*b),
                                 serde_json::Value::Number(n) => {
-                                    if let Some(i) = n.as_i64() { Value::Int(i) }
-                                    else if let Some(f) = n.as_f64() { Value::Float(f) }
-                                    else { Value::Nil }
-                                },
+                                    if let Some(i) = n.as_i64() {
+                                        Value::Int(i)
+                                    } else if let Some(f) = n.as_f64() {
+                                        Value::Float(f)
+                                    } else {
+                                        Value::Nil
+                                    }
+                                }
                                 serde_json::Value::String(s) => Value::String(s.clone()),
                                 serde_json::Value::Array(arr) => {
-                                    let items: Vec<Value> = arr.iter().map(|x| from_json(x)).collect();
+                                    let items: Vec<Value> =
+                                        arr.iter().map(|x| from_json(x)).collect();
                                     Value::Tuple(items)
-                                },
+                                }
                                 serde_json::Value::Object(map) => {
                                     let mut m = std::collections::HashMap::new();
                                     for (k, v) in map {
@@ -3821,19 +4144,24 @@ impl Runner {
                                 }
                             }
                         }
-                        
+
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
                             let obj = from_json(&parsed);
                             if let Value::StructConstructor { name, .. } = &receiver_val {
                                 if let Value::Object(fields) = obj {
-                                    return Ok(Value::StructInstance { name: name.clone(), fields });
+                                    return Ok(Value::StructInstance {
+                                        name: name.clone(),
+                                        fields,
+                                    });
                                 }
                             }
                             return Ok(obj);
                         }
                         return Err("Invalid JSON string".to_string());
                     } else if member == "fromBytes" {
-                        if args.len() < 1 { return Err("fromBytes requires 1 argument (byte vector)".to_string()); }
+                        if args.len() < 1 {
+                            return Err("fromBytes requires 1 argument (byte vector)".to_string());
+                        }
                         let bytes_val = self.eval_expr(&args[0].1, env.clone())?;
                         if let Value::Bytes(bytes) = bytes_val {
                             if let Ok(json_str) = String::from_utf8(bytes.clone()) {
@@ -3842,15 +4170,20 @@ impl Runner {
                                         serde_json::Value::Null => Value::Nil,
                                         serde_json::Value::Bool(b) => Value::Bool(*b),
                                         serde_json::Value::Number(n) => {
-                                            if let Some(i) = n.as_i64() { Value::Int(i) }
-                                            else if let Some(f) = n.as_f64() { Value::Float(f) }
-                                            else { Value::Nil }
-                                        },
+                                            if let Some(i) = n.as_i64() {
+                                                Value::Int(i)
+                                            } else if let Some(f) = n.as_f64() {
+                                                Value::Float(f)
+                                            } else {
+                                                Value::Nil
+                                            }
+                                        }
                                         serde_json::Value::String(s) => Value::String(s.clone()),
                                         serde_json::Value::Array(arr) => {
-                                            let items: Vec<Value> = arr.iter().map(|x| from_json(x)).collect();
+                                            let items: Vec<Value> =
+                                                arr.iter().map(|x| from_json(x)).collect();
                                             Value::Tuple(items)
-                                        },
+                                        }
                                         serde_json::Value::Object(map) => {
                                             let mut m = std::collections::HashMap::new();
                                             for (k, v) in map {
@@ -3860,11 +4193,16 @@ impl Runner {
                                         }
                                     }
                                 }
-                                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                                if let Ok(parsed) =
+                                    serde_json::from_str::<serde_json::Value>(&json_str)
+                                {
                                     let obj = from_json(&parsed);
                                     if let Value::StructConstructor { name, .. } = &receiver_val {
                                         if let Value::Object(fields) = obj {
-                                            return Ok(Value::StructInstance { name: name.clone(), fields });
+                                            return Ok(Value::StructInstance {
+                                                name: name.clone(),
+                                                fields,
+                                            });
                                         }
                                     }
                                     return Ok(obj);
@@ -4045,29 +4383,56 @@ impl Runner {
                             if anno.name == "Requires" {
                                 for arg_str in &anno.args {
                                     if arg_str.starts_with('"') && arg_str.ends_with('"') {
-                                        let mod_name = arg_str[1..arg_str.len()-1].to_string();
-                                        let parts: Vec<String> = mod_name.split('.').map(|s| s.to_string()).collect();
-                                        let _ = self.execute_statement(&Stmt::ImportDecl {
-                                            path: parts,
-                                            glob: false,
-                                            span: anno.span.clone(),
-                                        }, child_env.clone());
+                                        let mod_name = arg_str[1..arg_str.len() - 1].to_string();
+                                        let parts: Vec<String> =
+                                            mod_name.split('.').map(|s| s.to_string()).collect();
+                                        let _ = self.execute_statement(
+                                            &Stmt::ImportDecl {
+                                                path: parts,
+                                                glob: false,
+                                                span: anno.span.clone(),
+                                            },
+                                            child_env.clone(),
+                                        );
                                     }
                                 }
                             } else if anno.name == "Permission" {
                                 for arg_str in &anno.args {
                                     if arg_str.starts_with('"') && arg_str.ends_with('"') {
-                                        let perm_name = arg_str[1..arg_str.len()-1].to_string();
+                                        let perm_name = arg_str[1..arg_str.len() - 1].to_string();
                                         if !self.granted_permissions.contains(&perm_name) {
                                             if !self.interactive {
-                                                return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                                return Ok(Value::EnumValue(
+                                                    "Result".to_string(),
+                                                    "Err".to_string(),
+                                                    crate::vm::EnumData::Tuple(vec![
+                                                        Value::String(format!(
+                                                            "PermissionDenied: {}",
+                                                            perm_name
+                                                        )),
+                                                    ]),
+                                                ));
                                             } else {
-                                                println!("Function requires permission for: {}. Allow? [y/N]", perm_name);
+                                                println!(
+                                                    "Function requires permission for: {}. Allow? [y/N]",
+                                                    perm_name
+                                                );
                                                 let mut input = String::new();
-                                                if std::io::stdin().read_line(&mut input).is_ok() && input.trim().eq_ignore_ascii_case("y") {
+                                                if std::io::stdin().read_line(&mut input).is_ok()
+                                                    && input.trim().eq_ignore_ascii_case("y")
+                                                {
                                                     self.granted_permissions.insert(perm_name);
                                                 } else {
-                                                    return Ok(Value::EnumValue("Result".to_string(), "Err".to_string(), crate::vm::EnumData::Tuple(vec![Value::String(format!("PermissionDenied: {}", perm_name))])));
+                                                    return Ok(Value::EnumValue(
+                                                        "Result".to_string(),
+                                                        "Err".to_string(),
+                                                        crate::vm::EnumData::Tuple(vec![
+                                                            Value::String(format!(
+                                                                "PermissionDenied: {}",
+                                                                perm_name
+                                                            )),
+                                                        ]),
+                                                    ));
                                                 }
                                             }
                                         }
@@ -4326,7 +4691,9 @@ impl Runner {
                 let id = *counter;
 
                 let handle = thread::spawn(move || {
-                    let mut res = runner.eval_expr(&expr_clone, thread_env).unwrap_or(Value::Nil);
+                    let mut res = runner
+                        .eval_expr(&expr_clone, thread_env)
+                        .unwrap_or(Value::Nil);
                     if let Value::Return(ret_val) = res {
                         res = *ret_val;
                     }
@@ -4424,9 +4791,9 @@ impl Runner {
                     e.get(&owner)
                 };
                 match owner_val {
-                    Some(Value::Moved(moved_name)) => Err(format!(
-                        "use of moved value '{}'.", moved_name
-                    )),
+                    Some(Value::Moved(moved_name)) => {
+                        Err(format!("use of moved value '{}'.", moved_name))
+                    }
                     Some(Value::RefPath(next, _)) => {
                         let resolved_owner = self.read_target(env.clone(), next)?;
                         if let Value::Tuple(elems) = resolved_owner {
@@ -4464,10 +4831,14 @@ impl Runner {
                 .get(member)
                 .cloned()
                 .ok_or_else(|| format!("member '{}' not found in '{}'", member, owner)),
-            Value::StructInstance { name, fields } => fields
-                .get(member)
-                .cloned()
-                .ok_or_else(|| format!("field '{}' not found in struct '{}' ('{}')", member, name, owner)),
+            Value::StructInstance { name, fields } => {
+                fields.get(member).cloned().ok_or_else(|| {
+                    format!(
+                        "field '{}' not found in struct '{}' ('{}')",
+                        member, name, owner
+                    )
+                })
+            }
             Value::EnumValue(enum_name, variant_name, data) => match data {
                 EnumData::Struct(map) => map.get(member).cloned().ok_or_else(|| {
                     format!(
@@ -4536,7 +4907,9 @@ impl Runner {
 
                 let mut final_owner = owner.clone();
                 let mut final_env = env.clone();
-                while let Some(Value::RefPath(RefPath::Var(ref next_owner, ref next_env), _)) = owner_val {
+                while let Some(Value::RefPath(RefPath::Var(ref next_owner, ref next_env), _)) =
+                    owner_val
+                {
                     final_owner = next_owner.clone();
                     final_env = next_env.clone();
                     owner_val = {
@@ -4568,7 +4941,10 @@ impl Runner {
                     }
                 }
 
-                final_env.lock().unwrap().assign(final_owner, owner_val.clone())
+                final_env
+                    .lock()
+                    .unwrap()
+                    .assign(final_owner, owner_val.clone())
             }
             RefPath::Field { owner, member, env } => {
                 let mut owner_val = {
@@ -4600,7 +4976,10 @@ impl Runner {
                     Value::Formula(map) => {
                         map.insert(member, new_val);
                     }
-                    Value::StructInstance { name: _, fields: map } => {
+                    Value::StructInstance {
+                        name: _,
+                        fields: map,
+                    } => {
                         map.insert(member, new_val);
                     }
                     Value::EnumValue(enum_name, variant_name, data) => match data {
@@ -4730,11 +5109,9 @@ impl Runner {
             }
             let mut map = mod_env.lock().unwrap().to_formula_map();
             map.insert("__module__".to_string(), Value::Bool(true));
-            env.lock().unwrap().define(
-                plugin_name.to_string(),
-                Value::Formula(map),
-                false,
-            );
+            env.lock()
+                .unwrap()
+                .define(plugin_name.to_string(), Value::Formula(map), false);
             self.modules.insert(plugin_name.to_string(), mod_env);
             return Ok(Value::Nil);
         }
