@@ -84,8 +84,14 @@ let point: (Int, Int) = (100, 250)
 let record: (String, Int, Bool) = ("Server", 8080, true)
 
 // Access tuple members
-let host = record.0
-let port = record.1
+let (x, y) = point
+let (host, port, is_running) = record
+
+println(x)      // 100
+println(y)      // 250
+println(host)   // "Server"
+println(port)   // 8080
+println(is_running) // true
 ```
 
 #### Complex Tuples & Data Extraction
