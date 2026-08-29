@@ -4,29 +4,31 @@ description: A fast, safe, and modern systems language powered by the Blaze comp
 template: splash
 hero:
   tagline: Blazing-fast Ahead-of-Time compilation, memory safety without garbage collection, and seamless zero-cost Rust crate interoperability.
+  image:
+    file: ../../assets/flame.png
   actions:
     - text: Get Started
       link: /getting-started/introduction/
       icon: right-arrow
       variant: primary
     - text: Explore Standard Library
-      link: /standard-library/overview/
+      link: /std/overview/
       icon: open-book
       variant: secondary
     - text: View on GitHub
       link: https://github.com/shoya-129/flame
-      icon: external
+      icon: github
       variant: minimal
 ---
 
 import { CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
 import LucideCard from '../../components/LucideCard.astro';
-import { Trash2, Puzzle, Cpu, CheckCircle2 } from 'lucide-astro';
+import { Trash2, Puzzle, Cpu, CheckCircle2, Zap, ShieldCheck } from 'lucide-astro';
 
 ## Why Flame?
 
-<CardGrid>
-	<LucideCard title="Zero-Overhead Rust Interoperability ">
+<CardGrid stagger>
+	<LucideCard title="Zero-Overhead Rust Interoperability">
 		<Puzzle slot="icon" />
 		Import any Rust crate directly in `flame.toml` with `import native.uuid` or `import native.axum`. Statically linked with zero FFI overhead.
 	</LucideCard>
@@ -42,6 +44,21 @@ import { Trash2, Puzzle, Cpu, CheckCircle2 } from 'lucide-astro';
 		<CheckCircle2 slot="icon" />
 		PascalCase annotations like `@Test`, `@Setup`, `@Cleanup`, and `@Parameterized` with zero-cost production stripping during release builds.
 	</LucideCard>
+</CardGrid>
+
+---
+
+## The Power of Flame
+
+<CardGrid>
+  <LucideCard title="Blazing Fast">
+    <Zap slot="icon" />
+    Powered by the **Blaze compiler**, Flame compiles directly to optimized machine code using LLVM and Cranelift, delivering C/C++ level execution speeds.
+  </LucideCard>
+  <LucideCard title="Memory Safe">
+    <ShieldCheck slot="icon" />
+    Compile-time memory safety ensures no null pointer dereferences, use-after-free, or buffer overflows—protecting your applications in production.
+  </LucideCard>
 </CardGrid>
 
 ---
@@ -73,7 +90,6 @@ import native.uuid
 
 let new_id = uuid.new_v4()
 print($"Generated UUID: {new_id}")
-
 ```
   </TabItem>
 

@@ -1,0 +1,46 @@
+---
+title: Process (std.process)
+description: Sub-process execution, working directory control in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Flame provides clean, native access to operating system metadata, process execution, and environment configuration without requiring boilerplate wrapper functions.
+
+---
+
+## Child Processes (`std.process`)
+
+Execute shell commands, interact with background processes, and manage working directories directly at the script top level:
+
+```flame
+import std.process
+
+// Execute a command synchronously and capture its standard output, error, and exit status
+let output = process.exec("git", ["status", "--short"])
+println($"Git status exit code: {output.status.code}")
+println($"Git stdout:\n{output.stdout}")
+
+// Spawn an asynchronous background process
+let child = process.spawn("cargo", ["--version"])
+
+// Inspect and change the current working directory
+let current_path = process.cwd()
+println($"CWD: {current_path}, Flame PID: {process.pid()}")
+```
+
+---
+
+## API Summary Tables
+
+### Process (`std.process`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `process.exec` | `cmd: String, args: Tuple<String>` | `Formula` | Runs command synchronously and returns `{ stdout, stderr, status: { code } }`. |
+| `process.spawn` | `cmd: String, args: Tuple<String>` | `ChildProcess` | Spawns an asynchronous background child process. |
+| `process.cmd` | `program: String` | `CommandBuilder` | Returns a command builder for chained argument configuration and spawning. |
+| `process.cwd` | *None* | `String` | Returns the current working directory path of the running process. |
+| `process.set_cwd` | `path: String` | `Nil` | Changes the current working directory to the specified path. |
+| `process.pid` | *None* | `Int` | Returns the operating system process ID of the running Flame process. |
+

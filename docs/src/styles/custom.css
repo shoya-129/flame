@@ -1,21 +1,21 @@
 :root {
 	--sl-color-accent-low: #3b0016;
-	--sl-color-accent: #ff0068;
-	--sl-color-accent-high: #FF0068;
+	--sl-color-accent: #c64c7b;
+	--sl-color-accent-high: #c64c7b;
 	--sl-color-white: #ffffff;
 	--sl-color-gray-1: #eceef2;
 	--sl-color-gray-2: #c0c2c7;
 	--sl-color-gray-3: #888b96;
 	--sl-color-gray-4: #545861;
-	--sl-color-gray-5: #353841;
-	--sl-color-gray-6: #1e2025;
-	--sl-color-black: #121316;
+	--sl-color-gray-5: #000000;
+	--sl-color-gray-6: #000000;
+	--sl-color-black: #000000;
 }
 
 :root[data-theme='light'] {
 	--sl-color-accent-low: #ffe0ec;
-	--sl-color-accent: #ff0068;
-	--sl-color-accent-high: #b80047;
+	--sl-color-accent: #c64c7b;
+	--sl-color-accent-high: #c64c7b;
 }
 
 /* Custom glow and hero tweaks */
@@ -45,7 +45,7 @@
 
 .hero img:hover {
 	transform: scale(1.05) rotate(1deg);
-	filter: drop-shadow(0 0 50px rgba(255, 0, 104, 0.8));
+	filter: drop-shadow(0 0 50px #c64c7b);
 }
 
 /* Custom 2x2 card alignment and hover styling */
@@ -62,12 +62,13 @@
 	}
 }
 
-.card {
+.card,
+.sl-link-card {
 	position: relative;
 	z-index: 1;
-	border: 1px solid var(--sl-color-gray-5) !important;
+	border: 1px solid rgba(255, 255, 255, 0.1) !important;
 	border-radius: 14px !important;
-	background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
+	background: rgba(255, 255, 255, 0.05) !important;
 	transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.25s ease, box-shadow 0.25s ease !important;
 	backdrop-filter: blur(10px);
 	display: flex;
@@ -76,27 +77,103 @@
 	padding: 0.85rem 1rem;
 }
 
-.card:hover {
+.card:hover,
+.sl-link-card:hover {
 	z-index: 10 !important;
-	border-color: #ff0068 !important;
+	border-color: #c64c7b !important;
 	transform: translateY(-4px) !important;
 	box-shadow: 0 12px 32px -8px rgba(255, 0, 104, 0.35) !important;
 }
 
-/* Callout and badge accent enhancements */
-.starlight-aside--note {
-	border-inline-start-color: #ff0068 !important;
+/* GitHub-Style Callout Alerts */
+.sl-markdown-content .starlight-aside {
+	border-inline-start-width: 1px !important;
+	border-radius: 12px !important;
+	padding: 1rem 1.25rem !important;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
 }
 
-.starlight-aside--tip {
-	border-inline-start-color: #ff4d94 !important;
+.sl-markdown-content .starlight-aside .starlight-aside__title {
+	font-size: 1rem !important;
+	font-weight: 500 !important;
+}
+
+.sl-markdown-content .starlight-aside .starlight-aside__content {
+	font-size: 0.95rem !important;
+	color: rgba(255, 255, 255, 0.7) !important;
+}
+.sl-markdown-content .starlight-aside .starlight-aside__content p {
+	margin-top: 0.25rem !important;
+}
+
+/* Note Alert */
+.sl-markdown-content .starlight-aside--note {
+	background-color: rgba(255, 255, 255, 0.05) !important;
+	border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+.sl-markdown-content .starlight-aside--note .starlight-aside__title,
+.sl-markdown-content .starlight-aside--note .starlight-aside__icon {
+	color: rgba(255, 255, 255, 0.8) !important;
+}
+
+/* Tip Alert */
+.sl-markdown-content .starlight-aside--tip {
+	background-color: rgba(46, 160, 67, 0.1) !important;
+	border: 1px solid rgba(46, 160, 67, 0.4) !important;
+}
+.sl-markdown-content .starlight-aside--tip .starlight-aside__title,
+.sl-markdown-content .starlight-aside--tip .starlight-aside__icon {
+	color: #3fb950 !important;
+}
+
+/* Danger Alert */
+.sl-markdown-content .starlight-aside--danger {
+	background-color: rgba(248, 81, 73, 0.1) !important;
+	border: 1px solid rgba(248, 81, 73, 0.4) !important;
+}
+.sl-markdown-content .starlight-aside--danger .starlight-aside__title,
+.sl-markdown-content .starlight-aside--danger .starlight-aside__icon {
+	color: #f85149 !important;
+}
+
+/* Caution/Warning Alert */
+.sl-markdown-content .starlight-aside--caution,
+.sl-markdown-content .starlight-aside--warning {
+	background-color: rgba(210, 153, 34, 0.1) !important;
+	border: 1px solid rgba(210, 153, 34, 0.4) !important;
+}
+.sl-markdown-content .starlight-aside--caution .starlight-aside__title,
+.sl-markdown-content .starlight-aside--caution .starlight-aside__icon,
+.sl-markdown-content .starlight-aside--warning .starlight-aside__title,
+.sl-markdown-content .starlight-aside--warning .starlight-aside__icon {
+	color: #d29922 !important;
 }
 
 /* Code block appearance */
-pre {
+.expressive-code .frame {
 	border-radius: 10px !important;
-	border: 1px solid var(--sl-color-gray-5) !important;
-	font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace !important;
+	border: 0.5px solid rgba(255, 255, 255, 0.1) !important;
+	background-color: rgba(255, 255, 255, 0.05) !important;
+	overflow: hidden;
+}
+
+pre {
+	border: none !important;
+	background-color: transparent !important;
+	font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
+}
+
+/* Sidebar active tab text color */
+sidebar-list a[aria-current="page"],
+.sidebar-content a[aria-current="page"] {
+	color: var(--sl-color-white) !important;
+	font-weight: 600 !important;
+}
+
+/* Sidebar border to separate from docs */
+.sidebar-pane, 
+starlight-sidebar {
+	border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Custom scrollbars */
@@ -115,5 +192,121 @@ pre {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #ff0068;
+	background: #c64c7b;
+}
+
+/* Table styling */
+.sl-markdown-content table {
+	display: table !important;
+	border-collapse: separate !important;
+	border-spacing: 0 !important;
+	width: 100%;
+	border-radius: 20px !important;
+	overflow: hidden !important;
+	border: 1px solid rgba(255, 255, 255, 0.1) !important;
+	margin: 1.5rem 0;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.sl-markdown-content th {
+	color: var(--sl-color-white) !important;
+	background-color: rgba(255, 255, 255, 0.05) !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+	border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+	padding: 0.75rem 1rem !important;
+}
+
+.sl-markdown-content td {
+	color: rgba(255, 255, 255, 0.7) !important;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+	border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+	padding: 0.75rem 1rem !important;
+}
+
+/* Remove right border on the last column */
+.sl-markdown-content th:last-child,
+.sl-markdown-content td:last-child {
+	border-right: none !important;
+}
+
+/* Remove bottom border on the last row */
+.sl-markdown-content tr:last-child td {
+	border-bottom: none !important;
+}
+
+.sl-markdown-content tbody tr:nth-child(2n) {
+	background-color: rgba(255, 255, 255, 0.01) !important;
+}
+
+/* Search bar styling */
+site-search > button {
+	background-color: rgba(255, 255, 255, 0.05) !important;
+	border: 1px solid rgba(255, 255, 255, 0.1) !important;
+	border-radius: 8px !important;
+}
+
+site-search > button:hover {
+	border-color: rgba(255, 255, 255, 0.2) !important;
+	background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Expressive Code - Filename Header */
+.expressive-code .frame .header {
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+}
+
+.expressive-code .frame.has-title .title {
+	color: rgba(255, 255, 255, 0.7) !important; /* white/70 */
+	background: transparent !important;
+	border: none !important;
+	box-shadow: none !important;
+	display: inline-flex !important;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+/* Remove any active tab line from Expressive Code pseudo-elements */
+.expressive-code .frame.has-title .title::after,
+.expressive-code .frame .header::after,
+.expressive-code .frame .header::before {
+	display: none !important;
+}
+
+/* Add file icon */
+.expressive-code .frame.has-title .title::before {
+	content: '' !important;
+	display: inline-block !important;
+	width: 14px;
+	height: 14px;
+	background-color: rgba(255, 255, 255, 0.7) !important;
+	-webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>') center/contain no-repeat;
+	mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>') center/contain no-repeat;
+	border: none !important;
+	position: relative !important;
+	top: auto !important;
+	left: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	box-shadow: none !important;
+}
+
+/* Starlight Steps component numbers */
+.sl-steps > li::before,
+.sl-markdown-content .sl-steps > li::before {
+	background-color: rgba(255, 255, 255, 0.2) !important; /* white/20 */
+	border-color: rgba(255, 255, 255, 0.2) !important;
+	color: var(--sl-color-white) !important;
+}
+
+/* Inline code styling */
+:not(pre) > code {
+	background-color: rgba(255, 255, 255, 0.1) !important;
+	padding: 0.2rem 0.4rem !important;
+	border-radius: 6px !important;
+	border: 1px solid rgba(255, 255, 255, 0.05) !important;
+	font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
+	font-size: 0.85em !important;
+	color: rgba(255, 255, 255, 0.9) !important;
 }

@@ -1,0 +1,31 @@
+---
+title: Serial Ports (std.serial)
+description: Serial port listing in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+
+Query available RS-232 / COM communication port interfaces on the host system:
+
+```flame
+import std.serial
+
+// Discover available hardware serial communication ports
+let ports = serial.ports()
+println($"Detected {ports.len()} serial interface(s):")
+
+for port in ports {
+    println($"Port: {port.name}")
+}
+```
+
+---
+
+## API Reference
+
+### Serial (`std.serial`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `serial.ports` | *None* | `Tuple<Formula>` | Lists available serial port interfaces on the host (COM ports / `/dev/tty`), returning `{ name }`. |

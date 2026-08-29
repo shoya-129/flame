@@ -1,0 +1,58 @@
+---
+title: Interface Devices (std.hid)
+description: Interface devices (custom hardware, gamepads, interface controllers) communication in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Enumerate interface devices (custom hardware, gamepads, interface controllers) and communicate via raw byte buffers:
+
+---
+
+```flame
+import std.hid
+
+// Enumerate all connected USB HID peripherals
+let devices = hid.devices()
+println($"Total HID peripherals detected: {devices.len()}")
+
+for dev in devices {
+    println($"[{dev.vendor}:{dev.product}] {dev.manufacturer} - {dev.product_name} (Path: {dev.path})")
+}
+
+// Open device connection by Vendor ID and Product ID (e.g., VID: 0x046D, PID: 0xC077)
+if devices.len() > 0 {
+    let handle = hid.open(1133, 49271)
+    if hid.isOpen(handle) {
+        println($"Successfully opened device handle: {handle}")
+
+        // Read up to 64 bytes with a 1000 millisecond timeout
+        let data = hid.readTimeout(handle, 64, 1000)
+        println($"Received payload bytes: {data}")
+
+        // Close HID device handle when finished
+        hid.close(handle)
+    }
+}
+```
+
+---
+
+## API Reference
+
+### Human Interface Devices (`std.hid`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `hid.devices` | *None* | `Tuple<Formula>` | Lists all connected HID peripherals with vendor, product, interface, and path details. |
+| `hid.open` | `vendor: Int, product: Int` | `Int` | Opens a connection to a device by Vendor ID and Product ID, returning a handle ID. |
+| `hid.openPath` | `path: String` | `Int` | Opens a connection to a device directly by system device path string, returning a handle ID. |
+| `hid.close` | `handle: Int` | `Nil` | Closes an open HID device handle and releases system hardware resources. |
+| `hid.isOpen` | `handle: Int` | `Bool` | Returns `true` if the specified HID handle ID currently refers to an open device. |
+| `hid.read` | `handle: Int, len: Int` | `Bytes` | Reads up to `len` bytes from an open HID device handle (blocks according to blocking mode). |
+| `hid.readTimeout` | `handle: Int, len: Int, timeout_ms: Int` | `Bytes` | Reads up to `len` bytes from an open HID device with a specified millisecond timeout. |
+| `hid.poll` | `handle: Int, len: Int` | `Bytes` | Performs an immediate, non-blocking read poll of up to `len` bytes (timeout 0). |
+| `hid.write` | `handle: Int, payload: Bytes` | `Int` | Writes a raw byte array payload to an open HID device and returns the bytes written count. |
+| `hid.getFeatureReport` | `handle: Int, report_id: Int, len: Int` | `Bytes` | Requests and reads a feature report packet of up to `len` bytes starting with `report_id`. |
+| `hid.sendOutputReport` | `handle: Int, payload: Bytes` | `Int` | Transmits an output report payload to the HID device and returns the bytes written count. |
+| `hid.setBlocking` | `handle: Int, blocking: Bool` | `Nil` | Sets whether subsequent reads on the device handle block indefinitely or return immediately. |

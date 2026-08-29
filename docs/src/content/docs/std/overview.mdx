@@ -1,0 +1,77 @@
+---
+title: Standard Library Overview
+description: Overview of built-in modules, global utility functions, and native standard library coverage in Flame.
+---
+
+import { Aside, Card, CardGrid, Badge, LinkCard } from '@astrojs/starlight/components';
+
+Flame comes with a rich standard library (`std.*`) implemented directly in native Rust for maximum speed, system compatibility, and deterministic safety. All standard modules are ready for import without requiring external third-party dependencies.
+
+---
+
+## Global Built-in Functions
+
+Flame provides several built-in global functions and assertion utilities available in every scope without importing any modules:
+
+```flame
+// Console Output
+print("Hello ")
+println("Flame!")
+eprint("Error logged to stderr\n")
+
+// Assertions & Testing Utilities
+assert(1 + 1 == 2)
+assertTrue(true)
+assertFalse(5 < 3)
+assertEq("flame", "flame")
+assertNe(10, 20)
+```
+
+---
+
+## Standard Module Index & Status
+
+<CardGrid>
+  <LinkCard title="Environment Variables (std.env)" description="Read and write system environment variables." href="/std/env" icon="setting" />
+  <LinkCard title="File System (std.fs)" description="File reading, writing, and path manipulation." href="/std/filesystem" icon="document" />
+  <LinkCard title="Networking (std.net)" description="TCP, UDP, HTTP, WebSockets, MQTT and JSON parsing." href="/std/net" icon="internet" />
+  <LinkCard title="Process (std.process)" description="Sub-process execution and working directory management." href="/std/process" icon="rocket" />
+  <LinkCard title="OS Introspection (std.os)" description="Operating system details and host properties." href="/std/os" icon="laptop" />
+  <LinkCard title="Byte Manipulation (std.byte)" description="Raw binary byte streams and buffer operations." href="/std/byte" icon="puzzle" />
+  <LinkCard title="Hardware Telemetry (std.hardware)" description="System CPU, memory, and hardware telemetry." href="/std/hardware" icon="magnifier" />
+  <LinkCard title="Desktop Automation (std.desktop)" description="Cross-platform mouse control and keyboard input." href="/std/desktop" icon="laptop" />
+  <LinkCard title="Threading (std.thread)" description="Lightweight concurrency and message passing channels." href="/std/thread" icon="rocket" />
+  <LinkCard title="Time (std.time)" description="High-precision timing, sleeping, and timestamps." href="/std/time" icon="open-book" />
+  <LinkCard title="Math (std.math)" description="Trigonometric functions, random numbers, and math utilities." href="/std/math" icon="pencil" />
+  <LinkCard title="Serial Ports (std.serial)" description="Serial port device communication." href="/std/serial" icon="setting" />
+  <LinkCard title="Bluetooth (std.bluetooth)" description="Bluetooth LE scanning and device communication." href="/std/bluetooth" icon="star" />
+  <LinkCard title="Interface Devices (std.hid)" description="Raw USB HID streams and device communication." href="/std/hid" icon="puzzle" />
+  <LinkCard title="Camera (std.camera)" description="Webcam frame capture and video stream processing." href="/std/camera" icon="star" />
+  <LinkCard title="Embedded Ecosystem (std.embedded)" description="Embedded device programming utilities." href="/std/embedded" icon="setting" />
+  <LinkCard title="Formatting (std.fmt)" description="String formatting and manipulation utilities." href="/std/fmt" icon="pencil" />
+  <LinkCard title="Physical Units (std.unit)" description="Dimensional analysis, physical quantities, and math with units." href="/std/unit" icon="open-book" />
+</CardGrid>
+
+---
+
+## Importing Standard Modules
+
+Standard modules are imported using the `std.` namespace. Top-level expressions execute directly without requiring an entry point function:
+
+```flame
+import std.net.http
+import std.json
+import std.fs
+import std.byte
+import std.os
+import std.thread
+import std.math
+import std.time
+import std.hardware
+import std.desktop
+import std.fmt
+import std.unit
+
+
+println($"Running Flame on {os.name()} ({os.arch()})")
+```

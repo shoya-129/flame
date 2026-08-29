@@ -8,6 +8,10 @@ import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
 
 Flame's philosophy is: **"Don't reinvent the wheel; just use Rust's."**
 
+<Aside type="tip" title="Best Practice">
+While you can import crates directly, Flame highly recommends creating a **custom native plugin** and using complex native Rust crates within that plugin instead. This allows you to encapsulate complex generics, lifetimes, and wrapper types entirely inside Rust, exposing a clean, simple API to Flame.
+</Aside>
+
 Flame treats Rust crates as a first-class source language. When you build a Flame project, the compiler resolves Rust dependencies, generates static bridges, and statically compiles them directly into your final executable binary.
 
 ---

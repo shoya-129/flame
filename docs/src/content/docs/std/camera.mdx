@@ -1,0 +1,41 @@
+---
+title: Camera Capture (std.camera)
+description: Camera image capture in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Discover connected camera imaging hardware and capture high-resolution snapshots directly to disk:
+
+---
+
+```flame
+import std.camera
+
+// List all connected video capture devices
+let cameras = camera.devices()
+println($"Detected {cameras.len()} camera device(s)")
+
+for cam in cameras {
+    println($"[{cam.index}] {cam.name}: {cam.description}")
+}
+
+// Capture an image frame from device index 0 and save directly to disk
+if cameras.len() > 0 {
+    let success = camera.capture(0, "snapshot.png")
+    if success {
+        println("Snapshot successfully captured and saved to snapshot.png")
+    }
+}
+```
+
+---
+
+## API Reference
+
+### Camera (`std.camera`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `camera.devices` | *None* | `Tuple<Formula>` | Lists available imaging hardware. Each formula contains `{ index, name, description }`. |
+| `camera.capture` | `index: Int, path: String` | `Bool` | Opens camera `index`, captures a single high-resolution image, saves to `path`, and returns `true`. |

@@ -1,11 +1,11 @@
 ---
-title: Threading & Time (std.thread, std.time)
-description: Multi-threading concurrency primitives and timestamp tracking in Flame.
+title: Time (std.time)
+description: Timestamp tracking in Flame.
 ---
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-Core standard library modules for concurrent execution and timestamp tracking. In Flame, code executes at the top level without needing a wrapper main function.
+Core standard library module for timestamp tracking.
 
 ---
 
@@ -43,33 +43,6 @@ println($"Seconds: {now.toSeconds()}")
 println($"String: {now.toString()}")
 ```
 
-
-
-## Concurrency & Channels (`std.thread`)
-
-Manage thread execution, sleep durations, and pass messages cleanly across concurrent threads using channels:
-
-```flame
-import std.thread
-
-// Display the current OS thread identifier
-println($"Active thread ID: {thread.id()}")
-
-// Pause execution of the current thread for 200 milliseconds
-thread.sleep(200)
-
-// Yield execution time back to the operating system scheduler
-thread.yield()
-
-// Create an asynchronous communication channel
-let (tx, rx) = thread.channel()
-
-// Send and receive messages across thread channels
-tx.send("Message across channel!")
-let received = rx.recv()
-println($"Received: {received}")
-```
-
 ---
 
 ## API Summary Tables
@@ -93,15 +66,3 @@ The `Timestamp` object provides the following native methods:
 | `.toMillis()` | *None* | `Int` | Returns the UNIX epoch milliseconds. |
 | `.toSeconds()` | *None* | `Int` | Returns the UNIX epoch seconds. |
 | `.toString()` | *None* | `String` | Returns the human readable UTC date time string. |
-
-
-
-### Threading (`std.thread`)
-
-| Method | Arguments | Returns | Description |
-| :--- | :--- | :--- | :--- |
-| `thread.sleep` | `ms: Int` | `Nil` | Suspends thread execution for the specified number of milliseconds. |
-| `thread.id` | *None* | `String` | Returns a formatted string representation of the active thread ID. |
-| `thread.yield` | *None* | `Nil` | Yields the processor, allowing other threads on the OS to run. |
-| `thread.channel` | *None* | `Tuple<Sender, Receiver>` | Creates a multi-producer, single-consumer communication channel. |
-| `thread.spawn` | `callback: Function` | `ThreadHandler` | Spawns a background concurrent execution thread. |

@@ -1,0 +1,28 @@
+---
+title: OS Introspection (std.os)
+description: OS system introspection in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Inspect the host operating system platform and architecture:
+
+---
+
+```flame
+import std.os
+
+println($"Operating System Name: {os.name()}")   // e.g., "windows", "linux", "macos"
+println($"Operating System Family: {os.family()}") // e.g., "windows", "unix"
+println($"CPU Architecture: {os.arch()}")         // e.g., "x86_64", "aarch64"
+```
+
+---
+
+## API Reference
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `os.name` | *None* | `String` | Returns the OS name identifier (e.g., `"windows"`, `"linux"`, `"macos"`). |
+| `os.arch` | *None* | `String` | Returns the host CPU processor architecture (e.g., `"x86_64"`, `"aarch64"`). |
+| `os.family` | *None* | `String` | Returns the general OS operating platform family (e.g., `"windows"`, `"unix"`). |

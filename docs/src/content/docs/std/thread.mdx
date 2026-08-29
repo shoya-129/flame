@@ -1,5 +1,5 @@
 ---
-title: Threads & Channels (Compute)
+title: Threads & Channels (std.thread)
 description: True multithreading, dedicated OS compute threads, lexical snapshot isolation, and thread channels in Flame.
 ---
 
@@ -53,29 +53,29 @@ print($"Worker computed result: {result}")
 
 ---
 
-## Channels: `send` & `recv` (Under Development)
+## Concurrency & Channels (`std.thread`)
 
-Channels allow direct message-passing between threads:
+Manage thread execution, sleep durations, and pass messages cleanly across concurrent threads using channels:
 
 ```flame
 import std.thread
 
-// Create a channel: (Sender, Receiver)
+// Display the current OS thread identifier
+println($"Active thread ID: {thread.id()}")
+
+// Pause execution of the current thread for 200 milliseconds
+thread.sleep(200)
+
+// Yield execution time back to the operating system scheduler
+thread.yield()
+
+// Create an asynchronous communication channel
 let (tx, rx) = thread.channel()
 
-let worker = thread {
-    tx.send(formula {
-        kind: "task_complete",
-        processed_items: 500
-    })
-}
-
-// Receive message (blocks until ready)
-let message = rx.recv()
-await worker
-
-print($"Received message: {message.kind}, count: {message.processed_items}")
-
+// Send and receive messages across thread channels
+tx.send("Message across channel!")
+let received = rx.recv()
+println($"Received: {received}")
 ```
 ---
 
@@ -84,3 +84,18 @@ print($"Received message: {message.kind}, count: {message.processed_items}")
 - **Panic Isolation**: If a compute thread encounters a runtime error or division-by-zero, the panic is trapped inside the thread boundary. Awaiting the handle resolves cleanly without crashing your main server.
 - **Automatic Resource Cleanup**: RAII ensures all memory allocated within a worker thread is reclaimed immediately upon completion.
 - **Graceful Shutdown**: The runtime monitors all active worker threads and waits for clean resolution before process exit.
+
+---
+
+## API Reference
+
+
+### Threading (`std.thread`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `thread.sleep` | `ms: Int` | `Nil` | Suspends thread execution for the specified number of milliseconds. |
+| `thread.id` | *None* | `String` | Returns a formatted string representation of the active thread ID. |
+| `thread.yield` | *None* | `Nil` | Yields the processor, allowing other threads on the OS to run. |
+| `thread.channel` | *None* | `Tuple<Sender, Receiver>` | Creates a multi-producer, single-consumer communication channel. |
+| `thread.spawn` | `callback: Function` | `ThreadHandler` | Spawns a background concurrent execution thread. |

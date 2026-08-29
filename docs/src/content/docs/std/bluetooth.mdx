@@ -1,0 +1,41 @@
+---
+title: Bluetooth Low Energy (std.bluetooth)
+description: Bluetooth Low Energy scanning in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Check local system BLE capability, enumerate host adapters, and scan for nearby advertising peripherals:
+
+---
+
+```flame
+import std.bluetooth
+
+// Verify host Bluetooth support
+if bluetooth.supported() {
+    println("Bluetooth is supported on this system.")
+
+    // Enumerate local Bluetooth radio adapters
+    let adapters = bluetooth.adapters()
+    println($"Found {adapters.len()} host adapter(s)")
+
+    // Scan nearby BLE peripherals (performs an active 3-second scan)
+    println("Scanning for Bluetooth LE devices...")
+    let devices = bluetooth.scan()
+
+    for dev in devices {
+        println($"Device: {dev.name} | MAC Address: {dev.address} | Connected: {dev.connected}")
+    }
+}
+```
+
+---
+
+## API Reference
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `bluetooth.supported` | *None* | `Bool` | Checks if the host operating system supports Bluetooth capabilities. |
+| `bluetooth.adapters` | *None* | `Tuple<Formula>` | Returns a list of discovered host Bluetooth radio adapters containing `{ index, name }`. |
+| `bluetooth.scan` | *None* | `Tuple<Formula>` | Performs a 3-second scan and returns nearby peripherals containing `{ name, address, connected }`. |

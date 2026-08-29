@@ -27,6 +27,10 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'Flame',
+			expressiveCode: {
+				themes: ['github-dark', 'github-light'],
+				
+			},
 			logo: {
 				src: './src/assets/flame.png',
 				alt: 'Flame Logo',
@@ -56,6 +60,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Language Basics',
+					collapsed: true,
 					items: [
 						{ label: 'Variables & Constants', slug: 'language-basics/variables' },
 						{ label: 'Data Types & Formulas', slug: 'language-basics/data-types' },
@@ -69,6 +74,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Types & Object-Oriented',
+					collapsed: true,
 					items: [
 						{ label: 'Structs', slug: 'types-and-traits/structs' },
 						{ label: 'Impl & Methods', slug: 'types-and-traits/impl-and-methods' },
@@ -78,6 +84,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Memory & Safety',
+					collapsed: true,
 					items: [
 						{ label: 'Ownership & Move Semantics', slug: 'memory-and-safety/ownership' },
 						{ label: 'Borrowing & References', slug: 'memory-and-safety/borrowing' },
@@ -85,24 +92,26 @@ export default defineConfig({
 				},
 				{
 					label: 'Concurrency',
+					collapsed: true,
 					items: [
 						{ label: 'Async & Await (I/O)', slug: 'concurrency/async-await' },
-						{ label: 'Threads & Channels (Compute)', slug: 'concurrency/threads-and-channels' },
 					],
 				},
 				{
 					label: 'Packages & Native Rust',
+					collapsed: true,
 					items: [
 						{ label: 'Modules & Imports', slug: 'packages-and-native/modules-and-imports' },
 						{ label: 'Creating Packages', slug: 'packages-and-native/creating-packages' },
 						{ label: 'Using Native Rust Crates', slug: 'packages-and-native/native-rust-crates' },
-						{ label: 'Native Plugins & FFI', slug: 'packages-and-native/native-plugins' },
+						{ label: 'Native Plugins', slug: 'packages-and-native/native-plugins' },
 						{ label: 'Native Macros (flame-macro)', slug: 'packages-and-native/native-macros' },
 						{ label: 'Rust Integration (flamebinder)', slug: 'packages-and-native/rust-integration' },
 					],
 				},
 				{
 					label: 'Annotations & Testing',
+					collapsed: true,
 					items: [
 						{ label: 'Built-in Annotations & CLI', slug: 'annotations-and-testing/builtin-annotations' },
 						{ label: 'Custom Annotations & Scope Injection', slug: 'annotations-and-testing/custom-annotations' },
@@ -111,17 +120,26 @@ export default defineConfig({
 				},
 				{
 					label: 'Standard Library',
+					collapsed: true,
 					items: [
-						{ label: 'Overview & Status', slug: 'standard-library/overview' },
-						{ label: 'Network Toolkit (std.net)', slug: 'standard-library/net' },
-						{ label: 'File System (std.fs)', slug: 'standard-library/filesystem' },
-						{ label: 'Byte Manipulation (std.byte)', slug: 'standard-library/byte' },
-						{ label: 'Process & OS (std.process, std.os, std.env)', slug: 'standard-library/process-and-os' },
-						{ label: 'Hardware & Desktop Automation', slug: 'standard-library/hardware-and-automation' },
-						{ label: 'Threading & Time (std.thread, std.time)', slug: 'standard-library/threading-and-time' },
-						{ label: 'Math (std.math)', slug: 'standard-library/math' },
-						{ label: 'Platform Devices (Bluetooth, Camera, HID, Serial)', slug: 'standard-library/platform-devices' },
-						{ label: 'Embedded Ecosystem (std.embedded)', slug: 'standard-library/embedded' },
+						{ label: 'Overview', slug: 'std/overview' },
+						{ label: 'Environment Variables (std.env)', slug: 'std/env' },
+						{ label: 'File System (std.fs)', slug: 'std/filesystem' },
+						{ label: 'Networking (std.net)', slug: 'std/net' },
+						{ label: 'Process (std.process)', slug: 'std/process' },
+						{ label: 'OS Introspection (std.os)', slug: 'std/os' },
+						{ label: 'Byte Manipulation (std.byte)', slug: 'std/byte' },
+						{ label: 'Hardware Telemetry (std.hardware)', slug: 'std/hardware' },
+						{ label: 'Desktop Automation (std.desktop)', slug: 'std/desktop' },
+						{ label: 'Threading (std.thread)', slug: 'std/thread' },
+						{ label: 'Time (std.time)', slug: 'std/time' },
+						{ label: 'Math (std.math)', slug: 'std/math' },
+						{label: 'Unit System (std.unit)', slug: 'std/unit'},
+						{ label: 'Serial Ports (std.serial)', slug: 'std/serial' },
+						{ label: 'Bluetooth (std.bluetooth)', slug: 'std/bluetooth' },
+						{ label: 'Interface Devices (std.hid)', slug: 'std/hid' },
+						{ label: 'Camera (std.camera)', slug: 'std/camera' },
+						{ label: 'Embedded Ecosystem (std.embedded)', slug: 'std/embedded' },
 					],
 				},
 			],
