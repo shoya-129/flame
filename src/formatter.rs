@@ -86,6 +86,7 @@ pub fn format_code(source: &str) -> String {
                         TokenKind::IntLiteral
                         | TokenKind::FloatLiteral
                         | TokenKind::StringLiteral
+                        | TokenKind::MultilineStringLiteral
                         | TokenKind::Plus
                         | TokenKind::Minus
                         | TokenKind::Star
@@ -315,6 +316,7 @@ pub fn format_code(source: &str) -> String {
                     TokenKind::Identifier
                         | TokenKind::Annotation
                         | TokenKind::StringLiteral
+                        | TokenKind::MultilineStringLiteral
                         | TokenKind::IntLiteral
                         | TokenKind::FloatLiteral
                         | TokenKind::CloseParen

@@ -45,9 +45,11 @@ pub enum TokenKind {
     IntLiteral,
     FloatLiteral,
     StringLiteral,
+    MultilineStringLiteral,
 
     // Interpolation Tokens
     InterpolatedStringStart,   // $"
+    MultilineInterpolatedStringStart, // $"""
     InterpolatedStringContent, // raw characters inside
     InterpolationStart,        // %{
     InterpolationEnd,          // }
@@ -132,8 +134,8 @@ pub struct Lexer<'a> {
     line: usize,
     col: usize,
     // Stack to keep track of string interpolation state
-    // true = inside an interpolation block `%{ ... }`, false = in a normal string
-    pub interpolation_stack: Vec<bool>,
+    // (inside_expression: bool, is_multiline: bool)
+    pub interpolation_stack: Vec<(bool, bool)>,
     pub keep_comments: bool,
 }
 
@@ -197,7 +199,10 @@ impl<'a> Lexer<'a> {
         let start_line_before_skip = self.line;
         let start_col_before_skip = self.col;
 
-        if let Some(kind) = self.skip_whitespace_and_comments() {
+        let in_string_text = matches!(self.interpolation_stack.last(), Some(&(false, _)));
+        
+        if !in_string_text {
+            if let Some(kind) = self.skip_whitespace_and_comments() {
             return Token {
                 kind,
                 lexeme: self.source
@@ -210,6 +215,7 @@ impl<'a> Lexer<'a> {
                     col: start_col_before_skip,
                 },
             };
+            }
         }
 
         let start_pos = self.index;
@@ -233,23 +239,43 @@ impl<'a> Lexer<'a> {
         };
 
         // If we are currently scanning inside an interpolated string, we have to look for %{ or "
-        if let Some(false) = self.interpolation_stack.last() {
+        if let Some(&(false, is_multi)) = self.interpolation_stack.last() {
             // We are scanning the text part of a string
-            if ch == '"' {
-                self.interpolation_stack.pop();
-                return Token {
-                    kind: TokenKind::StringEnd,
-                    lexeme: "\"".to_string(),
-                    span: Span {
-                        start: self.byte_pos(start_pos),
-                        end: self.byte_pos(self.index),
-                        line: start_line,
-                        col: start_col,
-                    },
-                };
-            } else if ch == '{' {
+            if is_multi {
+                if ch == '"' && self.peek() == Some('"') && self.peek_next() == Some('"') {
+                    self.advance(); // consume 2nd "
+                    self.advance(); // consume 3rd "
+                    self.interpolation_stack.pop();
+                    return Token {
+                        kind: TokenKind::StringEnd,
+                        lexeme: "\"\"\"".to_string(),
+                        span: Span {
+                            start: self.byte_pos(start_pos),
+                            end: self.byte_pos(self.index),
+                            line: start_line,
+                            col: start_col,
+                        },
+                    };
+                }
+            } else {
+                if ch == '"' {
+                    self.interpolation_stack.pop();
+                    return Token {
+                        kind: TokenKind::StringEnd,
+                        lexeme: "\"".to_string(),
+                        span: Span {
+                            start: self.byte_pos(start_pos),
+                            end: self.byte_pos(self.index),
+                            line: start_line,
+                            col: start_col,
+                        },
+                    };
+                }
+            }
+            
+            if ch == '{' {
                 // Toggle the top of the stack to true (we are inside an expression now)
-                *self.interpolation_stack.last_mut().unwrap() = true;
+                self.interpolation_stack.last_mut().unwrap().0 = true;
                 return Token {
                     kind: TokenKind::InterpolationStart,
                     lexeme: "{".to_string(),
@@ -262,13 +288,52 @@ impl<'a> Lexer<'a> {
                 };
             } else {
                 // Read text until " or {
-                let mut content = ch.to_string();
-                while let Some(next) = self.peek() {
-                    if next == '"' || next == '{' {
+                let mut content = String::new();
+                let mut current = ch;
+                
+                loop {
+                    if current == '\\' {
+                        if let Some(escaped) = self.peek() {
+                            self.advance(); // consume the escaped char
+                            match escaped {
+                                'n' => content.push('\n'),
+                                'r' => content.push('\r'),
+                                't' => content.push('\t'),
+                                '\\' => content.push('\\'),
+                                '"' => content.push('"'),
+                                '{' => content.push('{'),
+                                '}' => content.push('}'),
+                                _ => {
+                                    content.push('\\');
+                                    content.push(escaped);
+                                }
+                            }
+                        } else {
+                            content.push('\\');
+                        }
+                    } else {
+                        content.push(current);
+                    }
+                    
+                    if let Some(next) = self.peek() {
+                        if next == '{' {
+                            break;
+                        }
+                        if is_multi {
+                            if next == '"' && self.peek_next() == Some('"') && self.index + 2 < self.chars.len() && self.chars[self.index + 2] == '"' {
+                                break;
+                            }
+                        } else {
+                            if next == '"' {
+                                break;
+                            }
+                        }
+                        current = self.advance().unwrap();
+                    } else {
                         break;
                     }
-                    content.push(self.advance().unwrap());
                 }
+                
                 return Token {
                     kind: TokenKind::InterpolatedStringContent,
                     lexeme: content,
@@ -295,8 +360,8 @@ impl<'a> Lexer<'a> {
             '}' => {
                 // Check if we are inside an interpolation expression block.
                 // If the top of the stack is true, this '}' finishes the interpolation expression!
-                if let Some(true) = self.interpolation_stack.last() {
-                    *self.interpolation_stack.last_mut().unwrap() = false; // toggle back to scanning string text
+                if let Some(&(true, _)) = self.interpolation_stack.last() {
+                    self.interpolation_stack.last_mut().unwrap().0 = false; // toggle back to scanning string text
                     TokenKind::InterpolationEnd
                 } else {
                     TokenKind::CloseBrace
@@ -450,8 +515,21 @@ impl<'a> Lexer<'a> {
             '$' => {
                 if self.peek() == Some('"') {
                     self.advance(); // consume '"'
-                    self.interpolation_stack.push(false); // start scanning string text
-                    TokenKind::InterpolatedStringStart
+                    
+                    let mut is_multi = false;
+                    if self.peek() == Some('"') && self.peek_next() == Some('"') {
+                        self.advance(); // consume 2nd "
+                        self.advance(); // consume 3rd "
+                        is_multi = true;
+                    }
+                    let kind = if is_multi {
+                        TokenKind::MultilineInterpolatedStringStart
+                    } else {
+                        TokenKind::InterpolatedStringStart
+                    };
+                    
+                    self.interpolation_stack.push((false, is_multi)); // start scanning string text
+                    kind
                 } else {
                     TokenKind::Dollar
                 }
@@ -490,6 +568,13 @@ impl<'a> Lexer<'a> {
             }
             '"' => {
                 let mut content = String::new();
+                let mut is_multi = false;
+                
+                if self.peek() == Some('"') && self.peek_next() == Some('"') {
+                    self.advance();
+                    self.advance();
+                    is_multi = true;
+                }
 
                 while let Some(next) = self.peek() {
                     if next == '\\' {
@@ -510,16 +595,31 @@ impl<'a> Lexer<'a> {
                         }
                         continue;
                     }
-                    if next == '"' {
-                        self.advance();
-                        break;
+                    if is_multi {
+                        if next == '"' && self.peek_next() == Some('"') && self.index + 2 < self.chars.len() && self.chars[self.index + 2] == '"' {
+                            self.advance();
+                            self.advance();
+                            self.advance();
+                            break;
+                        }
+                    } else {
+                        if next == '"' {
+                            self.advance();
+                            break;
+                        }
                     }
 
                     content.push(self.advance().unwrap());
                 }
 
+                let kind = if is_multi {
+                    TokenKind::MultilineStringLiteral
+                } else {
+                    TokenKind::StringLiteral
+                };
+
                 return Token {
-                    kind: TokenKind::StringLiteral,
+                    kind,
                     lexeme: content,
                     span: Span {
                         start: self.byte_pos(start_pos),

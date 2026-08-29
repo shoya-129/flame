@@ -97,11 +97,24 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                                 }
                             }
                             "Test" | "test" => {
-                                if anno.args.iter().any(|arg| arg.contains("skip: true")) {
-                                    is_ignore = true;
-                                }
-                                if anno.args.iter().any(|arg| arg.contains("only: true")) {
-                                    is_only = true;
+                                for arg in &anno.args {
+                                    let clean = arg.replace(" ", "");
+                                    if clean.contains("skip:true") || clean.contains("skip=true") {
+                                        is_ignore = true;
+                                    }
+                                    if clean.contains("only:true") || clean.contains("only=true") {
+                                        is_only = true;
+                                    }
+                                    // Parse timeout
+                                    if let Some(idx) = clean.find("timeout:") {
+                                        if let Ok(val) = clean[idx + 8..].parse::<u64>() {
+                                            // Implement timeout logic if needed later
+                                        }
+                                    } else if let Some(idx) = clean.find("timeout=") {
+                                        if let Ok(val) = clean[idx + 8..].parse::<u64>() {
+                                            // Implement timeout logic if needed later
+                                        }
+                                    }
                                 }
                             }
                             _ => {}

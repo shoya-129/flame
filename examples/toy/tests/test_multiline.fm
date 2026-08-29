@@ -1,0 +1,19 @@
+@Test
+fn test_multiline() {
+    let multiline_str = """
+    hello
+      world
+    """
+
+    println("A:")
+
+    let name = "flame"
+    let multiline_interpolated = $"""
+    hello {name}
+      welcome
+    to the language
+    """
+
+    assertEq(multiline_str, "hello\n  world\n", "Multiline string comparison failed")
+    assertEq(multiline_interpolated, "hello flame\n  welcome\nto the language\n", "Multiline interpolated string comparison failed")
+}

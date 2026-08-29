@@ -918,6 +918,16 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         });
     }
 
+    // Scan for parameters in functions or closures (naive): `name: Type` where Type starts with uppercase
+    let param_re = Regex::new(r"\b([a-z_]\w*)\s*:\s*([A-Z]\w*)").unwrap();
+    for cap in param_re.captures_iter(content) {
+        vars.push(ScannedVar {
+            name: cap[1].to_string(),
+            typ: Some(cap[2].to_string()),
+            doc: None,
+        });
+    }
+
     // Scan for annotations to inject implicit variables
     let annotation_re = Regex::new(r"@([a-zA-Z_]\w*)\s*(?:\(|$)").unwrap();
     for cap in annotation_re.captures_iter(content) {

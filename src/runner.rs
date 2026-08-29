@@ -2270,7 +2270,7 @@ impl Runner {
                             Ok(val.clone())
                         } else {
                             Err(format!(
-                                "Property '{}' does not exist on dynamic API JSON/Object.",
+                                "Property '{}' does not exist on this object or .fmi plugin package.",
                                 member
                             ))
                         }

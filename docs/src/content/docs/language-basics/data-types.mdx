@@ -31,6 +31,28 @@ let message = $"Player {user} scored {score} points!"
 print(message)
 ```
 
+### Multiline Strings
+Flame natively supports multiline strings using triple quotes (`"""`). They automatically strip common leading indentation, so you can keep your code neatly indented without breaking string formatting!
+
+```flame
+let str = """
+    This is a multiline string.
+      It preserves internal indentation.
+    """
+```
+
+### Multiline Interpolation
+You can also combine interpolation with multiline strings using `$"""`:
+
+```flame
+let user = "Alice"
+let str = $"""
+    Welcome to the game, {user}!
+    Your score is {score}.
+    If you need a literal brace, escape it like \{ or \}.
+    """
+```
+
 ---
 
 ## The `Unknown` Type

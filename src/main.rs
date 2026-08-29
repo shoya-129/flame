@@ -714,21 +714,8 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
         );
 
         if is_release {
-            let dist_dir = Path::new("dist");
-            let _ = fs::create_dir_all(dist_dir);
-            let dist_exe = dist_dir.join(&exe_name);
-            let _ = fs::copy(&out_rel, &dist_exe);
-            
-            let common_asset_dirs = ["assets", "res", "resources", "public"];
-            for asset_dir in common_asset_dirs.iter() {
-                let p = Path::new(asset_dir);
-                if p.exists() && p.is_dir() {
-                    let _ = copy_dir_all(p, dist_dir.join(asset_dir));
-                }
-            }
             println!(
-                "\x1b[1;32m   Packaged\x1b[0m distribution build successfully in \x1b[1m{}/\x1b[0m directory",
-                dist_dir.display()
+                "\x1b[1;32m   Packaged\x1b[0m distribution build successfully in \x1b[1mtarget/release/\x1b[0m directory"
             );
         }
 
