@@ -489,7 +489,7 @@ pub fn ensure_dependencies_installed(is_release: bool) {
                 };
 
                 let download_zip = |u: &str| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-                    let mut client_builder = reqwest::blocking::Client::builder()
+                    let client_builder = reqwest::blocking::Client::builder()
                         .user_agent("Flamelang-Package-Manager");
                     
                     let client = client_builder.build()?;

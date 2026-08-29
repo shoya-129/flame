@@ -107,11 +107,11 @@ pub fn execute_test_suite(runner: &mut Runner, stmts: &[Stmt], filename: &str) -
                                     }
                                     // Parse timeout
                                     if let Some(idx) = clean.find("timeout:") {
-                                        if let Ok(val) = clean[idx + 8..].parse::<u64>() {
+                                        if let Ok(_val) = clean[idx + 8..].parse::<u64>() {
                                             // Implement timeout logic if needed later
                                         }
                                     } else if let Some(idx) = clean.find("timeout=") {
-                                        if let Ok(val) = clean[idx + 8..].parse::<u64>() {
+                                        if let Ok(_val) = clean[idx + 8..].parse::<u64>() {
                                             // Implement timeout logic if needed later
                                         }
                                     }

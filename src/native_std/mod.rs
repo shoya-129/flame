@@ -24,6 +24,7 @@ pub mod bluetooth;
 pub mod camera;
 pub mod embedded;
 pub mod fmt;
+pub mod unit;
 #[cfg(feature = "net")]
 pub mod net;
 

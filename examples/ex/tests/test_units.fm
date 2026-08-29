@@ -1,0 +1,57 @@
+
+import std.unit
+
+
+
+
+@Test
+fn test_basic_units() {
+    let speed = unit.Equation(0, 1, -1)
+    let a = 10 * unit.meter
+    let b = 2 * unit.second
+    let c = a / b
+
+    assertEq(c, 5 * speed, "Unit division and multiplication")
+    let d = 5 * unit.meter + 10 * unit.meter
+
+    assertEq(d, 15 * unit.meter, "Quantity addition")
+}
+
+@Test
+fn test_kinematics() {
+    // v = u + at
+    let m_per_s = unit.Equation(0, 1, -1)
+    let m_per_s2 = unit.Equation(0, 1, -2)
+    let u = 5 * m_per_s// Initial velocity: 5 m/s
+    let a = 2 * m_per_s2// Acceleration: 2 m/s^2
+    let t = 3 * unit.second// Time: 3 s
+    let v = u + a * t// Final velocity
+
+    assertEq(v, 11 * m_per_s, "Velocity after 3 seconds should be 11 m/s")
+    // s = ut + 0.5at^2
+    let displacement = (u * t) + (0.5 * a * t * t)
+
+    assertEq(displacement, 24 * unit.meter, "Displacement should be 24 m")
+}
+
+@Test
+fn test_force_and_energy() {
+    // F = ma
+    let m_per_s2 = unit.Equation(0, 1, -2)
+    let newton = unit.Equation(1, 1, -2)// kg * m / s^2
+    let mass = 10 * unit.kilogram
+    let a = 9.8 * m_per_s2
+    let force = mass * a
+
+    assertEq(force, 98 * newton, "Force should be 98 Newtons")
+    // KE = 0.5 * m * v^2
+    let m_per_s = unit.Equation(0, 1, -1)
+    let joule = unit.Equation(1, 2, -2)// kg * m^2 / s^2
+    let v = 10 * m_per_s// 10 m/s
+    let ke = 0.5 * mass * v * v
+
+    println(500 * joule)
+    println(ke)
+
+    assertEq(ke, 500 * joule, "Kinetic Energy should be 500 Joules")
+}

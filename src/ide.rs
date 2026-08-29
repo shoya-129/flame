@@ -1071,6 +1071,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
                         "bluetooth",
                         "serial",
                         "embedded",
+                        "unit",
                     ]
                     .into_iter()
                     .map(String::from)
@@ -1101,6 +1102,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "bluetooth" => Some(crate::native_std::bluetooth::init()),
         "serial" => Some(crate::native_std::serial::init()),
         "embedded" => Some(crate::native_std::embedded::init()),
+        "unit" => Some(crate::native_std::unit::init()),
         _ => None,
     }?;
 

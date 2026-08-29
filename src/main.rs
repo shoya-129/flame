@@ -1655,7 +1655,7 @@ fn analyze_file_for_json(
         })
         .collect::<Vec<_>>();
 
-    let lines = content.lines().collect::<Vec<_>>();
+    let _lines = content.lines().collect::<Vec<_>>();
     let current_line = if let Some(l) = line {
         let line = content.lines().nth(l.saturating_sub(1)).unwrap_or("");
         eprintln!(
@@ -1858,11 +1858,11 @@ fn analyze_file_for_json(
                                         ..
                                     } = m
                                     {
-                                        let mut doc_str = String::new();
+                                        let mut _doc_str = String::new();
                                         for ann in annotations {
                                             if ann.name == "Docs" {
                                                 if let Some(s) = ann.args.get(0) {
-                                                    doc_str = s.trim_matches('"').to_string();
+                                                    _doc_str = s.trim_matches('"').to_string();
                                                 }
                                             }
                                         }
@@ -1871,7 +1871,7 @@ fn analyze_file_for_json(
                                             .map(|p| format!("{}: {}", p.name, p.type_name))
                                             .collect::<Vec<_>>()
                                             .join(", ");
-                                        let sig = format!(
+                                        let _sig = format!(
                                             "fn {}({}) -> {}",
                                             m_name,
                                             p_str,
@@ -1911,11 +1911,11 @@ fn analyze_file_for_json(
                                     ..
                                 } = m
                                 {
-                                    let mut doc_str = String::new();
+                                    let mut _doc_str = String::new();
                                     for ann in annotations {
                                         if ann.name == "Docs" {
                                             if let Some(s) = ann.args.get(0) {
-                                                doc_str = s.trim_matches('"').to_string();
+                                                _doc_str = s.trim_matches('"').to_string();
                                             }
                                         }
                                     }
@@ -1924,7 +1924,7 @@ fn analyze_file_for_json(
                                         .map(|p| format!("{}: {}", p.name, p.type_name))
                                         .collect::<Vec<_>>()
                                         .join(", ");
-                                    let sig = format!(
+                                    let _sig = format!(
                                         "fn {}({}) -> {}",
                                         m_name,
                                         p_str,

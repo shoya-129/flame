@@ -2099,7 +2099,7 @@ impl Parser {
     fn parse_accessors(&mut self, mut expr: Expr) -> Result<Expr, Diagnostic> {
         loop {
             if self.match_token(TokenKind::Dot) {
-                let name = if self.check(TokenKind::Type) {
+                let name = if self.check(TokenKind::Type) || self.check(TokenKind::Formula) {
                     self.advance()
                 } else {
                     self.consume(TokenKind::Identifier, "expected member identifier after '.'")?
@@ -2112,7 +2112,7 @@ impl Parser {
                 };
                 expr = Expr::Dot(Box::new(expr), name.lexeme.clone(), span);
             } else if self.match_token(TokenKind::QuestionDot) {
-                let name = if self.check(TokenKind::Type) {
+                let name = if self.check(TokenKind::Type) || self.check(TokenKind::Formula) {
                     self.advance()
                 } else {
                     self.consume(TokenKind::Identifier, "expected member identifier after '?.'")?

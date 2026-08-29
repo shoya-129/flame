@@ -16,6 +16,8 @@ pub enum Value {
     Bytes(Vec<u8>),
     Tuple(Vec<Value>),
     Formula(HashMap<String, Value>),
+    Unit(HashMap<String, i32>),
+    Quantity(f64, HashMap<String, i32>),
     ThreadHandler(u64),
     Sender(u64),
     Receiver(u64),
@@ -261,14 +263,48 @@ impl fmt::Display for Value {
                 write!(f, "({})", s.join(", "))
             }
             Value::Formula(map) => {
-                let s: Vec<String> = map.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                let s: Vec<String> = keys.into_iter().map(|k| format!("{}: {}", k, map[k])).collect();
                 write!(f, "formula {{ {} }}", s.join(", "))
             }
+            Value::Unit(map) => {
+                let mut terms = Vec::new();
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                for k in keys {
+                    let v = map[k];
+                    if v == 1 { terms.push(k.clone()); }
+                    else { terms.push(format!("{}^{}", k, v)); }
+                }
+                if terms.is_empty() {
+                    write!(f, "unit {{}}")
+                } else {
+                    write!(f, "unit {{ {} }}", terms.join(" * "))
+                }
+            }
+            Value::Quantity(v, map) => {
+                let mut terms = Vec::new();
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                for k in keys {
+                    let val = map[k];
+                    if val == 1 { terms.push(k.clone()); }
+                    else { terms.push(format!("{}^{}", k, val)); }
+                }
+                if terms.is_empty() {
+                    write!(f, "{}", v)
+                } else {
+                    write!(f, "{} {}", v, terms.join(" * "))
+                }
+            }
             Value::Object(map) => {
+                let mut keys: Vec<String> = map.keys().cloned().collect();
+                keys.sort();
                 write!(
                     f,
                     "<object [{}]>",
-                    map.keys().cloned().collect::<Vec<_>>().join(", ")
+                    keys.join(", ")
                 )
             }
             Value::Range(start, end) => write!(f, "{}..{}", start, end),
@@ -345,6 +381,29 @@ impl fmt::Display for Value {
 }
 
 impl Value {
+    pub fn is_equal(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::String(a), Value::String(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Nil, Value::Nil) => true,
+            (Value::Byte(a), Value::Byte(b)) => a == b,
+            (Value::Bytes(a), Value::Bytes(b)) => a == b,
+            (Value::Tuple(a), Value::Tuple(b)) => {
+                if a.len() != b.len() { return false; }
+                a.iter().zip(b.iter()).all(|(x, y)| x.is_equal(y))
+            },
+            (Value::Formula(a), Value::Formula(b)) => {
+                if a.len() != b.len() { return false; }
+                a.iter().all(|(k, v)| b.get(k).map_or(false, |bv| v.is_equal(bv)))
+            },
+            (Value::Unit(a), Value::Unit(b)) => a == b,
+            (Value::Quantity(av, au), Value::Quantity(bv, bu)) => av == bv && au == bu,
+            (a, b) => a.to_string() == b.to_string(),
+        }
+    }
+
     pub fn is_truthy(&self) -> bool {
         match self {
             Value::Bool(b) => *b,
@@ -368,6 +427,8 @@ impl Value {
             Value::Bytes(_) => "Byte",
             Value::Object(_) => "Object",
             Value::Formula(_) => "Formula",
+            Value::Unit(_) => "Unit",
+            Value::Quantity(_, _) => "Quantity",
             Value::Ref(_) | Value::RefPath(_, _) => "Ref",
             Value::StructInstance { .. } => "StructInstance", // Will map to actual name downstream if needed
             _ => "Unknown",

@@ -24,6 +24,8 @@ pub enum Type {
         struct_fields: HashMap<String, Type>,
     },
     Named(String),
+    Quantity(HashMap<String, i32>),
+    Unit(HashMap<String, i32>),
     Unknown,
     Reference {
         inner: Box<Type>,
@@ -245,7 +247,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some("Prints a value to standard output without a newline.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -259,7 +261,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some("Prints a value to standard error without a newline.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -273,7 +275,9 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some(
+                    "Prints a value to standard output, followed by a newline.".to_string(),
+                ),
                 return_type: Type::Nil,
             },
         );
@@ -287,7 +291,9 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some(
+                    "Terminates the program immediately with an error message.".to_string(),
+                ),
                 return_type: Type::Unknown,
             },
         );
@@ -301,7 +307,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some("Asserts that a condition is true. Panics if false.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -315,7 +321,7 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some("Creates a new native Rust server handle.".to_string()),
                 return_type: Type::Named("ServerHandle".to_string()),
             },
         );
@@ -329,7 +335,10 @@ impl TypeChecker {
                     is_ref: false,
                     is_mut: false,
                 }],
-                hover_doc: None,
+                hover_doc: Some(
+                    "Prompts the user for input from standard input and returns the read string."
+                        .to_string(),
+                ),
                 return_type: Type::String,
             },
         );
@@ -357,7 +366,7 @@ impl TypeChecker {
                         is_mut: false,
                     },
                 ],
-                hover_doc: None,
+                hover_doc: Some("Asserts that two values are equal. Panics with the provided message if they are not.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -385,7 +394,7 @@ impl TypeChecker {
                         is_mut: false,
                     },
                 ],
-                hover_doc: None,
+                hover_doc: Some("Asserts that two values are not equal. Panics with the provided message if they are.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -407,7 +416,7 @@ impl TypeChecker {
                         is_mut: false,
                     },
                 ],
-                hover_doc: None,
+                hover_doc: Some("Asserts that a boolean condition is true. Panics with the provided message if false.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -429,7 +438,7 @@ impl TypeChecker {
                         is_mut: false,
                     },
                 ],
-                hover_doc: None,
+                hover_doc: Some("Asserts that a boolean condition is false. Panics with the provided message if true.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -438,7 +447,7 @@ impl TypeChecker {
             FunctionSig {
                 is_static: false,
                 params: vec![],
-                hover_doc: None,
+                hover_doc: Some("Mocks an API endpoint for testing purposes.".to_string()),
                 return_type: Type::Unknown,
             },
         );
@@ -447,7 +456,7 @@ impl TypeChecker {
             FunctionSig {
                 is_static: false,
                 params: vec![],
-                hover_doc: None,
+                hover_doc: Some("Returns mock data for testing purposes.".to_string()),
                 return_type: Type::Unknown,
             },
         );
@@ -456,7 +465,7 @@ impl TypeChecker {
             FunctionSig {
                 is_static: false,
                 params: vec![],
-                hover_doc: None,
+                hover_doc: Some("Returns a mock function for testing purposes.".to_string()),
                 return_type: Type::Nil,
             },
         );
@@ -931,7 +940,10 @@ impl TypeChecker {
                                                                         params.push(ParamInfo {
                                                                             name: "self"
                                                                                 .to_string(),
-                                                                            ty: Type::Struct(struct_name.to_string()),
+                                                                            ty: Type::Struct(
+                                                                                struct_name
+                                                                                    .to_string(),
+                                                                            ),
                                                                             is_ref: true,
                                                                             is_mut: true,
                                                                         });
@@ -1098,9 +1110,51 @@ impl TypeChecker {
 
                 Type::Formula(map, docs)
             }
-            "math" => {
+            "unit" => {
                 let mut map = HashMap::new();
                 let mut docs = HashMap::new();
+
+                let eq_fn = Type::Function(
+                    vec![Type::Int, Type::Int, Type::Int],
+                    Box::new(Type::Named("Unit".to_string())),
+                );
+
+                map.insert("Equation".to_string(), eq_fn);
+                map.insert(
+                    "meter".to_string(),
+                    Type::Quantity(HashMap::from([("m".to_string(), 1)])),
+                );
+                map.insert(
+                    "second".to_string(),
+                    Type::Quantity(HashMap::from([("s".to_string(), 1)])),
+                );
+                map.insert(
+                    "kilogram".to_string(),
+                    Type::Quantity(HashMap::from([("kg".to_string(), 1)])),
+                );
+
+                if let Some(doc) = crate::std_docs::get_std_function_doc("std.unit", "Equation") {
+                    docs.insert("Equation".to_string(), doc.to_string());
+                }
+                docs.insert(
+                    "meter".to_string(),
+                    "```flame\nunit.meter: Quantity\n```\nThe SI base unit for length.".to_string(),
+                );
+                docs.insert(
+                    "second".to_string(),
+                    "```flame\nunit.second: Quantity\n```\nThe SI base unit for time.".to_string(),
+                );
+                docs.insert(
+                    "kilogram".to_string(),
+                    "```flame\nunit.kilogram: Quantity\n```\nThe SI base unit for mass."
+                        .to_string(),
+                );
+
+                Type::Formula(map, docs)
+            }
+            "math" => {
+                let mut map = HashMap::new();
+                let docs = HashMap::new();
 
                 let float_fn = Type::Function(vec![Type::Unknown], Box::new(Type::Float));
                 let float_fn2 =
@@ -1242,7 +1296,7 @@ impl TypeChecker {
                             path_str
                         )
                     } else if is_package {
-                        let mut h = if let Some(ref docs) = package_docs {
+                        let h = if let Some(ref docs) = package_docs {
                             format!("```flame\nimport package {}\n```\n\n{}", path_str, docs)
                         } else {
                             format!("```flame\nimport package {}\n```", path_str)
@@ -1268,13 +1322,18 @@ impl TypeChecker {
                     let mut final_ty = ty.clone();
 
                     if let Some(existing) = self.lookup_var(&last).cloned() {
-                        let is_existing_native = matches!(existing.ty, Type::Named(ref n) if n.starts_with("plugin:"));
+                        let is_existing_native =
+                            matches!(existing.ty, Type::Named(ref n) if n.starts_with("plugin:"));
                         let is_new_native = is_native;
 
                         if is_existing_native && !is_new_native {
                             final_ty = existing.ty.clone();
                             if is_package && package_docs.is_some() {
-                                final_hover = format!("```flame\nimport package {}\n```\n\n{}", path_str, package_docs.clone().unwrap());
+                                final_hover = format!(
+                                    "```flame\nimport package {}\n```\n\n{}",
+                                    path_str,
+                                    package_docs.clone().unwrap()
+                                );
                             } else if let Some(existing_doc) = existing.hover_doc {
                                 final_hover = existing_doc;
                             }
@@ -1340,37 +1399,73 @@ impl TypeChecker {
                                         let prev = self.is_importing;
                                         self.is_importing = true;
                                         for s in &parsed_stmts {
-                                            if let Stmt::ImplDecl { target_type, methods, .. } = s {
-                                                let prefixed_target = format!("{}.{}", last, target_type);
+                                            if let Stmt::ImplDecl {
+                                                target_type,
+                                                methods,
+                                                ..
+                                            } = s
+                                            {
+                                                let prefixed_target =
+                                                    format!("{}.{}", last, target_type);
                                                 if !self.structs.contains_key(&prefixed_target) {
-                                                    self.structs.insert(prefixed_target.clone(), StructInfo {
-                                                        fields: Vec::new(),
-                                                        hover_doc: None,
-                                                    });
+                                                    self.structs.insert(
+                                                        prefixed_target.clone(),
+                                                        StructInfo {
+                                                            fields: Vec::new(),
+                                                            hover_doc: None,
+                                                        },
+                                                    );
                                                 }
                                                 for m in methods {
-                                                    if let Stmt::FuncDecl { name, params, return_type, .. } = m {
-                                                        let is_static = !params.first().map_or(false, |p| p.name == "self");
-                                                        let p_info = params.iter().map(|p| ParamInfo {
-                                                            name: p.name.clone(),
-                                                            ty: self.parse_type_name(&p.type_name),
-                                                            is_ref: p.is_ref,
-                                                            is_mut: p.is_mut,
-                                                        }).collect();
-                                                        let r_type = return_type.as_ref().map(|t| self.parse_type_name(t)).unwrap_or(Type::Nil);
-                                                        self.methods.entry(prefixed_target.clone()).or_default().insert(name.clone(), FunctionSig {
-                                                            params: p_info,
-                                                            return_type: r_type,
-                                                            is_static,
-                                                            hover_doc: None,
-                                                        });
+                                                    if let Stmt::FuncDecl {
+                                                        name,
+                                                        params,
+                                                        return_type,
+                                                        ..
+                                                    } = m
+                                                    {
+                                                        let is_static = !params
+                                                            .first()
+                                                            .map_or(false, |p| p.name == "self");
+                                                        let p_info = params
+                                                            .iter()
+                                                            .map(|p| ParamInfo {
+                                                                name: p.name.clone(),
+                                                                ty: self
+                                                                    .parse_type_name(&p.type_name),
+                                                                is_ref: p.is_ref,
+                                                                is_mut: p.is_mut,
+                                                            })
+                                                            .collect();
+                                                        let r_type = return_type
+                                                            .as_ref()
+                                                            .map(|t| self.parse_type_name(t))
+                                                            .unwrap_or(Type::Nil);
+                                                        self.methods
+                                                            .entry(prefixed_target.clone())
+                                                            .or_default()
+                                                            .insert(
+                                                                name.clone(),
+                                                                FunctionSig {
+                                                                    params: p_info,
+                                                                    return_type: r_type,
+                                                                    is_static,
+                                                                    hover_doc: None,
+                                                                },
+                                                            );
                                                     }
                                                 }
                                             }
                                             if let Stmt::ExportDecl(inner, _) = s {
                                                 match inner.as_ref() {
-                                                    Stmt::LetDecl { name, annotations, .. } | Stmt::ConstDecl { name, annotations, .. } => {
-                                                        let hover_doc = self.process_annotations(annotations);
+                                                    Stmt::LetDecl {
+                                                        name, annotations, ..
+                                                    }
+                                                    | Stmt::ConstDecl {
+                                                        name, annotations, ..
+                                                    } => {
+                                                        let hover_doc =
+                                                            self.process_annotations(annotations);
                                                         self.define_var(
                                                             format!("{}.{}", last, name),
                                                             VarInfo {
@@ -1380,8 +1475,14 @@ impl TypeChecker {
                                                             },
                                                         );
                                                     }
-                                                    Stmt::StructDecl { name, fields, annotations, .. } => {
-                                                        let hover_doc = self.process_annotations(annotations);
+                                                    Stmt::StructDecl {
+                                                        name,
+                                                        fields,
+                                                        annotations,
+                                                        ..
+                                                    } => {
+                                                        let hover_doc =
+                                                            self.process_annotations(annotations);
                                                         let mut struct_fields = Vec::new();
                                                         for (f_name, f_type) in fields {
                                                             struct_fields.push((
@@ -1397,8 +1498,14 @@ impl TypeChecker {
                                                             },
                                                         );
                                                     }
-                                                    Stmt::EnumDecl { name, variants, annotations, .. } => {
-                                                        let hover_doc = self.process_annotations(annotations);
+                                                    Stmt::EnumDecl {
+                                                        name,
+                                                        variants,
+                                                        annotations,
+                                                        ..
+                                                    } => {
+                                                        let hover_doc =
+                                                            self.process_annotations(annotations);
                                                         let mut enum_variants = HashMap::new();
                                                         for var in variants {
                                                             match var {
@@ -1444,7 +1551,8 @@ impl TypeChecker {
                                                         annotations,
                                                         ..
                                                     } => {
-                                                        let hover_doc = self.process_annotations(annotations);
+                                                        let hover_doc =
+                                                            self.process_annotations(annotations);
                                                         let p_info = params
                                                             .iter()
                                                             .map(|p| ParamInfo {
@@ -1497,7 +1605,10 @@ impl TypeChecker {
                                                                 ..
                                                             } = m
                                                             {
-                                                                let hover_doc = self.process_annotations(annotations);
+                                                                let hover_doc = self
+                                                                    .process_annotations(
+                                                                        annotations,
+                                                                    );
                                                                 let is_static = !params
                                                                     .first()
                                                                     .map_or(false, |p| {
@@ -1507,10 +1618,9 @@ impl TypeChecker {
                                                                     .iter()
                                                                     .map(|p| ParamInfo {
                                                                         name: p.name.clone(),
-                                                                        ty: self
-                                                                            .parse_type_name(
-                                                                                &p.type_name,
-                                                                            ),
+                                                                        ty: self.parse_type_name(
+                                                                            &p.type_name,
+                                                                        ),
                                                                         is_ref: p.is_ref,
                                                                         is_mut: p.is_mut,
                                                                     })
@@ -1521,15 +1631,18 @@ impl TypeChecker {
                                                                         self.parse_type_name(t)
                                                                     })
                                                                     .unwrap_or(Type::Nil);
-                                                                self.methods.entry(prefixed_target.clone()).or_default().insert(
-                                                                    name.clone(),
-                                                                    FunctionSig {
-                                                                        params: p_info,
-                                                                        return_type: r_type,
-                                                                        is_static,
-                                                                        hover_doc,
-                                                                    },
-                                                                );
+                                                                self.methods
+                                                                    .entry(prefixed_target.clone())
+                                                                    .or_default()
+                                                                    .insert(
+                                                                        name.clone(),
+                                                                        FunctionSig {
+                                                                            params: p_info,
+                                                                            return_type: r_type,
+                                                                            is_static,
+                                                                            hover_doc,
+                                                                        },
+                                                                    );
                                                             }
                                                         }
                                                     }
@@ -1586,7 +1699,9 @@ impl TypeChecker {
                             value_ty.clone()
                         }
                         (Some(expected), _) => expected.clone(),
-                        (None, Type::EnumVariant { enum_name, .. }) => Type::Enum(enum_name.clone()),
+                        (None, Type::EnumVariant { enum_name, .. }) => {
+                            Type::Enum(enum_name.clone())
+                        }
                         (None, ty) => ty.clone(),
                     };
 
@@ -1805,7 +1920,8 @@ impl TypeChecker {
 
                     let mut ret_ty = if let Some(sig) = self.functions.get(&anno.name) {
                         sig.return_type.clone()
-                    } else if let Some(funcs) = self.plugin_functions.get(&anno.name.to_lowercase()) {
+                    } else if let Some(funcs) = self.plugin_functions.get(&anno.name.to_lowercase())
+                    {
                         if let Some(sig) = funcs.get("init") {
                             sig.return_type.clone()
                         } else {
@@ -2071,7 +2187,7 @@ impl TypeChecker {
                             self.push_scope();
                             self.infer_expr_type(&arm.body);
                             self.pop_scope();
-                        } else if let Some((pat, cmd)) = cmd_match {
+                        } else if let Some((_pat, cmd)) = cmd_match {
                             self.insert_hover_info(arm.pattern_span.clone(), cmd.hover_doc.clone());
                             self.push_scope();
                             for field in &arm.destructure {
@@ -2661,6 +2777,38 @@ impl TypeChecker {
                     }
                 } else if matches!(left_ty, Type::String) && matches!(right_ty, Type::String) {
                     Type::String
+                } else if let (Type::Quantity(m1), Type::Quantity(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Quantity(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if let (Type::Unit(m1), Type::Unit(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Unit(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if let (Type::Quantity(m1), Type::Unit(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Quantity(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if let (Type::Unit(m1), Type::Quantity(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Quantity(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if matches!(left_ty, Type::Named(ref n) if n == "Quantity" || n == "Unit")
+                    && matches!(right_ty, Type::Named(ref m) if m == "Quantity" || m == "Unit")
+                {
+                    Type::Named("Quantity".to_string())
                 } else if matches!(left_ty, Type::Unknown) || matches!(right_ty, Type::Unknown) {
                     if matches!(left_ty, Type::String) || matches!(right_ty, Type::String) {
                         Type::String
@@ -2672,7 +2820,120 @@ impl TypeChecker {
                     Type::Unknown
                 }
             }
-            BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => {
+            BinaryOp::Sub => {
+                if self.is_numeric(&left_ty) && self.is_numeric(&right_ty) {
+                    if matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float) {
+                        Type::Float
+                    } else {
+                        Type::Int
+                    }
+                } else if let (Type::Quantity(m1), Type::Quantity(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Quantity(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if let (Type::Unit(m1), Type::Unit(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Unit(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if let (Type::Quantity(m1), Type::Unit(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Quantity(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if let (Type::Unit(m1), Type::Quantity(m2)) = (&left_ty, &right_ty) {
+                    if m1 == m2 {
+                        Type::Quantity(m1.clone())
+                    } else {
+                        self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                        Type::Unknown
+                    }
+                } else if matches!(left_ty, Type::Named(ref n) if n == "Quantity" || n == "Unit")
+                    && matches!(right_ty, Type::Named(ref m) if m == "Quantity" || m == "Unit")
+                {
+                    Type::Named("Quantity".to_string())
+                } else if matches!(left_ty, Type::Unknown) || matches!(right_ty, Type::Unknown) {
+                    Type::Unknown
+                } else {
+                    self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                    Type::Unknown
+                }
+            }
+            BinaryOp::Mul | BinaryOp::Div => {
+                let is_q_or_u = |t: &Type| {
+                    if let Type::Named(n) = t {
+                        n == "Quantity" || n == "Unit"
+                    } else {
+                        matches!(t, Type::Quantity(_) | Type::Unit(_))
+                    }
+                };
+                let get_dims = |t: &Type| -> HashMap<String, i32> {
+                    match t {
+                        Type::Quantity(map) | Type::Unit(map) => map.clone(),
+                        _ => HashMap::new(),
+                    }
+                };
+                let compute_dims =
+                    |m1: &HashMap<String, i32>, m2: &HashMap<String, i32>, is_div: bool| {
+                        let mut res = m1.clone();
+                        for (k, v) in m2 {
+                            let current = res.entry(k.clone()).or_insert(0);
+                            if is_div {
+                                *current -= v;
+                            } else {
+                                *current += v;
+                            }
+                            if *current == 0 {
+                                res.remove(k);
+                            }
+                        }
+                        res
+                    };
+                let invert_dims = |m: &HashMap<String, i32>| {
+                    let mut res = HashMap::new();
+                    for (k, v) in m {
+                        res.insert(k.clone(), -v);
+                    }
+                    res
+                };
+
+                if self.is_numeric(&left_ty) && self.is_numeric(&right_ty) {
+                    if matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float) {
+                        Type::Float
+                    } else {
+                        Type::Int
+                    }
+                } else if self.is_numeric(&left_ty) && is_q_or_u(&right_ty) {
+                    let dims = get_dims(&right_ty);
+                    if matches!(*op, BinaryOp::Div) {
+                        Type::Quantity(invert_dims(&dims))
+                    } else {
+                        Type::Quantity(dims)
+                    }
+                } else if is_q_or_u(&left_ty) && self.is_numeric(&right_ty) {
+                    Type::Quantity(get_dims(&left_ty))
+                } else if is_q_or_u(&left_ty) && is_q_or_u(&right_ty) {
+                    let dims = compute_dims(
+                        &get_dims(&left_ty),
+                        &get_dims(&right_ty),
+                        matches!(*op, BinaryOp::Div),
+                    );
+                    Type::Quantity(dims)
+                } else if matches!(left_ty, Type::Unknown) || matches!(right_ty, Type::Unknown) {
+                    Type::Unknown
+                } else {
+                    self.error_binary_mismatch(op, &left_ty, &right_ty, span);
+                    Type::Unknown
+                }
+            }
+            BinaryOp::Mod => {
                 if self.is_numeric(&left_ty) && self.is_numeric(&right_ty) {
                     if matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float) {
                         Type::Float
@@ -2779,6 +3040,7 @@ impl TypeChecker {
                 Type::Unknown
             }
             Type::String => Type::String,
+            Type::Byte => Type::Byte,
             Type::Unknown => Type::Unknown,
             Type::Reference {
                 inner: ref_inner, ..
@@ -2802,7 +3064,7 @@ impl TypeChecker {
         // Intercept Flame-defined package fields first
         if let Expr::Identifier(mod_name, _) = inner {
             let prefixed_member = format!("{}.{}", mod_name, member);
-            
+
             if self.structs.contains_key(&prefixed_member) {
                 if let Some(info) = self.structs.get(&prefixed_member) {
                     let mut doc_str = format!("```flame\nstruct {}\n```", member);
@@ -2824,17 +3086,28 @@ impl TypeChecker {
                 return Type::Enum(prefixed_member);
             }
             if let Some(sig) = self.functions.get(&prefixed_member).cloned() {
-                let params_str = sig.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                let ret_str = if sig.return_type == Type::Nil { "".to_string() } else { format!(" -> {}", self.format_type(&sig.return_type)) };
+                let params_str = sig
+                    .params
+                    .iter()
+                    .map(|p| format!("{}: {}", p.name, self.format_type(&p.ty)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_str = if sig.return_type == Type::Nil {
+                    "".to_string()
+                } else {
+                    format!(" -> {}", self.format_type(&sig.return_type))
+                };
                 let fallback = format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
                 if let Some(doc) = &sig.hover_doc {
                     self.insert_hover_info(span.clone(), format!("{}\n\n{}", fallback, doc));
                 } else {
                     self.insert_hover_info(span.clone(), fallback);
                 }
-                
+
                 let mut p_tys = Vec::new();
-                for p in &sig.params { p_tys.push(p.ty.clone()); }
+                for p in &sig.params {
+                    p_tys.push(p.ty.clone());
+                }
                 return Type::Function(p_tys, Box::new(sig.return_type));
             }
         }
@@ -2876,28 +3149,53 @@ impl TypeChecker {
                 // Check for Flame-defined functions via indirect access
                 let prefixed_member = format!("{}.{}", prefix, member);
                 if let Some(sig) = self.functions.get(&prefixed_member).cloned() {
-                    let params_str = sig.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                    let ret_str = if sig.return_type == Type::Nil { "".to_string() } else { format!(" -> {}", self.format_type(&sig.return_type)) };
-                    let fallback = format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
+                    let params_str = sig
+                        .params
+                        .iter()
+                        .map(|p| format!("{}: {}", p.name, self.format_type(&p.ty)))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let ret_str = if sig.return_type == Type::Nil {
+                        "".to_string()
+                    } else {
+                        format!(" -> {}", self.format_type(&sig.return_type))
+                    };
+                    let fallback =
+                        format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
                     if let Some(doc) = &sig.hover_doc {
                         self.insert_hover_info(span.clone(), format!("{}\n\n{}", fallback, doc));
                     } else {
                         self.insert_hover_info(span.clone(), fallback);
                     }
-                    
+
                     let mut p_tys = Vec::new();
-                    for p in &sig.params { p_tys.push(p.ty.clone()); }
+                    for p in &sig.params {
+                        p_tys.push(p.ty.clone());
+                    }
                     return Type::Function(p_tys, Box::new(sig.return_type));
                 }
 
                 if name.starts_with("plugin:") {
                     if let Some(funcs) = self.plugin_functions.get(prefix) {
                         if let Some(sig) = funcs.get(member).cloned() {
-                            let params_str = sig.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                            let ret_str = if sig.return_type == Type::Nil { "".to_string() } else { format!(" -> {}", self.format_type(&sig.return_type)) };
-                            let fallback = format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
+                            let params_str = sig
+                                .params
+                                .iter()
+                                .map(|p| format!("{}: {}", p.name, self.format_type(&p.ty)))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let ret_str = if sig.return_type == Type::Nil {
+                                "".to_string()
+                            } else {
+                                format!(" -> {}", self.format_type(&sig.return_type))
+                            };
+                            let fallback =
+                                format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
                             if let Some(doc) = &sig.hover_doc {
-                                self.insert_hover_info(span.clone(), format!("{}\n{}", fallback, doc));
+                                self.insert_hover_info(
+                                    span.clone(),
+                                    format!("{}\n{}", fallback, doc),
+                                );
                             } else {
                                 self.insert_hover_info(span.clone(), fallback);
                             }
@@ -3000,17 +3298,36 @@ impl TypeChecker {
                         for p in &sig.params {
                             let is_already_ref = matches!(p.ty, Type::Reference { .. });
                             let mut mods = String::new();
-                            if p.is_ref && !is_already_ref { mods.push('&'); }
-                            if p.is_mut && !is_already_ref { mods.push_str("mut "); }
-                            params_str.push(format!("{}{}: {}{}", if p.is_mut && !p.is_ref { "mut " } else { "" }, p.name, mods, self.format_type(&p.ty)));
+                            if p.is_ref && !is_already_ref {
+                                mods.push('&');
+                            }
+                            if p.is_mut && !is_already_ref {
+                                mods.push_str("mut ");
+                            }
+                            params_str.push(format!(
+                                "{}{}: {}{}",
+                                if p.is_mut && !p.is_ref { "mut " } else { "" },
+                                p.name,
+                                mods,
+                                self.format_type(&p.ty)
+                            ));
                         }
-                        let ret_str = if sig.return_type == Type::Nil { "".to_string() } else { format!(" -> {}", self.format_type(&sig.return_type)) };
-                        let mut hover_str = format!("```flame\nfn {}({}){}\n```", member, params_str.join(", "), ret_str);
+                        let ret_str = if sig.return_type == Type::Nil {
+                            "".to_string()
+                        } else {
+                            format!(" -> {}", self.format_type(&sig.return_type))
+                        };
+                        let mut hover_str = format!(
+                            "```flame\nfn {}({}){}\n```",
+                            member,
+                            params_str.join(", "),
+                            ret_str
+                        );
                         if let Some(doc) = &sig.hover_doc {
                             hover_str = format!("{}\n\n{}", hover_str, doc);
                         }
                         self.insert_hover_info(span.clone(), hover_str);
-                        
+
                         return Type::Named("Function".into());
                     }
                 }
@@ -3032,6 +3349,23 @@ impl TypeChecker {
                     self.insert_hover_info(span.clone(), doc.clone());
                 }
                 ty
+            }
+            Type::Quantity(_) | Type::Unit(_) => {
+                if member == "value" {
+                    Type::Float
+                } else {
+                    self.error(
+                        format!(
+                            "type '{}' has no field or method '{}'",
+                            self.format_type(&inner_ty),
+                            member
+                        ),
+                        span.clone(),
+                        None,
+                        None,
+                    );
+                    Type::Unknown
+                }
             }
             Type::Vector(_)
             | Type::String
@@ -3170,6 +3504,41 @@ impl TypeChecker {
                     self.expect_assignable(expected, &actual, &arg.span(), "closure argument");
                 }
             }
+
+            // Statically evaluate `unit.Equation` to capture exact units
+            if let Expr::Dot(_, member, _) = callee {
+                if member == "Equation" && params.len() == 3 {
+                    let mut is_literal = true;
+                    let mut vals = vec![];
+                    for arg in args {
+                        if let Expr::Literal(LiteralValue::Int(v), _) = &arg.1 {
+                            vals.push(*v as i32);
+                        } else if let Expr::Unary(UnaryOp::Neg, inner_arg, _) = &arg.1 {
+                            if let Expr::Literal(LiteralValue::Int(v), _) = &**inner_arg {
+                                vals.push(-(*v as i32));
+                            } else {
+                                is_literal = false;
+                            }
+                        } else {
+                            is_literal = false;
+                        }
+                    }
+                    if is_literal && vals.len() == 3 {
+                        let mut map = HashMap::new();
+                        if vals[0] != 0 {
+                            map.insert("kg".to_string(), vals[0]);
+                        }
+                        if vals[1] != 0 {
+                            map.insert("m".to_string(), vals[1]);
+                        }
+                        if vals[2] != 0 {
+                            map.insert("s".to_string(), vals[2]);
+                        }
+                        return Type::Unit(map);
+                    }
+                }
+            }
+
             return *ret.clone();
         }
 
@@ -3301,11 +3670,24 @@ impl TypeChecker {
                     let prefixed_member = format!("{}.{}", prefix, member);
                     if let Some(sig) = self.functions.get(&prefixed_member).cloned() {
                         self.check_call_args(&sig.params, args, span, member);
-                        let params_str = sig.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                        let ret_str = if sig.return_type == Type::Nil { "".to_string() } else { format!(" -> {}", self.format_type(&sig.return_type)) };
-                        let fallback = format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
+                        let params_str = sig
+                            .params
+                            .iter()
+                            .map(|p| format!("{}: {}", p.name, self.format_type(&p.ty)))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        let ret_str = if sig.return_type == Type::Nil {
+                            "".to_string()
+                        } else {
+                            format!(" -> {}", self.format_type(&sig.return_type))
+                        };
+                        let fallback =
+                            format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
                         if let Some(doc) = &sig.hover_doc {
-                            self.insert_hover_info(span.clone(), format!("{}\n\n{}", fallback, doc));
+                            self.insert_hover_info(
+                                span.clone(),
+                                format!("{}\n\n{}", fallback, doc),
+                            );
                         } else {
                             self.insert_hover_info(span.clone(), fallback);
                         }
@@ -3316,11 +3698,26 @@ impl TypeChecker {
                         if let Some(funcs) = self.plugin_functions.get(prefix) {
                             if let Some(sig) = funcs.get(member).cloned() {
                                 self.check_call_args(&sig.params, args, span, member);
-                                let params_str = sig.params.iter().map(|p| format!("{}: {}", p.name, self.format_type(&p.ty))).collect::<Vec<_>>().join(", ");
-                                let ret_str = if sig.return_type == Type::Nil { "".to_string() } else { format!(" -> {}", self.format_type(&sig.return_type)) };
-                                let fallback = format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
+                                let params_str = sig
+                                    .params
+                                    .iter()
+                                    .map(|p| format!("{}: {}", p.name, self.format_type(&p.ty)))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let ret_str = if sig.return_type == Type::Nil {
+                                    "".to_string()
+                                } else {
+                                    format!(" -> {}", self.format_type(&sig.return_type))
+                                };
+                                let fallback = format!(
+                                    "```flame\nfn {}({}){}\n```",
+                                    member, params_str, ret_str
+                                );
                                 if let Some(doc) = &sig.hover_doc {
-                                    self.insert_hover_info(span.clone(), format!("{}\n{}", fallback, doc));
+                                    self.insert_hover_info(
+                                        span.clone(),
+                                        format!("{}\n{}", fallback, doc),
+                                    );
                                 } else {
                                     self.insert_hover_info(span.clone(), fallback);
                                 }
@@ -3339,7 +3736,9 @@ impl TypeChecker {
                             ("fs", "readBytes") => Type::Byte,
                             ("fs", "open") => Type::Unknown,
                             ("thread", "sleep") => Type::Nil,
-                            ("thread", "channel") => Type::Tuple(vec![Type::Unknown, Type::Unknown]),
+                            ("thread", "channel") => {
+                                Type::Tuple(vec![Type::Unknown, Type::Unknown])
+                            }
                             ("byte", "readBytes") => Type::Byte,
                             ("byte", "readByte") => Type::Byte,
                             ("byte", "readByteAt") => Type::Byte,
@@ -3761,10 +4160,18 @@ impl TypeChecker {
             (Type::Enum(expected_name), Type::EnumVariant { enum_name, .. }) => {
                 expected_name == enum_name
             }
-            (Type::EnumVariant { enum_name: e1, .. }, Type::EnumVariant { enum_name: e2, .. }) => e1 == e2,
-            (Type::EnumVariant { enum_name, .. }, Type::Enum(actual_name)) => enum_name == actual_name,
+            (Type::EnumVariant { enum_name: e1, .. }, Type::EnumVariant { enum_name: e2, .. }) => {
+                e1 == e2
+            }
+            (Type::EnumVariant { enum_name, .. }, Type::Enum(actual_name)) => {
+                enum_name == actual_name
+            }
             (Type::Enum(e1), Type::Enum(e2)) => e1 == e2,
-            (Type::Tuple(expected_items), Type::Function(a_params, _)) if expected_items.is_empty() && a_params.is_empty() => true,
+            (Type::Tuple(expected_items), Type::Function(a_params, _))
+                if expected_items.is_empty() && a_params.is_empty() =>
+            {
+                true
+            }
             (Type::Named(expected_name), Type::Struct(actual_name))
             | (Type::Named(expected_name), Type::Enum(actual_name)) => {
                 expected_name == actual_name
@@ -3939,6 +4346,42 @@ impl TypeChecker {
                     .join(", ")
             ),
             Type::Vector(item) => format!("[{}]", self.format_type(item)),
+            Type::Quantity(map) => {
+                let mut terms = Vec::new();
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                for k in keys {
+                    let v = map[k];
+                    if v == 1 {
+                        terms.push(k.clone());
+                    } else {
+                        terms.push(format!("{}^{}", k, v));
+                    }
+                }
+                if terms.is_empty() {
+                    "Quantity".to_string()
+                } else {
+                    format!("Quantity <{}>", terms.join(" * "))
+                }
+            }
+            Type::Unit(map) => {
+                let mut terms = Vec::new();
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                for k in keys {
+                    let v = map[k];
+                    if v == 1 {
+                        terms.push(k.clone());
+                    } else {
+                        terms.push(format!("{}^{}", k, v));
+                    }
+                }
+                if terms.is_empty() {
+                    "Unit".to_string()
+                } else {
+                    format!("Unit <{}>", terms.join(" * "))
+                }
+            }
             Type::Formula(_, _) => "Formula".to_string(),
             Type::Function(params, ret) => {
                 let params_str = params

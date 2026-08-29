@@ -927,7 +927,7 @@ impl Runner {
                     let pkg_main = self
                         .resolve_path(&format!(".flame/pkg/{}/src/main.fm", path.last().unwrap()));
                     let f_fm = self.resolve_path(&format!("{}.fm", path.join("/")));
-                    let f_flame = self.resolve_path(&format!("{}.flame", path.join("/")));
+                    let _f_flame = self.resolve_path(&format!("{}.flame", path.join("/")));
 
                     if self.vfs.is_some() {
                         let vfs = self.vfs.as_ref().unwrap();
@@ -2152,6 +2152,127 @@ impl Runner {
                         BinaryOp::Ne => Ok(Value::Bool(true)),
                         _ => Ok(Value::Nil),
                     },
+                    (Value::Unit(a), Value::Unit(b)) => match op {
+                        BinaryOp::Mul => {
+                            let mut res = a.clone();
+                            for (k, v) in b {
+                                *res.entry(k.clone()).or_insert(0) += v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            Ok(Value::Unit(res))
+                        }
+                        BinaryOp::Div => {
+                            let mut res = a.clone();
+                            for (k, v) in b {
+                                *res.entry(k.clone()).or_insert(0) -= v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            Ok(Value::Unit(res))
+                        }
+                        BinaryOp::Eq => Ok(Value::Bool(a == b)),
+                        BinaryOp::Ne => Ok(Value::Bool(a != b)),
+                        _ => Err(format!("cannot apply operator {:?} to unit and unit", op)),
+                    },
+                    (Value::Quantity(av, au), Value::Quantity(bv, bu)) => match op {
+                        BinaryOp::Add => {
+                            if au == bu {
+                                Ok(Value::Quantity(av + bv, au.clone()))
+                            } else {
+                                Err("cannot add quantities with different units".to_string())
+                            }
+                        }
+                        BinaryOp::Sub => {
+                            if au == bu {
+                                Ok(Value::Quantity(av - bv, au.clone()))
+                            } else {
+                                Err("cannot subtract quantities with different units".to_string())
+                            }
+                        }
+                        BinaryOp::Mul => {
+                            let mut res = au.clone();
+                            for (k, v) in bu {
+                                *res.entry(k.clone()).or_insert(0) += v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            if res.is_empty() {
+                                Ok(Value::Float(av * bv))
+                            } else {
+                                Ok(Value::Quantity(av * bv, res))
+                            }
+                        }
+                        BinaryOp::Div => {
+                            let mut res = au.clone();
+                            for (k, v) in bu {
+                                *res.entry(k.clone()).or_insert(0) -= v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            if res.is_empty() {
+                                Ok(Value::Float(av / bv))
+                            } else {
+                                Ok(Value::Quantity(av / bv, res))
+                            }
+                        }
+                        BinaryOp::Eq => Ok(Value::Bool(av == bv && au == bu)),
+                        BinaryOp::Ne => Ok(Value::Bool(av != bv || au != bu)),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to quantity and quantity",
+                            op
+                        )),
+                    },
+                    (Value::Int(a), Value::Unit(b)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(*a as f64, b.clone())),
+                        _ => Err(format!("cannot apply operator {:?} to int and unit", op)),
+                    },
+                    (Value::Float(a), Value::Unit(b)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(*a, b.clone())),
+                        _ => Err(format!("cannot apply operator {:?} to float and unit", op)),
+                    },
+                    (Value::Unit(a), Value::Int(b)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(*b as f64, a.clone())),
+                        _ => Err(format!("cannot apply operator {:?} to unit and int", op)),
+                    },
+                    (Value::Unit(a), Value::Float(b)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(*b, a.clone())),
+                        _ => Err(format!("cannot apply operator {:?} to unit and float", op)),
+                    },
+                    (Value::Quantity(v, u), Value::Int(b)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(v * (*b as f64), u.clone())),
+                        BinaryOp::Div => Ok(Value::Quantity(v / (*b as f64), u.clone())),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to quantity and int",
+                            op
+                        )),
+                    },
+                    (Value::Quantity(v, u), Value::Float(b)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(v * b, u.clone())),
+                        BinaryOp::Div => Ok(Value::Quantity(v / b, u.clone())),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to quantity and float",
+                            op
+                        )),
+                    },
+                    (Value::Int(b), Value::Quantity(v, u)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(v * (*b as f64), u.clone())),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to int and quantity",
+                            op
+                        )),
+                    },
+                    (Value::Float(b), Value::Quantity(v, u)) => match op {
+                        BinaryOp::Mul => Ok(Value::Quantity(v * b, u.clone())),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to float and quantity",
+                            op
+                        )),
+                    },
                     (l_val, r_val) => match op {
                         BinaryOp::Eq => Ok(Value::Bool(l_val.to_string() == r_val.to_string())),
                         BinaryOp::Ne => Ok(Value::Bool(l_val.to_string() != r_val.to_string())),
@@ -2333,6 +2454,20 @@ impl Runner {
                             enum_name, variant_name
                         )),
                     },
+                    Value::Quantity(val, _) => {
+                        if member == "value" {
+                            Ok(Value::Float(val))
+                        } else {
+                            Err(format!("cannot access member '{}' on Quantity", member))
+                        }
+                    }
+                    Value::Unit(_) => {
+                        if member == "value" {
+                            Ok(Value::Float(1.0))
+                        } else {
+                            Err(format!("cannot access member '{}' on Unit", member))
+                        }
+                    },
                     _ => {
                         println!(
                             "DEBUG [runner:2017]: Expr::Dot evaluated directly! left = {:?}, member = {:?}",
@@ -2449,7 +2584,7 @@ impl Runner {
                         }
                         let act = self.eval_expr(&args[0].1, env.clone())?;
                         let exp = self.eval_expr(&args[1].1, env.clone())?;
-                        if act.to_string() == exp.to_string() {
+                        if act.is_equal(&exp) {
                             return Ok(Value::Nil);
                         }
                         let msg = if args.len() > 2 {
@@ -2473,7 +2608,7 @@ impl Runner {
                         }
                         let act = self.eval_expr(&args[0].1, env.clone())?;
                         let exp = self.eval_expr(&args[1].1, env.clone())?;
-                        if act.to_string() != exp.to_string() {
+                        if !act.is_equal(&exp) {
                             return Ok(Value::Nil);
                         }
                         let msg = if args.len() > 2 {

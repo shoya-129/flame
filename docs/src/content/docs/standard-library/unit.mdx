@@ -1,0 +1,110 @@
+---
+title: Physical Units (std.unit)
+description: Dimensional analysis, physical quantities, and mathematical operations with units in Flame.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `std.unit` module provides built-in, first-class support for physical units, quantities, and dimensional analysis directly within Flame.
+
+---
+
+## The Unit System
+
+Flame's unit system allows you to create quantities that carry physical units (like meters, seconds, and kilograms). This ensures dimensional safety, meaning that the runtime automatically checks for incompatible operations (e.g. adding meters to seconds) and will throw an error to prevent logical bugs in calculations.
+
+### Standard Exported Units
+
+Out of the box, `std.unit` provides the base SI units as constants:
+- **`unit.meter`**: The SI base unit for length (`m`).
+- **`unit.second`**: The SI base unit for time (`s`).
+- **`unit.kilogram`**: The SI base unit for mass (`kg`).
+
+```flame
+import std.unit
+
+let length = 10 * unit.meter
+let time = 5 * unit.second
+```
+
+---
+
+## Arithmetic with Quantities
+
+You can use standard math operators (`+`, `-`, `*`, `/`) with quantities.
+
+### Addition and Subtraction
+
+When adding or subtracting, the units **must match exactly**. If you try to add quantities with different units, Flame will throw a runtime error.
+
+```flame
+import std.unit
+
+let distance1 = 15 * unit.meter
+let distance2 = 5 * unit.meter
+
+let total_distance = distance1 + distance2
+println(total_distance) // 20 m
+
+// This will throw a runtime error: "cannot add quantities with different units"
+// let error = distance1 + (5 * unit.second) 
+```
+
+### Multiplication and Division
+
+When multiplying or dividing, the units naturally combine or cancel out.
+
+```flame
+import std.unit
+
+let distance = 100 * unit.meter
+let time = 10 * unit.second
+
+// Division results in a new unit: m * s^-1
+let speed = distance / time 
+println(speed) // 10 m * s^-1
+```
+
+If the units cancel out completely, Flame will automatically downgrade the quantity back to a regular `Float`.
+
+```flame
+import std.unit
+
+let length1 = 10 * unit.meter
+let length2 = 2 * unit.meter
+
+let ratio = length1 / length2
+println(ratio) // 5.0 (scalar float, no units)
+```
+
+---
+
+## Creating Custom Units (Equations)
+
+If you need a compound unit or one that isn't provided by default, you can construct custom unit equations using the `unit.Equation(kg, m, s)` function. 
+
+You pass the exponents for kilograms (`kg`), meters (`m`), and seconds (`s`) in that order.
+
+```flame
+import std.unit
+
+// Speed: m/s -> kilograms^0, meters^1, seconds^-1
+let speed_unit = unit.Equation(0, 1, -1)
+
+// Acceleration: m/s^2 -> kilograms^0, meters^1, seconds^-2
+let accel_unit = unit.Equation(0, 1, -2)
+
+// Newton: kg * m/s^2 -> kilograms^1, meters^1, seconds^-2
+let newton = unit.Equation(1, 1, -2)
+
+let my_speed = 50 * speed_unit
+```
+
+## API Summary Table
+
+| Method / Constant | Description |
+| :--- | :--- |
+| `unit.meter` | Constant representing the base unit for length (meters). |
+| `unit.second` | Constant representing the base unit for time (seconds). |
+| `unit.kilogram` | Constant representing the base unit for mass (kilograms). |
+| `unit.Equation(kg, m, s)` | Returns a new custom unit composed of the exponents provided for kilograms, meters, and seconds. |

@@ -107,6 +107,7 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
         Value::EnumValue("Option".to_string(), "None".to_string(), EnumData::Unit),
         false,
     );
+
 }
 pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option<PathBuf> {
     if import_path.is_empty() {
@@ -276,6 +277,7 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.net.interface" => Some(crate::native_std::net::init("interface")),
         #[cfg(feature = "utils")]
         "std.time" => Some(crate::native_std::time::init()),
+        "std.unit" => Some(crate::native_std::unit::init()),
         "std.math" => Some(crate::native_std::math::init()),
         "std.fmt" => Some(crate::native_std::fmt::init()),
         #[cfg(feature = "utils")]
@@ -308,28 +310,3 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
     }
 }
 
-// pub fn register_native_module(mod_name: &str, env: Arc<Mutex<Env>>) {
-//     if mod_name == "native.bridge" {
-//         register_native_bridge(env);
-//     }
-// }
-
-// pub fn register_native_bridge(env: Arc<Mutex<Env>>) {
-//     let mut e = env.lock().unwrap();
-//     e.define(
-//         "__module__".to_string(),
-//         Value::String("native.bridge".to_string()),
-//         false,
-//     );
-//     e.define(
-//         "http".to_string(),
-//         function_value(vec![Param {
-//             name: "port".to_string(),
-//             type_name: "Int".to_string(),
-//             default_val: None,
-//             is_ref: false,
-//             is_mut: false,
-//         }]),
-//         false,
-//     );
-// }

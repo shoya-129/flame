@@ -273,8 +273,6 @@ pub fn format_code(source: &str) -> String {
             | TokenKind::Equal
             | TokenKind::EqualEqual
             | TokenKind::ExclamationEqual
-            | TokenKind::Plus
-            | TokenKind::Minus
             | TokenKind::Star
             | TokenKind::Slash
             | TokenKind::Percent
@@ -284,6 +282,40 @@ pub fn format_code(source: &str) -> String {
             | TokenKind::FatArrow => {
                 if !out.ends_with(' ') && !out.ends_with('\n') {
                     out.push(' ');
+                }
+            }
+            TokenKind::Plus | TokenKind::Minus => {
+                let mut prev_idx = if i >= 1 { i - 1 } else { 0 };
+                while prev_idx > 0 && tokens[prev_idx].kind == TokenKind::Newline {
+                    prev_idx -= 1;
+                }
+                let before_op = &tokens[prev_idx].kind;
+                let is_unary = matches!(
+                    before_op,
+                    TokenKind::Comma
+                        | TokenKind::OpenParen
+                        | TokenKind::OpenBracket
+                        | TokenKind::OpenBrace
+                        | TokenKind::Equal
+                        | TokenKind::EqualEqual
+                        | TokenKind::ExclamationEqual
+                        | TokenKind::Plus
+                        | TokenKind::Minus
+                        | TokenKind::Star
+                        | TokenKind::Slash
+                        | TokenKind::Percent
+                        | TokenKind::Arrow
+                        | TokenKind::FatArrow
+                        | TokenKind::Lt
+                        | TokenKind::Gt
+                        | TokenKind::Le
+                        | TokenKind::Ge
+                        | TokenKind::Return
+                );
+                if !is_unary || i == 0 {
+                    if !out.ends_with(' ') && !out.ends_with('\n') {
+                        out.push(' ');
+                    }
                 }
             }
             TokenKind::Lt | TokenKind::Gt => {
@@ -409,6 +441,41 @@ pub fn format_code(source: &str) -> String {
                 if last_kind == TokenKind::Lt || last_kind == TokenKind::Gt {
                     if !last_tok_was_generic {
                         is_last_keyword = true;
+                    }
+                }
+
+                if last_kind == TokenKind::Plus || last_kind == TokenKind::Minus {
+                    // It might be unary. Let's check the token before the Plus/Minus.
+                    let mut prev_idx = if i >= 2 { i - 2 } else { 0 };
+                    // We might need to skip spaces/newlines, but our `tokens` array doesn't include spaces, only Newlines.
+                    while prev_idx > 0 && tokens[prev_idx].kind == TokenKind::Newline {
+                        prev_idx -= 1;
+                    }
+                    let before_op = &tokens[prev_idx].kind;
+                    let is_unary = matches!(
+                        before_op,
+                        TokenKind::Comma
+                            | TokenKind::OpenParen
+                            | TokenKind::OpenBracket
+                            | TokenKind::OpenBrace
+                            | TokenKind::Equal
+                            | TokenKind::EqualEqual
+                            | TokenKind::ExclamationEqual
+                            | TokenKind::Plus
+                            | TokenKind::Minus
+                            | TokenKind::Star
+                            | TokenKind::Slash
+                            | TokenKind::Percent
+                            | TokenKind::Arrow
+                            | TokenKind::FatArrow
+                            | TokenKind::Lt
+                            | TokenKind::Gt
+                            | TokenKind::Le
+                            | TokenKind::Ge
+                            | TokenKind::Return
+                    );
+                    if is_unary {
+                        is_last_keyword = false;
                     }
                 }
 

@@ -659,7 +659,7 @@ panic = "abort"
 
     // Inject VFS
     main_rs.push_str("    let mut vfs = std::collections::HashMap::new();\n");
-    let src_scan_dir = std::env::current_dir().unwrap().join("src");
+    let _src_scan_dir = std::env::current_dir().unwrap().join("src");
     fn collect_vfs(dir: &Path, main_rs: &mut String, base_dir: &Path, prefix: &str) {
         if let Ok(entries) = fs::read_dir(dir) {
             for entry in entries.flatten() {
@@ -741,7 +741,7 @@ panic = "abort"
                         } else {
                             &struct_meta.flame_name
                         };
-                        let s_rust_name = &struct_meta.name;
+                        let _s_rust_name = &struct_meta.name;
                         for func in struct_meta.methods {
                             let f_name = if func.flame_name.is_empty() {
                                 &func.name
