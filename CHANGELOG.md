@@ -3,6 +3,20 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.4.0] - 2026-08-29 (Codename: *Fourth Spark*)
+
+### ✨ New Features & Enhancements
+- **Multiline String Literals**: Introduced syntax for multi-line strings (`"""..."""`) and multi-line interpolated strings (`$"""..."""`), providing clean multiline text support while preserving internal whitespace and formatting.
+- **Physical Quantities MLT Standardization**: Standardized the `std.unit` API to natively use the standard physics MLT format (Mass, Length, Time). Construct physical dimensions seamlessly with `unit.Equation(kg, m, s)` arguments.
+- **Static Unit Dimension Tracking**: The typechecker has been dramatically enhanced with compile-time physical dimension tracking. Mathematical operations (`+`, `-`, `*`, `/`) between `Quantity` and `Unit` types are now statically analyzed in real-time, calculating exact output dimensions or failing safely if physical dimensions mismatch.
+- **IDE Hover Metadata for Units**: The Language Server natively pulls exact dimensional structures (e.g. `Quantity <kg * m^2 * s^-2>`) directly to hover tooltips dynamically based on source variables and physics calculations.
+- **Raw Value Extraction**: Added a native `.value` property accessor to quickly extract the raw `f64` scalar amount out of complex physics `Quantity` objects for simple numeric usage.
+
+### 🐛 Bug Fixes
+- **Typechecker Internal Resilience**: Fixed edge-cases inside the Language Server and typechecker to prevent transient "ghost diagnostics" from falsely reporting errors on valid complex mathematical or physical evaluation chains.
+
+---
+
 ## [0.3.9] - 2026-08-27 (Codename: *Third Spark*)
 
 ### ✨ Typechecker Enhancements & Bug Fixes
