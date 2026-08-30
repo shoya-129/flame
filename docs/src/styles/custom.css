@@ -321,3 +321,8 @@ header img {
 	max-height: 1.75rem !important;
 	width: auto !important;
 }
+
+/* Hide theme selector */
+starlight-theme-select {
+	display: none !important;
+}
