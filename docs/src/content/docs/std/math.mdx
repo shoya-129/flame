@@ -66,8 +66,8 @@ For more advanced mathematical calculations or when you prefer a functional appr
 import std.math
 
 // Mathematical Constants
-println(math.pi) // 3.141592653589793
-println(math.e)  // 2.718281828459045
+println(math.pi()) // 3.141592653589793
+println(math.e())  // 2.718281828459045
 
 // Basic Operations
 println(math.abs(-10))       // 10
@@ -81,16 +81,8 @@ println(math.sin(angle)) // 1.0
 println(math.cos(angle)) // 0.0
 // Note: tangent is available if implemented, e.g. math.tan(0)
 
-// Random Numbers
-// Generates a random integer between min and max (inclusive)
-let dice = math.randomInt(1, 6)
-println($"Rolled a {dice}")
-
-// Generates a random float between 0.0 and 1.0
-let chance = math.randomFloat()
 ```
 
-## API Summary Table
 
 ### Primitive Numeric Methods
 
@@ -110,13 +102,12 @@ let chance = math.randomFloat()
 
 | Method / Constant | Description |
 | :--- | :--- |
-| `math.pi` | The constant Pi (π). |
-| `math.e` | Euler's number (e). |
+| `math.pi()` | The constant Pi (π). |
+| `math.e()` | Euler's number (e). |
 | `math.abs(val)` | Returns the absolute value of the number. |
 | `math.sqrt(val)`| Returns the square root of the number. |
 | `math.min(x, y)`| Returns the smaller of the two values. |
 | `math.max(x, y)`| Returns the larger of the two values. |
 | `math.sin(rad)` | Sine of an angle in radians. |
 | `math.cos(rad)` | Cosine of an angle in radians. |
-| `math.randomInt(min, max)` | Random integer between min and max. |
-| `math.randomFloat()` | Random float between 0.0 and 1.0. |
+

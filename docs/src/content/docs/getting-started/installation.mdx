@@ -15,31 +15,31 @@ Install the Flame toolchain globally using your preferred package manager:
 
 <Tabs>
   <TabItem label="cargo">
-```bash
+```bash title="bash"
 cargo install --force flamelang
 ```
   </TabItem>
 
   <TabItem label="npm">
-```bash
+```bash title="bash"
 npm install -g flamelang
 ```
   </TabItem>
 
   <TabItem label="pnpm">
-```bash
+```bash title="bash"
 pnpm add -g flamelang
 ```
   </TabItem>
 
   <TabItem label="yarn">
-```bash
+```bash title="bash"
 yarn global add flamelang
 ```
   </TabItem>
 
   <TabItem label="bun">
-```bash
+```bash title="bash"
 bun add -g flamelang
 ```
   </TabItem>
@@ -51,13 +51,13 @@ bun add -g flamelang
 
 Check that `flame` (or `flamelang`) is accessible from your terminal:
 
-```bash
+```bash title="bash"
 flame --version
 ```
 
 To view the complete help menu and all available flags:
 
-```bash
+```bash title="bash"
 flame --help
 ```
 
@@ -102,19 +102,19 @@ The `flame` binary provides a unified command set for your entire development wo
 
 #### ⚡ Quick-Run (`flame`)
 Inside any Flame project directory (where `flame.toml` is present), simply type `flame` and press enter to instantly compile and run your application entry point:
-```bash
+```bash title="bash"
 flame
 ```
 
 #### `flame run`
 Runs the Flame entry file `main.fm`:
-```bash
+```bash title="bash"
 flame run
 ```
 
 #### `flame build`
 Compiles your Flame application and its native Rust bridges into a standalone executable:
-```bash
+```bash title="bash"
 # Debug build in target/dev/
 flame build
 
@@ -138,19 +138,19 @@ flame build --release
 
 #### `flame new <name>`
 Initializes a new Flame workspace directory with a starter manifest and directory structure:
-```bash
+```bash title="bash"
 flame new my_app
 ```
 
 #### `flame add <url_or_name>`
 Downloads and registers external Flame modules or packages:
-```bash
+```bash title="bash"
 flame add https://github.com/example/flame-package
 ```
 
 #### `flame add <crate_name> --native`
 Adds a Rust crate as a native dependency under `[native-dependencies]` in your `flame.toml`:
-```bash
+```bash title="bash"
 flame add uuid --native
 ```
 
@@ -162,13 +162,13 @@ uuid = { version = "1.0", features = ["v4"] }
 
 #### `flame native init [plugin_name]`
 Scaffolds a native Rust plugin workspace (`./native`) inside your current project. It creates a starter `Cargo.toml`, bridge boilerplate code, and automatically registers the plugin in your `flame.toml`:
-```bash
+```bash title="bash"
 flame native init server
 ```
 
 #### `flame add --plugin <path_to_plugin> [--name <plugin_name>]`
 Registers an existing local or external native Rust plugin inside your `flame.toml` manifest. If `--name` is omitted, Flame automatically discovers the plugin name from its `Cargo.toml` or folder name:
-```bash
+```bash title="bash"
 # Register using flag
 flame add --plugin ./native --name server
 ```
@@ -187,7 +187,7 @@ When invoked with `--json`, it emits structured metadata designed for IDEs and t
 
 #### Example Command & JSON Payload
 
-```bash
+```bash title="bash"
 flame check automation/src/main.fm --json --line 47 --col 18
 ```
 
@@ -219,7 +219,7 @@ flame check automation/src/main.fm --json --line 47 --col 18
 
 #### `flame format <file.fm>`
 Automatically formats your source code to adhere to Flame's canonical style rules:
-```bash
+```bash title="bash"
 # Format a specific file and write changes
 flame format src/main.fm
 
@@ -229,7 +229,7 @@ flame format src/main.fm --stdout
 
 #### `flame format --all`
 Formats all `.fm` source files across your entire project workspace:
-```bash
+```bash title="bash"
 flame format --all
 # or simply:
 flame format
@@ -241,6 +241,6 @@ flame format
 
 #### `flame test`
 Discovers and executes all `@Test` annotated functions across your project files:
-```bash
+```bash title="bash"
 flame test
 ```
