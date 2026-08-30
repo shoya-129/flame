@@ -123,7 +123,7 @@ flame build --release
 ```
 
 <Aside type="tip" title="Release Optimizations">
-`flame build --release` configures LLVM for maximum performance:
+`flame build --release` configures Cargo and LLVM for maximum performance:
 - Full optimization (`opt-level = 3`)
 - Fat Link Time Optimization (`lto = "fat"`)
 - Single code generation unit (`codegen-units = 1`)
