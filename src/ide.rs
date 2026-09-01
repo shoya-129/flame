@@ -1062,6 +1062,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
                         "json",
                         "math",
                         "time",
+                        "fmt",
                         "os",
                         "hardware",
                         "desktop",

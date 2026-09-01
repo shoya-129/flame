@@ -98,6 +98,67 @@ let newton = unit.Equation(1, 1, -2)
 let my_speed = 50 * speed_unit
 ```
 
+## Extracting Numeric Values
+
+If you need to discard the dimensional information and work purely with the underlying magnitude of a quantity, you can use the built-in primitive conversion methods like `toFloat()`, `tryFloat()`, `toInt()`, and `tryInt()`.
+
+```flame
+import std.unit
+
+let distance = 10.5 * unit.meter
+
+// Drops the "meter" unit and returns the raw float value
+let val = distance.toFloat()
+println(val) // 10.5
+```
+
+---
+
+## Dimensional Analysis in `std.math`
+
+Flame's math module (`std.math`) is **unit-aware**. When you pass quantities into mathematical functions, Flame automatically propagates, manipulates, or checks the physical dimensions for you!
+
+### Auto-propagating Units
+Operations like `math.sqrt()` or `math.abs()` automatically adjust the units of the resulting quantity. For example, calculating the period of a pendulum naturally results in seconds:
+
+```flame
+import std.unit
+import std.math
+
+let L = 2 * unit.meter
+let g = 9.81 * unit.meter / unit.second^2
+
+// L / g produces a unit of: s^2
+// math.sqrt(s^2) safely propagates the dimension and returns a value in seconds (s)
+let T = 2 * math.pi() * math.sqrt(L / g)
+
+println(T) // ~ 2.837 s
+```
+
+> [!WARNING]  
+> If an operation would result in fractional dimensions, Flame will safely reject it. For example, `math.sqrt(25 * unit.meter)` fails because `meter^0.5` is not a valid discrete physical unit.
+
+### Dimension Checking
+Trigonometric functions like `math.sin()` and `math.cos()` strictly require a **dimensionless** input (e.g., an angle where all units have completely canceled out). If you supply a quantity with active units, the runtime will throw a dimensional error.
+
+Functions like `math.min()` and `math.max()` enforce dimensional consistency across all arguments:
+
+```flame
+import std.unit
+import std.math
+
+let length1 = 15 * unit.meter
+let length2 = 5 * unit.meter
+let time = 10 * unit.second
+
+// This works perfectly
+let longest = math.max(length1, length2) 
+println(longest) // 15 m
+
+// This throws a runtime error (cannot compare meters and seconds)
+// let error = math.max(length1, time)
+```
+
 ## API Summary Table
 
 | Method / Constant | Description |

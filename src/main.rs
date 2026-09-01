@@ -3949,8 +3949,12 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
         "thread".to_string(),
         "process".to_string(),
         "fs".to_string(),
+        "byte".to_string(),
+        "net".to_string(),
+        "json".to_string(),
         "math".to_string(),
         "time".to_string(),
+        "fmt".to_string(),
         "os".to_string(),
         "hardware".to_string(),
         "desktop".to_string(),
@@ -3960,6 +3964,7 @@ fn list_std_modules(_manifest_dir: &Path) -> Vec<String> {
         "bluetooth".to_string(),
         "serial".to_string(),
         "embedded".to_string(),
+        "unit".to_string(),
     ]
 }
 

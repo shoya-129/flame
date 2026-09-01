@@ -1466,7 +1466,7 @@ impl Runner {
                     _ => Some(Ok(Value::String(val.to_string()))),
                 }
             }
-            "toInt" | "tryInt" | "try_int" => {
+            "toInt" | "tryInt" => {
                 let is_try = member.starts_with("try");
                 let mut radix = 10;
                 if !args.is_empty() {
@@ -1480,6 +1480,7 @@ impl Runner {
                     Value::Int(i) => Some(Ok(Value::Int(*i))),
                     Value::Float(f) => Some(Ok(Value::Int(*f as i64))),
                     Value::Bool(b) => Some(Ok(Value::Int(if *b { 1 } else { 0 }))),
+                    Value::Quantity(v, _) => Some(Ok(Value::Int(*v as i64))),
                     Value::String(s) => match i64::from_str_radix(s.trim(), radix) {
                         Ok(res) => Some(Ok(Value::Int(res))),
                         Err(_) => {
@@ -1502,13 +1503,13 @@ impl Runner {
                     }
                 }
             }
-            "toFloat" | "toDouble" | "to_double" | "tryFloat" | "try_float" | "tryDouble"
-            | "try_double" => {
+            "toFloat" | "toDouble" | "tryFloat" | "tryDouble" => {
                 let is_try = member.starts_with("try");
                 match val {
                     Value::Float(f) => Some(Ok(Value::Float(*f))),
                     Value::Int(i) => Some(Ok(Value::Float(*i as f64))),
                     Value::Bool(b) => Some(Ok(Value::Float(if *b { 1.0 } else { 0.0 }))),
+                    Value::Quantity(v, _) => Some(Ok(Value::Float(*v))),
                     Value::String(s) => match s.trim().parse::<f64>() {
                         Ok(res) => Some(Ok(Value::Float(res))),
                         Err(_) => {
@@ -1528,12 +1529,13 @@ impl Runner {
                     }
                 }
             }
-            "toBool" | "to_bool" | "tryBool" | "try_bool" => {
+            "toBool" | "tryBool" => {
                 let is_try = member.starts_with("try");
                 match val {
                     Value::Bool(b) => Some(Ok(Value::Bool(*b))),
                     Value::Int(i) => Some(Ok(Value::Bool(*i != 0))),
                     Value::Float(f) => Some(Ok(Value::Bool(*f != 0.0))),
+                    Value::Quantity(v, _) => Some(Ok(Value::Bool(*v != 0.0))),
                     Value::String(s) => {
                         let lower = s.trim().to_lowercase();
                         if lower == "true" || lower == "1" {
@@ -1555,7 +1557,7 @@ impl Runner {
                     }
                 }
             }
-            "toChar" | "to_char" => match val {
+            "toChar" => match val {
                 Value::Int(i) => {
                     if let Some(c) = char::from_u32(*i as u32) {
                         Some(Ok(Value::String(c.to_string())))
@@ -1572,7 +1574,7 @@ impl Runner {
                 }
                 _ => Some(Err(format!("cannot convert {:?} to Char", val))),
             },
-            "toByte" | "to_byte" => match val {
+            "toByte" => match val {
                 Value::String(s) => Some(Ok(Value::Bytes(s.clone().into_bytes()))),
                 Value::Int(i) => {
                     if *i < 0 || *i > 255 {
