@@ -30,9 +30,6 @@
     ["(", ")"]
   ],
   "folding": {
-    "markers": {
-      "start": "^\\s*@[\\w]+\\(",
-      "end": "\\)\\s*$"
-    }
+    "offSide": false
   }
 }

@@ -456,6 +456,168 @@ function activate(context) {
             });
         }
     }));
+
+    context.subscriptions.push(vscode.languages.registerFoldingRangeProvider(['flame', 'flame-interface'], {
+        provideFoldingRanges(document) {
+            return computeFoldingRanges(document);
+        }
+    }));
+}
+
+function computeFoldingRanges(document) {
+    const ranges = [];
+    const text = document.getText();
+    const lines = text.split('\n');
+
+    let inBlockComment = false;
+    let commentStartLine = 0;
+
+    let inMultilineTripleString = false;
+    let inStringQuote = null; // '"' or "'"
+
+    const braceStack = [];
+    const bracketStack = [];
+    const parenStack = [];
+
+    let currentAnnotation = null; // { startLine: number, depth: number }
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex];
+        const trimmed = line.trim();
+
+        // Check if an annotation starts on this line (e.g. @Docs(...), @Flamer(...), @Suggestion(...))
+        if (!inBlockComment && inStringQuote === null && !inMultilineTripleString) {
+            const annoMatch = trimmed.match(/^@([a-zA-Z0-9_]+)\s*\(/);
+            if (annoMatch && currentAnnotation === null) {
+                currentAnnotation = {
+                    startLine: lineIndex,
+                    depth: 0
+                };
+            }
+        }
+
+        let i = 0;
+        while (i < line.length) {
+            // 1. Block comment continuation
+            if (inBlockComment) {
+                if (line.substr(i, 2) === '*/') {
+                    inBlockComment = false;
+                    if (lineIndex > commentStartLine) {
+                        ranges.push(new vscode.FoldingRange(commentStartLine, lineIndex, vscode.FoldingRangeKind.Comment));
+                    }
+                    i += 2;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            // 2. Triple quote string continuation ("""...""")
+            if (inMultilineTripleString) {
+                if (line.substr(i, 3) === '"""') {
+                    inMultilineTripleString = false;
+                    i += 3;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            // 3. Regular string continuation across lines (like @Docs("...\n..."))
+            if (inStringQuote !== null) {
+                if (line[i] === '\\') {
+                    i += 2;
+                    continue;
+                }
+                if (line[i] === inStringQuote) {
+                    inStringQuote = null;
+                    i++;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            // Check start of block comment
+            if (line.substr(i, 2) === '/*') {
+                inBlockComment = true;
+                commentStartLine = lineIndex;
+                i += 2;
+                continue;
+            }
+
+            // Check line comment
+            if (line.substr(i, 2) === '//') {
+                break;
+            }
+
+            // Check triple quote string start
+            if (line.substr(i, 3) === '"""' || (line[i] === '$' && line.substr(i + 1, 3) === '"""')) {
+                inMultilineTripleString = true;
+                i += (line[i] === '$' ? 4 : 3);
+                continue;
+            }
+
+            // Check regular string start (single or double quote)
+            if (line[i] === '"' || line[i] === '\'') {
+                inStringQuote = line[i];
+                i++;
+                continue;
+            }
+
+            const char = line[i];
+
+            // Annotation tracking
+            if (currentAnnotation !== null) {
+                if (char === '(') {
+                    currentAnnotation.depth++;
+                } else if (char === ')') {
+                    currentAnnotation.depth--;
+                    if (currentAnnotation.depth <= 0) {
+                        // "keep the annoations closables only when it more than 2 lines if not then as it is no line closeble bullet"
+                        if (lineIndex - currentAnnotation.startLine >= 2) {
+                            ranges.push(new vscode.FoldingRange(currentAnnotation.startLine, lineIndex));
+                        }
+                        currentAnnotation = null;
+                    }
+                }
+            }
+
+            // Braces: functions, closures, formula objects, structs, blocks
+            if (char === '{') {
+                braceStack.push(lineIndex);
+            } else if (char === '}') {
+                if (braceStack.length > 0) {
+                    const start = braceStack.pop();
+                    if (lineIndex > start) {
+                        ranges.push(new vscode.FoldingRange(start, lineIndex));
+                    }
+                }
+            } else if (char === '[') {
+                bracketStack.push(lineIndex);
+            } else if (char === ']') {
+                if (bracketStack.length > 0) {
+                    const start = bracketStack.pop();
+                    if (lineIndex > start) {
+                        ranges.push(new vscode.FoldingRange(start, lineIndex));
+                    }
+                }
+            } else if (char === '(' && currentAnnotation === null) {
+                parenStack.push(lineIndex);
+            } else if (char === ')' && currentAnnotation === null) {
+                if (parenStack.length > 0) {
+                    const start = parenStack.pop();
+                    if (lineIndex - start >= 2) {
+                        ranges.push(new vscode.FoldingRange(start, lineIndex));
+                    }
+                }
+            }
+
+            i++;
+        }
+    }
+
+    return ranges;
 }
 
 function deactivate() { }
