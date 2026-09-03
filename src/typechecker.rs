@@ -1154,14 +1154,20 @@ impl TypeChecker {
             }
             "math" => {
                 let mut map = HashMap::new();
-                let docs = HashMap::new();
+                let mut docs = HashMap::new();
 
                 let float_fn = Type::Function(vec![Type::Unknown], Box::new(Type::Float));
                 let float_fn2 =
                     Type::Function(vec![Type::Unknown, Type::Unknown], Box::new(Type::Float));
 
-                map.insert("pi".to_string(), Type::Float);
-                map.insert("e".to_string(), Type::Float);
+                map.insert(
+                    "pi".to_string(),
+                    Type::Function(vec![], Box::new(Type::Float)),
+                );
+                map.insert(
+                    "e".to_string(),
+                    Type::Function(vec![], Box::new(Type::Float)),
+                );
                 map.insert(
                     "inf".to_string(),
                     Type::Function(vec![], Box::new(Type::Float)),
@@ -1170,8 +1176,21 @@ impl TypeChecker {
                 map.insert("sin".to_string(), float_fn.clone());
                 map.insert("cos".to_string(), float_fn.clone());
                 map.insert("sqrt".to_string(), float_fn.clone());
+                map.insert("pow".to_string(), float_fn2.clone());
                 map.insert("min".to_string(), float_fn2.clone());
                 map.insert("max".to_string(), float_fn2.clone());
+                map.insert("round".to_string(), float_fn.clone());
+                map.insert("floor".to_string(), float_fn.clone());
+                map.insert("ceil".to_string(), float_fn.clone());
+
+                for name in [
+                    "pi", "e", "inf", "abs", "sin", "cos", "sqrt", "pow", "min", "max",
+                    "round", "floor", "ceil",
+                ] {
+                    if let Some(doc) = crate::std_docs::get_std_function_doc("std.math", name) {
+                        docs.insert(name.to_string(), doc.to_string());
+                    }
+                }
 
                 Type::Formula(map, docs)
             }
@@ -2765,8 +2784,19 @@ impl TypeChecker {
             return Type::Unknown;
         }
 
-        let left_ty = self.infer_expr_type(left);
-        let right_ty = self.infer_expr_type(right);
+        let mut left_ty = self.infer_expr_type(left);
+        let mut right_ty = self.infer_expr_type(right);
+
+        if let Type::Function(params, ret) = &left_ty {
+            if params.is_empty() {
+                left_ty = *ret.clone();
+            }
+        }
+        if let Type::Function(params, ret) = &right_ty {
+            if params.is_empty() {
+                right_ty = *ret.clone();
+            }
+        }
         match op {
             BinaryOp::Add => {
                 if self.is_numeric(&left_ty) && self.is_numeric(&right_ty) {
@@ -2980,9 +3010,21 @@ impl TypeChecker {
                     left_ty
                 }
             }
+            BinaryOp::BitXor => {
+                if let Type::Quantity(dims) | Type::Unit(dims) = &left_ty {
+                    Type::Quantity(dims.clone())
+                } else if self.is_numeric(&left_ty) && self.is_numeric(&right_ty) {
+                    if matches!(left_ty, Type::Float) || matches!(right_ty, Type::Float) {
+                        Type::Float
+                    } else {
+                        Type::Int
+                    }
+                } else {
+                    Type::Int
+                }
+            }
             BinaryOp::BitAnd
             | BinaryOp::BitOr
-            | BinaryOp::BitXor
             | BinaryOp::Shl
             | BinaryOp::Shr => Type::Int,
             BinaryOp::Range => {

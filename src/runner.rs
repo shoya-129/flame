@@ -2082,8 +2082,18 @@ impl Runner {
                     return Ok(Value::Bool(r.is_truthy()));
                 }
 
-                let l = self.eval_expr(left, env.clone())?;
-                let r = self.eval_expr(right, env.clone())?;
+                let mut l = self.eval_expr(left, env.clone())?;
+                let mut r = self.eval_expr(right, env.clone())?;
+                if let Value::NativeCallback(cb) = &l {
+                    if let Ok(res) = cb(vec![]) {
+                        l = res;
+                    }
+                }
+                if let Value::NativeCallback(cb) = &r {
+                    if let Ok(res) = cb(vec![]) {
+                        r = res;
+                    }
+                }
                 match (&l, &r) {
                     (Value::Int(a), Value::Int(b)) => match op {
                         BinaryOp::Add => a
@@ -2125,12 +2135,41 @@ impl Runner {
                         BinaryOp::Sub => Ok(Value::Float(a - b)),
                         BinaryOp::Mul => Ok(Value::Float(a * b)),
                         BinaryOp::Div => Ok(Value::Float(if *b != 0.0 { a / b } else { 0.0 })),
+                        BinaryOp::BitXor => Ok(Value::Float(a.powf(*b))),
                         BinaryOp::Eq => Ok(Value::Bool(a == b)),
                         BinaryOp::Ne => Ok(Value::Bool(a != b)),
                         BinaryOp::Gt => Ok(Value::Bool(a > b)),
                         BinaryOp::Ge => Ok(Value::Bool(a >= b)),
                         BinaryOp::Lt => Ok(Value::Bool(a < b)),
                         BinaryOp::Le => Ok(Value::Bool(a <= b)),
+                        _ => Ok(Value::Nil),
+                    },
+                    (Value::Float(a), Value::Int(b)) => match op {
+                        BinaryOp::Add => Ok(Value::Float(a + (*b as f64))),
+                        BinaryOp::Sub => Ok(Value::Float(a - (*b as f64))),
+                        BinaryOp::Mul => Ok(Value::Float(a * (*b as f64))),
+                        BinaryOp::Div => Ok(Value::Float(if *b != 0 { a / (*b as f64) } else { 0.0 })),
+                        BinaryOp::BitXor => Ok(Value::Float(a.powi(*b as i32))),
+                        BinaryOp::Eq => Ok(Value::Bool(*a == *b as f64)),
+                        BinaryOp::Ne => Ok(Value::Bool(*a != *b as f64)),
+                        BinaryOp::Gt => Ok(Value::Bool(*a > *b as f64)),
+                        BinaryOp::Ge => Ok(Value::Bool(*a >= *b as f64)),
+                        BinaryOp::Lt => Ok(Value::Bool(*a < *b as f64)),
+                        BinaryOp::Le => Ok(Value::Bool(*a <= *b as f64)),
+                        _ => Ok(Value::Nil),
+                    },
+                    (Value::Int(a), Value::Float(b)) => match op {
+                        BinaryOp::Add => Ok(Value::Float((*a as f64) + b)),
+                        BinaryOp::Sub => Ok(Value::Float((*a as f64) - b)),
+                        BinaryOp::Mul => Ok(Value::Float((*a as f64) * b)),
+                        BinaryOp::Div => Ok(Value::Float(if *b != 0.0 { (*a as f64) / b } else { 0.0 })),
+                        BinaryOp::BitXor => Ok(Value::Float((*a as f64).powf(*b))),
+                        BinaryOp::Eq => Ok(Value::Bool(*a as f64 == *b)),
+                        BinaryOp::Ne => Ok(Value::Bool(*a as f64 != *b)),
+                        BinaryOp::Gt => Ok(Value::Bool(*a as f64 > *b)),
+                        BinaryOp::Ge => Ok(Value::Bool(*a as f64 >= *b)),
+                        BinaryOp::Lt => Ok(Value::Bool((*a as f64) < *b)),
+                        BinaryOp::Le => Ok(Value::Bool((*a as f64) <= *b)),
                         _ => Ok(Value::Nil),
                     },
                     (Value::String(a), Value::String(b)) => match op {
@@ -2222,32 +2261,240 @@ impl Runner {
                                 Ok(Value::Quantity(av / bv, res))
                             }
                         }
+                        BinaryOp::BitXor => {
+                            if bu.is_empty() {
+                                let pow = bv.round() as i32;
+                                if (*bv - pow as f64).abs() < 1e-9 {
+                                    let mut res = HashMap::new();
+                                    for (k, v) in au {
+                                        let new_pow = v * pow;
+                                        if new_pow != 0 {
+                                            res.insert(k.clone(), new_pow);
+                                        }
+                                    }
+                                    let new_v = av.powi(pow);
+                                    if res.is_empty() {
+                                        Ok(Value::Float(new_v))
+                                    } else {
+                                        Ok(Value::Quantity(new_v, res))
+                                    }
+                                } else {
+                                    Err("fractional exponents on quantities with units are not supported".to_string())
+                                }
+                            } else {
+                                Err("exponent must be a dimensionless number".to_string())
+                            }
+                        }
                         BinaryOp::Eq => Ok(Value::Bool(av == bv && au == bu)),
                         BinaryOp::Ne => Ok(Value::Bool(av != bv || au != bu)),
+                        BinaryOp::Lt => {
+                            if au == bu {
+                                Ok(Value::Bool(av < bv))
+                            } else {
+                                Err("cannot compare quantities with different units".to_string())
+                            }
+                        }
+                        BinaryOp::Le => {
+                            if au == bu {
+                                Ok(Value::Bool(av <= bv))
+                            } else {
+                                Err("cannot compare quantities with different units".to_string())
+                            }
+                        }
+                        BinaryOp::Gt => {
+                            if au == bu {
+                                Ok(Value::Bool(av > bv))
+                            } else {
+                                Err("cannot compare quantities with different units".to_string())
+                            }
+                        }
+                        BinaryOp::Ge => {
+                            if au == bu {
+                                Ok(Value::Bool(av >= bv))
+                            } else {
+                                Err("cannot compare quantities with different units".to_string())
+                            }
+                        }
                         _ => Err(format!(
                             "cannot apply operator {:?} to quantity and quantity",
                             op
                         )),
                     },
+                    (Value::Quantity(av, au), Value::Unit(bu)) => match op {
+                        BinaryOp::Mul => {
+                            let mut res = au.clone();
+                            for (k, v) in bu {
+                                *res.entry(k.clone()).or_insert(0) += v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            if res.is_empty() {
+                                Ok(Value::Float(*av))
+                            } else {
+                                Ok(Value::Quantity(*av, res))
+                            }
+                        }
+                        BinaryOp::Div => {
+                            let mut res = au.clone();
+                            for (k, v) in bu {
+                                *res.entry(k.clone()).or_insert(0) -= v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            if res.is_empty() {
+                                Ok(Value::Float(*av))
+                            } else {
+                                Ok(Value::Quantity(*av, res))
+                            }
+                        }
+                        BinaryOp::Eq => Ok(Value::Bool(*av == 1.0 && au == bu)),
+                        BinaryOp::Ne => Ok(Value::Bool(*av != 1.0 || au != bu)),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to quantity and unit",
+                            op
+                        )),
+                    },
+                    (Value::Unit(au), Value::Quantity(bv, bu)) => match op {
+                        BinaryOp::Mul => {
+                            let mut res = au.clone();
+                            for (k, v) in bu {
+                                *res.entry(k.clone()).or_insert(0) += v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            if res.is_empty() {
+                                Ok(Value::Float(*bv))
+                            } else {
+                                Ok(Value::Quantity(*bv, res))
+                            }
+                        }
+                        BinaryOp::Div => {
+                            let mut res = au.clone();
+                            for (k, v) in bu {
+                                *res.entry(k.clone()).or_insert(0) -= v;
+                                if res[k] == 0 {
+                                    res.remove(k);
+                                }
+                            }
+                            let div_val = if *bv != 0.0 { 1.0 / bv } else { 0.0 };
+                            if res.is_empty() {
+                                Ok(Value::Float(div_val))
+                            } else {
+                                Ok(Value::Quantity(div_val, res))
+                            }
+                        }
+                        BinaryOp::Eq => Ok(Value::Bool(*bv == 1.0 && au == bu)),
+                        BinaryOp::Ne => Ok(Value::Bool(*bv != 1.0 || au != bu)),
+                        _ => Err(format!(
+                            "cannot apply operator {:?} to unit and quantity",
+                            op
+                        )),
+                    },
                     (Value::Int(a), Value::Unit(b)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(*a as f64, b.clone())),
+                        BinaryOp::Div => {
+                            let mut res = HashMap::new();
+                            for (k, v) in b {
+                                res.insert(k.clone(), -v);
+                            }
+                            Ok(Value::Quantity(*a as f64, res))
+                        }
                         _ => Err(format!("cannot apply operator {:?} to int and unit", op)),
                     },
                     (Value::Float(a), Value::Unit(b)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(*a, b.clone())),
+                        BinaryOp::Div => {
+                            let mut res = HashMap::new();
+                            for (k, v) in b {
+                                res.insert(k.clone(), -v);
+                            }
+                            Ok(Value::Quantity(*a, res))
+                        }
                         _ => Err(format!("cannot apply operator {:?} to float and unit", op)),
                     },
                     (Value::Unit(a), Value::Int(b)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(*b as f64, a.clone())),
+                        BinaryOp::Div => {
+                            let div_val = if *b != 0 { 1.0 / (*b as f64) } else { 0.0 };
+                            Ok(Value::Quantity(div_val, a.clone()))
+                        }
+                        BinaryOp::BitXor => {
+                            if *b == 0 {
+                                Ok(Value::Float(1.0))
+                            } else {
+                                let mut res = HashMap::new();
+                                for (k, v) in a {
+                                    let new_pow = v * (*b as i32);
+                                    if new_pow != 0 {
+                                        res.insert(k.clone(), new_pow);
+                                    }
+                                }
+                                if res.is_empty() {
+                                    Ok(Value::Float(1.0))
+                                } else {
+                                    Ok(Value::Unit(res))
+                                }
+                            }
+                        }
                         _ => Err(format!("cannot apply operator {:?} to unit and int", op)),
                     },
                     (Value::Unit(a), Value::Float(b)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(*b, a.clone())),
+                        BinaryOp::Div => {
+                            let div_val = if *b != 0.0 { 1.0 / b } else { 0.0 };
+                            Ok(Value::Quantity(div_val, a.clone()))
+                        }
+                        BinaryOp::BitXor => {
+                            if b.fract() == 0.0 {
+                                let pow = *b as i32;
+                                if pow == 0 {
+                                    Ok(Value::Float(1.0))
+                                } else {
+                                    let mut res = HashMap::new();
+                                    for (k, v) in a {
+                                        let new_pow = v * pow;
+                                        if new_pow != 0 {
+                                            res.insert(k.clone(), new_pow);
+                                        }
+                                    }
+                                    if res.is_empty() {
+                                        Ok(Value::Float(1.0))
+                                    } else {
+                                        Ok(Value::Unit(res))
+                                    }
+                                }
+                            } else {
+                                Err("fractional exponents on units are not supported".to_string())
+                            }
+                        }
                         _ => Err(format!("cannot apply operator {:?} to unit and float", op)),
                     },
                     (Value::Quantity(v, u), Value::Int(b)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(v * (*b as f64), u.clone())),
                         BinaryOp::Div => Ok(Value::Quantity(v / (*b as f64), u.clone())),
+                        BinaryOp::BitXor => {
+                            let pow = *b as i32;
+                            if pow == 0 {
+                                Ok(Value::Float(1.0))
+                            } else {
+                                let mut res = HashMap::new();
+                                for (k, p) in u {
+                                    let new_pow = p * pow;
+                                    if new_pow != 0 {
+                                        res.insert(k.clone(), new_pow);
+                                    }
+                                }
+                                let new_v = v.powi(pow);
+                                if res.is_empty() {
+                                    Ok(Value::Float(new_v))
+                                } else {
+                                    Ok(Value::Quantity(new_v, res))
+                                }
+                            }
+                        }
                         _ => Err(format!(
                             "cannot apply operator {:?} to quantity and int",
                             op
@@ -2256,6 +2503,32 @@ impl Runner {
                     (Value::Quantity(v, u), Value::Float(b)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(v * b, u.clone())),
                         BinaryOp::Div => Ok(Value::Quantity(v / b, u.clone())),
+                        BinaryOp::BitXor => {
+                            if b.fract() == 0.0 {
+                                let pow = *b as i32;
+                                if pow == 0 {
+                                    Ok(Value::Float(1.0))
+                                } else {
+                                    let mut res = HashMap::new();
+                                    for (k, p) in u {
+                                        let new_pow = p * pow;
+                                        if new_pow != 0 {
+                                            res.insert(k.clone(), new_pow);
+                                        }
+                                    }
+                                    let new_v = v.powi(pow);
+                                    if res.is_empty() {
+                                        Ok(Value::Float(new_v))
+                                    } else {
+                                        Ok(Value::Quantity(new_v, res))
+                                    }
+                                }
+                            } else if u.is_empty() {
+                                Ok(Value::Float(v.powf(*b)))
+                            } else {
+                                Err("fractional exponents on quantities with units are not supported".to_string())
+                            }
+                        }
                         _ => Err(format!(
                             "cannot apply operator {:?} to quantity and float",
                             op
@@ -2263,6 +2536,14 @@ impl Runner {
                     },
                     (Value::Int(b), Value::Quantity(v, u)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(v * (*b as f64), u.clone())),
+                        BinaryOp::Div => {
+                            let mut res = HashMap::new();
+                            for (k, p) in u {
+                                res.insert(k.clone(), -p);
+                            }
+                            let div_val = if *v != 0.0 { (*b as f64) / v } else { 0.0 };
+                            Ok(Value::Quantity(div_val, res))
+                        }
                         _ => Err(format!(
                             "cannot apply operator {:?} to int and quantity",
                             op
@@ -2270,6 +2551,14 @@ impl Runner {
                     },
                     (Value::Float(b), Value::Quantity(v, u)) => match op {
                         BinaryOp::Mul => Ok(Value::Quantity(v * b, u.clone())),
+                        BinaryOp::Div => {
+                            let mut res = HashMap::new();
+                            for (k, p) in u {
+                                res.insert(k.clone(), -p);
+                            }
+                            let div_val = if *v != 0.0 { b / v } else { 0.0 };
+                            Ok(Value::Quantity(div_val, res))
+                        }
                         _ => Err(format!(
                             "cannot apply operator {:?} to float and quantity",
                             op

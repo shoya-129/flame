@@ -51,8 +51,9 @@ fn main() {
 
 If a folder contains multiple `.fm` files, you can import the entire folder as a single namespace. To do this, every `.fm` file in that folder must begin with a `package` declaration.
 
-> [!IMPORTANT]
-> The `package` declaration **must exactly match the folder's name**. For example, if your folder is named `utils`, you must declare `package utils` in the files. The compiler relies on this convention to correctly resolve cross-file imports for the package.
+<Aside type="caution" title="Important">
+The `package` declaration **must exactly match the folder's name**. For example, if your folder is named `utils`, you must declare `package utils` in the files. The compiler relies on this convention to correctly resolve cross-file imports for the package.
+</Aside>
 
 When imported, Flame will scan all `.fm` files in the folder and aggregate all exported functions, structs, and annotations into a single module namespace.
 

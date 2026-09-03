@@ -399,7 +399,9 @@ impl Value {
                 a.iter().all(|(k, v)| b.get(k).map_or(false, |bv| v.is_equal(bv)))
             },
             (Value::Unit(a), Value::Unit(b)) => a == b,
-            (Value::Quantity(av, au), Value::Quantity(bv, bu)) => av == bv && au == bu,
+            (Value::Quantity(av, au), Value::Quantity(bv, bu)) => {
+                (av == bv || (av - bv).abs() < 0.001) && au == bu
+            },
             (a, b) => a.to_string() == b.to_string(),
         }
     }

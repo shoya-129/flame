@@ -116,32 +116,72 @@ println(val) // 10.5
 
 ## Dimensional Analysis in `std.math`
 
-Flame's math module (`std.math`) is **unit-aware**. When you pass quantities into mathematical functions, Flame automatically propagates, manipulates, or checks the physical dimensions for you!
+Flame's math module (`std.math`) is **unit-aware**. When you pass units or quantities into mathematical functions and operators, Flame automatically calculates, scales, and validates their physical dimensions.
 
-### Auto-propagating Units
-Operations like `math.sqrt()` or `math.abs()` automatically adjust the units of the resulting quantity. For example, calculating the period of a pendulum naturally results in seconds:
+### Exponentiation and Powers (`^` and `math.pow`)
+
+You can raise units and quantities to integer powers using the `^` operator or `math.pow()`. The exponent scales both the underlying magnitude and the unit powers:
 
 ```flame
 import std.unit
 import std.math
 
+// 1. Exponentiation on base units
+let s2 = unit.second^2 // seconds squared (s^2)
+let m3 = unit.meter^3  // cubic meters (m^3)
+
+// 2. Exponentiation on quantities (scales magnitude and unit)
+let area = (4 * unit.meter)^2
+println(area) // 16 m^2
+
+// 3. Using math.pow for dynamic or explicit powers
+let volume = math.pow(3 * unit.meter, 3)
+println(volume) // 27 m^3
+```
+
+### Auto-propagating Roots (`math.sqrt`)
+
+`math.sqrt()` evaluates the square root of numbers, quantities, and units with even dimensional powers. Each dimension's exponent is safely halved:
+
+```flame
+import std.unit
+import std.math
+
+// Square root of a unit dimension
+let s = math.sqrt(unit.second^2)
+println(s) // 1 s
+
+// Pendulum period calculation: T = 2 * pi * sqrt(L / g)
 let L = 2 * unit.meter
 let g = 9.81 * unit.meter / unit.second^2
 
-// L / g produces a unit of: s^2
-// math.sqrt(s^2) safely propagates the dimension and returns a value in seconds (s)
+// L / g produces a quantity in s^2
+// math.sqrt(s^2) safely propagates the dimension and returns a quantity in seconds (s)
 let T = 2 * math.pi() * math.sqrt(L / g)
-
 println(T) // ~ 2.837 s
 ```
 
-> [!WARNING]  
-> If an operation would result in fractional dimensions, Flame will safely reject it. For example, `math.sqrt(25 * unit.meter)` fails because `meter^0.5` is not a valid discrete physical unit.
+<Aside type="caution" title="Warning">
+If an operation would result in fractional dimensions, Flame will safely reject it. For example, `math.sqrt(25 * unit.meter)` fails because `meter^0.5` is not a valid discrete physical unit.
+</Aside>
 
-### Dimension Checking
-Trigonometric functions like `math.sin()` and `math.cos()` strictly require a **dimensionless** input (e.g., an angle where all units have completely canceled out). If you supply a quantity with active units, the runtime will throw a dimensional error.
+### Absolute Values (`math.abs`)
 
-Functions like `math.min()` and `math.max()` enforce dimensional consistency across all arguments:
+`math.abs()` computes the absolute value while strictly preserving unit dimensions:
+
+```flame
+import std.unit
+import std.math
+
+let neg_speed = -25.5 * (unit.meter / unit.second)
+let speed = math.abs(neg_speed)
+
+println(speed) // 25.5 m/s
+```
+
+### Dimension Checking & Extremums (`math.min` and `math.max`)
+
+Functions like `math.min()` and `math.max()` compare quantities and units of matching physical dimension:
 
 ```flame
 import std.unit
@@ -151,13 +191,24 @@ let length1 = 15 * unit.meter
 let length2 = 5 * unit.meter
 let time = 10 * unit.second
 
-// This works perfectly
+// This works perfectly (same dimension: length)
 let longest = math.max(length1, length2) 
 println(longest) // 15 m
+
+let shortest = math.min(length1, 5 * unit.meter)
+println(shortest) // 5 m
+
+// Comparing a quantity directly against a base unit (which has magnitude 1.0)
+let at_least_meter = math.max(0.5 * unit.meter, unit.meter)
+println(at_least_meter) // 1 m
 
 // This throws a runtime error (cannot compare meters and seconds)
 // let error = math.max(length1, time)
 ```
+
+### Trigonometric Functions (`math.sin` & `math.cos`)
+
+Trigonometric functions like `math.sin()` and `math.cos()` strictly require a **dimensionless** input (e.g., an angle where all units have completely canceled out). If you supply a quantity with active units, the runtime will throw a dimensional error.
 
 ## API Summary Table
 
@@ -167,3 +218,10 @@ println(longest) // 15 m
 | `unit.second` | Constant representing the base unit for time (seconds). |
 | `unit.kilogram` | Constant representing the base unit for mass (kilograms). |
 | `unit.Equation(kg, m, s)` | Returns a new custom unit composed of the exponents provided for kilograms, meters, and seconds. |
+| `unit ^ n` | Raises a unit to the integer power `n` (e.g. `unit.second^2`). |
+| `quantity ^ n` | Raises a quantity to power `n`, scaling magnitude and dimensional powers (e.g. `(4 * unit.meter)^2`). |
+| `math.pow(base, exp)` | Raises a quantity or unit to an exponent while maintaining dimensional integrity. |
+| `math.sqrt(q)` | Computes the square root, halving each even-powered unit dimension (e.g. `math.sqrt(s^2)` -> `s`). |
+| `math.abs(q)` | Computes the magnitude of a quantity while preserving its unit. |
+| `math.min(a, b)` | Returns the lesser of two quantities or units with identical physical dimensions. |
+| `math.max(a, b)` | Returns the greater of two quantities or units with identical physical dimensions. |

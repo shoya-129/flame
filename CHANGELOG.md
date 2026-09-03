@@ -3,6 +3,29 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.4.2] - 2026-09-03 (Codename: *Fourth Spark*)
+
+### 🔬 Physics & Mathematics Engine Upgrades
+- **Exponentiation Precedence Correction (`^`)**: Reworked AST expression parsing precedence in `src/parser.rs`. The caret operator `^` is now parsed via a dedicated `parse_power` stage with higher precedence than multiplicative operators (`*`, `/`, `%`). Expressions like `9.81 * unit.meter / unit.second^2` now strictly parse as `(9.81 * unit.meter) / (unit.second^2)` rather than `((9.81 * unit.meter) / unit.second)^2`.
+- **Full Unit & Quantity Arithmetic**:
+  - **Power Exponentiation (`^` and `math.pow`)**: Added complete support for raising base units and quantities to integer powers (e.g. `unit.second^2`, `(4 * unit.meter)^2` -> `16 m^2`, `math.pow(3 * unit.meter, 3)` -> `27 m^3`).
+  - **Cross-Division & Multiplication**: Implemented division and multiplication between `Quantity` and `Unit`, `Int` and `Unit`, `Float` and `Unit`, `Int` and `Quantity`, and `Float` and `Quantity` (e.g. `L / g` yielding `s^2`).
+  - **Flexible Constant Access**: Physical and mathematical constants like `math.pi` and `math.e` can now be used either as plain identifiers (`2 * math.pi * r`) or invoked as zero-argument functions (`2 * math.pi() * r`).
+- **Comprehensive `std.math` Unit-Awareness**:
+  - **`math.sqrt`**: Safely propagates dimensions for both `Quantity` and `Unit` values, ensuring all unit exponents are even before halving them (e.g. `math.sqrt(s^2)` returns `1 s`).
+  - **`math.abs`**: Computes absolute magnitude while strictly preserving unit dimensions.
+  - **`math.min` & `math.max`**: Allows comparisons across quantities and units sharing identical physical dimensions, safely rejecting dimensionally incompatible comparisons.
+  - **`math.round`, `math.floor`, `math.ceil`**: Added rounding functions to `std.math` that preserve physical dimensions.
+
+### 🎨 IDE & Language Server Improvements
+- **Rich `std.math` Hover Documentation & Completions**:
+  - Added complete, formatted hover documentation and callable signatures for all standard math functions and constants (`pi`, `e`, `inf`, `abs`, `sqrt`, `pow`, `sin`, `cos`, `min`, `max`, `round`, `floor`, `ceil`).
+  - Integrated dimensional analysis examples and explanations directly into tooltip hovers in the IDE.
+- **Folding Range Improvements**:
+  - Multi-line docstring annotations (`@Docs("...")`) spanning multiple lines fold cleanly in the editor without leaving trailing artifacts or misplacing folding icons on variable lines.
+
+---
+
 ## [0.4.1] - 2026-09-03 (Codename: *Fourth Spark*)
 
 ### 🏛️ Architectural Evolution: Application-Specific Native Runtimes

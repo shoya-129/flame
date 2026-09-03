@@ -1388,18 +1388,7 @@ impl Parser {
     }
 
     fn parse_bitxor(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.parse_bitand()?;
-        while self.match_token(TokenKind::Caret) {
-            let right = self.parse_bitand()?;
-            let span = Span {
-                start: expr.span().start,
-                end: right.span().end,
-                line: expr.span().line,
-                col: expr.span().col,
-            };
-            expr = Expr::Binary(Box::new(expr), BinaryOp::BitXor, Box::new(right), span);
-        }
-        Ok(expr)
+        self.parse_bitand()
     }
 
     fn parse_bitand(&mut self) -> Result<Expr, Diagnostic> {
@@ -1525,7 +1514,7 @@ impl Parser {
     }
 
     fn parse_factor(&mut self) -> Result<Expr, Diagnostic> {
-        let mut expr = self.parse_unary()?;
+        let mut expr = self.parse_power()?;
         while self.check(TokenKind::Star)
             || self.check(TokenKind::Slash)
             || self.check(TokenKind::Percent)
@@ -1536,7 +1525,7 @@ impl Parser {
                 TokenKind::Slash => BinaryOp::Div,
                 _ => BinaryOp::Mod,
             };
-            let right = self.parse_unary()?;
+            let right = self.parse_power()?;
             let span = Span {
                 start: expr.span().start,
                 end: right.span().end,
@@ -1546,6 +1535,22 @@ impl Parser {
             expr = Expr::Binary(Box::new(expr), op, Box::new(right), span);
         }
         Ok(expr)
+    }
+
+    fn parse_power(&mut self) -> Result<Expr, Diagnostic> {
+        let expr = self.parse_unary()?;
+        if self.match_token(TokenKind::Caret) {
+            let right = self.parse_power()?;
+            let span = Span {
+                start: expr.span().start,
+                end: right.span().end,
+                line: expr.span().line,
+                col: expr.span().col,
+            };
+            Ok(Expr::Binary(Box::new(expr), BinaryOp::BitXor, Box::new(right), span))
+        } else {
+            Ok(expr)
+        }
     }
 
     fn parse_unary(&mut self) -> Result<Expr, Diagnostic> {

@@ -1,6 +1,6 @@
 
 import std.unit
-
+import std.math
 
 
 
@@ -54,4 +54,52 @@ fn test_force_and_energy() {
     println(ke)
 
     assertEq(ke, 500 * joule, "Kinetic Energy should be 500 Joules")
+}
+
+@Test
+fn test_pendulum() {
+    let L = 2 * unit.meter
+    let g = 9.81 * unit.meter / unit.second^2
+
+    // L / g produces a unit of: s^2
+    // math.sqrt(s^2) safely propagates the dimension and returns a value in seconds (s)
+    let T = 2 * math.pi() * math.sqrt(L / g)
+
+    println(T)
+
+    assertEq(T, 2.837 * unit.second, "Pendulum period should be ~2.837 seconds")
+    // Also verify accessing math.pi without parentheses
+    let T2 = 2 * math.pi * math.sqrt(L / g)
+
+    assertEq(T2, 2.837 * unit.second, "Pendulum period with math.pi should also be ~2.837 seconds")
+}
+
+@Test
+fn test_unit_powers_and_math() {
+    let s2 = unit.second^2
+    let sqrt_s2 = math.sqrt(s2)
+
+    assertEq(sqrt_s2, unit.second, "math.sqrt of s^2 should be s")
+    let m3 = unit.meter^3
+
+    assertEq(m3, unit.Equation(0, 3, 0), "m^3 should be cubic meters")
+    let area = (4 * unit.meter)^2
+
+    assertEq(area, 16 * (unit.meter^2), "(4m)^2 should be 16 m^2")
+    let neg_val =-10.5 * unit.meter
+    let abs_val = math.abs(neg_val)
+
+    assertEq(abs_val, 10.5 * unit.meter, "math.abs(-10.5m) should be 10.5m")
+    let u_abs = math.abs(unit.meter)
+
+    assertEq(u_abs, unit.meter, "math.abs(unit.meter) should be unit.meter")
+    let min_q = math.min(5 * unit.meter, 12 * unit.meter)
+
+    assertEq(min_q, 5 * unit.meter, "math.min should return smaller quantity")
+    let max_q = math.max(5 * unit.meter, 12 * unit.meter)
+
+    assertEq(max_q, 12 * unit.meter, "math.max should return larger quantity")
+    let pow_q = math.pow(3 * unit.meter, 3)
+
+    assertEq(pow_q, 27 * (unit.meter^3), "math.pow((3m), 3) should be 27 m^3")
 }

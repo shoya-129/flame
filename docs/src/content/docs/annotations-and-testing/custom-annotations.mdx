@@ -11,8 +11,9 @@ Flame empowers systems engineers to declare **custom annotations** using the `an
 
 ## 1. Defining Custom Annotations
 
-> [!IMPORTANT]
-> **Naming Convention**: Custom annotations *must* begin with an uppercase letter (e.g., `Logger`, not `logger`). The compiler enforces this via a mandatory lint rule to ensure annotations remain easily distinguishable from standard functions.
+<Aside type="caution" title="Important Naming Convention">
+Custom annotations *must* begin with an uppercase letter (e.g., `Logger`, not `logger`). The compiler enforces this via a mandatory lint rule to ensure annotations remain easily distinguishable from standard functions.
+</Aside>
 
 You define custom annotations using the `annotation` keyword, specifying parameters and an explicit return type:
 
