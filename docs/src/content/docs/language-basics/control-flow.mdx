@@ -58,8 +58,9 @@ if is_overtemp and is_overvoltage {
 - **Self-Documenting Intent**: Naming the condition (such as `is_overtemp`) clarifies business and hardware logic without needing inline comments.
 - **Single Evaluation**: The bitwise or arithmetic expression is computed once and can be safely referenced across multiple branches.
 - **Direct Reusability**: Stored boolean variables can be passed straight to assertions, logged in diagnostics, or returned from helper functions:
-  ```flame
-  @Test
+
+```flame
+@Test
 fn main() {
     let payload = "Hello, World!"
     let checksum = &payload
@@ -68,8 +69,7 @@ fn main() {
 
     println(assert(is_valid))
 }
-
-  ```
+```
 
 ### Pattern Matching (`match`)
 
