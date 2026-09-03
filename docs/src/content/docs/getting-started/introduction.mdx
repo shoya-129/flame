@@ -17,16 +17,16 @@ import { Trash2, Zap, Rocket, Code2 } from 'lucide-astro';
 
 Flame was built around the principle: **"Don't reinvent the wheel; just use Rust's."**
 
-Instead of creating an isolated language ecosystem from scratch, Flame treats Rust crates as a **second source language**. When you add a crate in your project manifest (`flame.toml`), the compiler parses the crate, generates static type bridges, and compiles them directly into a single native binary with **zero runtime FFI overhead**.
+Instead of forcing developers to use a universal monolithic runtime containing every feature and package, Flame generates an **application-specific native runtime** for each project. When you declare dependencies in your project manifest (`flame.toml`), Flame resolves `.fmi` interface metadata, analyzes your imports, and configures a minimal, specialized runtime containing only what your application actually needs. The resulting runtime is built through Rust, Cargo, and LLVM into an optimized native executable.
 
 ---
 
 ## Key Highlights
 
 <CardGrid>
-  <LucideCard title="Ahead-of-Time (AOT) Compilation">
+  <LucideCard title="Specialized Native Runtime">
     <Zap slot="icon" />
-    Compiles directly to native machine code. No heavy VM interpreter runtime required in production.
+    Tailored native execution containing only imported packages and native plugins. Zero universal runtime bloat.
   </LucideCard>
   <LucideCard title="No Garbage Collector">
     <Trash2 slot="icon" />
@@ -38,7 +38,7 @@ Instead of creating an isolated language ecosystem from scratch, Flame treats Ru
   </LucideCard>
   <LucideCard title="First-Class IDE Intellisense">
     <Code2 slot="icon" />
-    Automatic `.fmi` metadata generation powers VS Code autocomplete and hover documentation directly from `docs.rs`.
+    Automatic `.fmi` interface metadata generation powers VS Code autocomplete and hover documentation directly from dependencies.
   </LucideCard>
 </CardGrid>
 

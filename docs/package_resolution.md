@@ -1,54 +1,78 @@
-# Package Resolution & Native Interop in Flame
+# Package Resolution & Application-Specific Native Runtimes in Flame
 
-Flame provides a seamless interop story with native Rust crates and Flame packages. The package resolution system is designed to automatically detect and link dependencies, generating zero-overhead native bindings ahead-of-time (AOT).
+Flame provides a seamless dependency and native interop model. Rather than requiring a universal runtime that contains every package or forcing developers to transpile their entire application into Rust source, Flame constructs an **application-specific native runtime** tailored directly to the dependencies your application actually uses.
 
 ## How Packages Are Resolved
 
-When you add a package to your Flame project (e.g., `flame add <package_name>`), the `flame.toml` manifest is updated with the dependency path. 
+When you add a package to your Flame project (e.g., `flame add <package_name>` or declare it in `flame.toml`), run:
+
+```bash
+flame install
+```
 
 ### Resolution Flow:
-1. **Dependency Analysis**: During compilation, Flame recursively analyzes all dependencies listed in `flame.toml`.
-2. **Metadata Generation**: For native Rust dependencies, Flame automatically extracts the public API (structs, methods, and functions) using `rustdoc` JSON.
-3. **Interface Files (`.fmi`)**: Flame generates a `.fmi` file for each native plugin. This `.fmi` file is automatically parsed during semantic analysis to provide IDE features (autocomplete, hover) and compile-time type-checking.
-4. **Environment Initialization**: When executing a Flame script or compiling AOT, Flame automatically registers these `.fmi` modules into the global module registry. The parsed `.fmi` modules are cached inside `.flame/pkg/<package>/`.
+1. **Dependency Analysis**: Flame parses the dependencies declared in `flame.toml` and fetches remote packages into `.flame/pkg/<package>/`.
+2. **Metadata Generation (`.fmi`)**: For packages with native Rust implementations, Flame inspects their public API (structs, methods, and functions) using `rustdoc` JSON and syn AST inspection to extract interface metadata.
+3. **Interface Files (`.fmi`)**: Flame generates and caches `.fmi` interface files in `.flame/pkg/<package>/<package>.fmi`. These `.fmi` files provide compile-time type-checking, semantic analysis, and full IDE IntelliSense (autocomplete, hover) without requiring the application developer to have Rust plugin source code in their project.
+4. **Environment Initialization**: The Flame runtime registers these `.fmi` interfaces, enabling Flame source files (`src/`) to call native functionality seamlessly.
 
-## Native Plugin Linking (AOT Compilation)
+---
 
-When you run `flame run <file>` or `flame build`, Flame uses an advanced Ahead-Of-Time (AOT) compiler to generate a standalone Rust binary.
+## Application-Specific Native Runtime Construction
 
-1. **AST Extraction**: The interpreter parses your Flame scripts and resolves module imports.
-2. **Native Bridge Generation**: Flame generates raw C-FFI bridges for every public method of your native dependencies. It creates a `bridge_<crate_name>` wrapper that unpacks the Flame memory representation (`CValue`) into the native Rust types.
-3. **Workspace Scaffold**: Flame scaffolds a temporary Rust workspace in `.flame/build-cache`. It creates a `Cargo.toml` that explicitly links the native dependencies you specified.
-4. **Cargo Compilation**: It invokes `cargo build` on this cache. The AOT compiler links your native Rust plugins with the generated bridge and the Flame runtime library, resulting in a single executable (`<pkg_name>_aot.exe` or `lib<pkg_name>_aot.rlib`).
-5. **Execution Integration**: Flame copies the final native executable to `target/dev/` (or `target/release/`) and spawns the process. 
+When you run `flame build` or `flame build --release`:
 
-## Git URLs and Remote Dependencies
+```text
+Flame Source
+     ↓
+   Blaze
+     ↓
+Dependency Analysis
+     ↓
+Application-Specific Runtime
+     ↓
+Rust / Cargo
+     ↓
+LLVM
+     ↓
+Native Binary
+```
 
-Flame mirrors the Go dependency model for fetching remote packages natively:
-- You can add GitHub dependencies natively by running: `flame add github.com/user/repo@v1.0.0`
-- Flame automatically intercepts standard URL schemas and fetches the repository directly using `git clone`.
-- The repository is cloned directly into the `.flame/pkg/<repo>` cache folder in your project.
-- Remote Flame packages and plugins can specify branches or tags via the `@` symbol (e.g., `@main` or `@v0.2.1`).
+1. **Import & Feature Scanning**: Blaze scans your `src/` files and dependencies to determine the exact set of imported standard modules (e.g., `std.net.http`, `std.json`) and active native plugins.
+2. **Native Bridge Generation**: Flame generates C-FFI bridges (`bridge_<crate_name>`) for each public method required by the dependency graph, converting between Flame's memory layout (`CValue`) and native Rust types.
+3. **Tailored Runtime Scaffold**: Flame constructs an application-specific Cargo configuration in `.flame/build-cache` with `default-features = false`, activating **only** the features and linking **only** the native plugins required by your application.
+4. **Cargo & LLVM Native Build**: Cargo compiles this specialized runtime with LLVM optimizations into `target/dev/` or `target/release/`.
+5. **Clean Filesystem Deployment**: In normal build mode, the compiled native binary executes directly on the host filesystem without VFS. (VFS is used only when explicitly building a self-contained single executable via `flame build --exe` or `flame build --vfs --release`).
 
-## Package Generation
+---
 
-When you configure your project as a library (`type = "pkg"` in `flame.toml`), `flame build` does more than just AOT compile:
-- It generates a full `pkg/` output directory in `target/<profile>/pkg/<pkg_name>`.
-- The `src/` directory and `flame.toml` are mirrored to the output bundle.
-- Any generated native bindings (`.fmi` interface files) and built native `.rlib` archives are included.
-- This creates a fully self-contained package folder ready for distribution or direct GitHub linking!
+## Remote Dependencies & Package Management
 
-## C-ABI Value Layout & Unpacking
+Flame mirrors the modern dependency model for fetching remote packages:
+- Add GitHub dependencies: `flame add github.com/user/repo@v1.0.0`
+- Flame fetches the repository into `.flame/pkg/<repo>`.
+- Packages provide their Flame-side source (`.fm`) and interface metadata (`.fmi`).
+- **Developers never manually copy Rust plugin source code, Cargo projects, or DLL source trees into their application.**
 
-Native objects cross the FFI boundary using the `CValue` struct, an unsafe, memory-efficient union that represents dynamic Flame values. 
+---
 
-When you call a native method:
-1. `Runner` identifies the `Expr::Dot` receiver as a `Value::NativeObject`.
-2. It looks up the associated FFI symbol inside the `native_methods` registry.
-3. It packs the arguments into `CValue` instances and invokes the FFI bridge.
-4. The bridge unpacks the `CValue` arguments, executes the native Rust method, and packs the return value back into a `CValue`.
-5. The `Runner` unpacks the returned `CValue` and integrates it back into the Flame execution context.
+## Package Creation & Distribution
 
-## Summary
+When configuring a library or package (`type = "pkg"` in `flame.toml`), running `flame build` bundles:
+- `flame.toml` manifest.
+- The `src/` directory containing exported Flame code.
+- Generated `.fmi` interface files for bundled native plugins.
+- Built native archives (`.rlib`).
 
-The entire process is transparent to the developer. You simply write Flame code and the compiler transparently detects, bridges, fetches Git dependencies, compiles, and statically links your native Rust plugins into a highly optimized binary—without requiring manual FFI setup.
+Consumers can install your package via `flame install` and immediately benefit from your native plugins and full IDE autocompletion with zero manual FFI bridging.
+
+---
+
+## C-ABI Value Layout & FFI Boundary
+
+Native objects cross the FFI boundary using `CValue`, an efficient memory union representing Flame values:
+1. `Runner` identifies native object methods via `.fmi` signatures.
+2. It looks up the associated FFI symbol in the native methods registry.
+3. It passes arguments into the generated bridge function.
+4. The bridge unpacks the `CValue` arguments, executes the native method, and packs the return value back into a `CValue`.
+5. Because the specialized runtime is compiled with LTO and LLVM optimization, method calls occur with native CPU performance.

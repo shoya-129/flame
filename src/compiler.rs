@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn build_aot_project(
+pub fn build_project(
     pkg_name: &str,
     profile: &str,
     native_deps: &[(String, String)],
@@ -11,6 +11,7 @@ pub fn build_aot_project(
     is_pkg: bool,
     is_test_mode: bool,
     files_to_test: Option<Vec<PathBuf>>,
+    use_vfs: bool,
 ) {
     let build_cache = Path::new(".flame").join("build-cache");
     let _ = fs::create_dir_all(&build_cache);
@@ -70,7 +71,7 @@ pub fn build_aot_project(
                     scan_imports(&path, features);
                 } else if path.extension().and_then(|s| s.to_str()) == Some("fm") {
                     if let Ok(content) = fs::read_to_string(&path) {
-                        // Map imports to features for AOT compilation
+                        // Map imports to features for BlazeVm compilation
                         let import_re = regex::Regex::new(r"import\s+([a-zA-Z0-9_\.]+)").unwrap();
                         for cap in import_re.captures_iter(&content) {
                             let mod_name = &cap[1];
@@ -226,7 +227,7 @@ pub fn build_aot_project(
 
     let cargo_toml = format!(
         r#"[package]
-name = "{pkg_name}_aot"
+name = "{pkg_name}"
 version = "0.1.0"
 edition = "2021"{lib_section}
 
@@ -536,7 +537,7 @@ panic = "abort"
                             if !func.is_static {
                                 main_rs.push_str("        // Self is arg 0, cast from obj_ptr\n");
                                 main_rs.push_str("        if c_args.is_empty() {\n");
-                                main_rs.push_str(&format!("            eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m argument mismatch in native function '{}': expected at least 1 argument (self), got 0\");\n", func.name));
+                                main_rs.push_str(&format!("            eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m argument mismatch in rust function '{}': expected at least 1 argument (self), got 0\");\n", func.name));
                                 main_rs.push_str("            std::process::exit(1);\n");
                                 main_rs.push_str("        }\n");
                                 if func.receiver == Some("self".to_string())
@@ -657,43 +658,47 @@ panic = "abort"
     main_rs.push_str("fn main() {\n");
     main_rs.push_str("    let handle = std::thread::Builder::new().stack_size(32 * 1024 * 1024).spawn(move || {\n");
 
-    // Inject VFS
-    main_rs.push_str("    let mut vfs = std::collections::HashMap::new();\n");
-    let _src_scan_dir = std::env::current_dir().unwrap().join("src");
-    fn collect_vfs(dir: &Path, main_rs: &mut String, base_dir: &Path, prefix: &str) {
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    collect_vfs(&path, main_rs, base_dir, prefix);
-                } else if path.extension().and_then(|s| s.to_str()) == Some("fm")
-                    || path.extension().and_then(|s| s.to_str()) == Some("flame")
-                    || path.extension().and_then(|s| s.to_str()) == Some("fmi")
-                {
-                    if let Ok(content) = fs::read_to_string(&path) {
-                        // Make sure we use forward slashes for internal VFS paths
-                        let rel_path = path
-                            .strip_prefix(base_dir)
-                            .unwrap_or(&path)
-                            .to_string_lossy()
-                            .replace("\\", "/");
-                        let full_rel_path = format!("{}/{}", prefix, rel_path);
-                        main_rs.push_str(&format!("    vfs.insert(\"{}\".to_string(), r########\"{}\"########.to_string());\n", full_rel_path, content));
+    if use_vfs {
+        // Inject VFS only when explicitly requested (e.g. flame build --vfs)
+        main_rs.push_str("    let mut vfs = std::collections::HashMap::new();\n");
+        fn collect_vfs(dir: &Path, main_rs: &mut String, base_dir: &Path, prefix: &str) {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        collect_vfs(&path, main_rs, base_dir, prefix);
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("fm")
+                        || path.extension().and_then(|s| s.to_str()) == Some("flame")
+                        || path.extension().and_then(|s| s.to_str()) == Some("fmi")
+                    {
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            let rel_path = path
+                                .strip_prefix(base_dir)
+                                .unwrap_or(&path)
+                                .to_string_lossy()
+                                .replace("\\", "/");
+                            let full_rel_path = format!("{}/{}", prefix, rel_path);
+                            main_rs.push_str(&format!("    vfs.insert(\"{}\".to_string(), r########\"{}\"########.to_string());\n", full_rel_path, content));
+                        }
                     }
                 }
             }
         }
-    }
-    let base_dir = std::env::current_dir().unwrap().join("src");
-    collect_vfs(&base_dir, &mut main_rs, &base_dir, "src");
+        let base_dir = std::env::current_dir().unwrap().join("src");
+        collect_vfs(&base_dir, &mut main_rs, &base_dir, "src");
 
-    let pkg_dir = std::env::current_dir().unwrap().join(".flame").join("pkg");
-    if pkg_dir.exists() {
-        collect_vfs(&pkg_dir, &mut main_rs, &pkg_dir, ".flame/pkg");
-    }
+        let pkg_dir = std::env::current_dir().unwrap().join(".flame").join("pkg");
+        if pkg_dir.exists() {
+            collect_vfs(&pkg_dir, &mut main_rs, &pkg_dir, ".flame/pkg");
+        }
 
-    main_rs.push_str("    let mut base_runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
-    main_rs.push_str("    base_runner.vfs = Some(vfs);\n");
+        main_rs.push_str("    let mut base_runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
+        main_rs.push_str("    base_runner.vfs = Some(vfs);\n");
+    } else {
+        // Normal builds operate directly on the real filesystem without embedding VFS
+        main_rs.push_str("    let mut base_runner = Runner::new(PathBuf::from(\"src/main.fm\"));\n");
+        main_rs.push_str("    base_runner.vfs = None;\n");
+    }
 
     let mut perms = std::collections::HashSet::new();
     if Path::new("flame.toml").exists() {
@@ -794,7 +799,11 @@ panic = "abort"
         main_rs.push_str(
             "        println!(\"\\nrunning tests in \\x1b[1m{}\\x1b[0m:\", file_path.display());\n",
         );
-        main_rs.push_str("        let src = base_runner.vfs.as_ref().and_then(|vfs| vfs.get(&file_path.to_string_lossy().replace(\"\\\\\", \"/\"))).cloned().unwrap_or_else(|| std::fs::read_to_string(&file_path).unwrap_or_default());\n");
+        if use_vfs {
+            main_rs.push_str("        let src = base_runner.vfs.as_ref().and_then(|vfs| vfs.get(&file_path.to_string_lossy().replace(\"\\\\\", \"/\"))).cloned().unwrap_or_else(|| std::fs::read_to_string(&file_path).unwrap_or_default());\n");
+        } else {
+            main_rs.push_str("        let src = std::fs::read_to_string(&file_path).unwrap_or_default();\n");
+        }
         main_rs.push_str("        let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
         main_rs.push_str("        let mut tokens = Vec::new();\n");
         main_rs.push_str("        loop {\n");
@@ -820,7 +829,7 @@ panic = "abort"
         main_rs.push_str("                if let Err(e) = runner.run(&stmts) {\n");
         main_rs.push_str("                    eprintln!(\"\\x1b[1;31mError during test setup:\\x1b[0m {}\", e);\n");
         main_rs.push_str("                }\n");
-        main_rs.push_str("                let stats = flamelang::test_engine::execute_test_suite(&mut runner, &stmts, \"AOT Test Suite\");\n");
+        main_rs.push_str("                let stats = flamelang::test_engine::execute_test_suite(&mut runner, &stmts, \"Flame Test Suite\");\n");
         main_rs.push_str("                total_passed += stats.passed;\n");
         main_rs.push_str("                total_failed += stats.failed;\n");
         main_rs.push_str("                total_ignored += stats.ignored;\n");
@@ -840,7 +849,11 @@ panic = "abort"
         main_rs.push_str("    }\n");
     } else {
         main_rs.push_str("    let mut runner = base_runner;\n");
-        main_rs.push_str("    let src = runner.vfs.as_ref().and_then(|vfs| vfs.get(\"src/main.fm\")).cloned().unwrap_or_else(|| std::fs::read_to_string(\"src/main.fm\").unwrap_or_default());\n");
+        if use_vfs {
+            main_rs.push_str("    let src = runner.vfs.as_ref().and_then(|vfs| vfs.get(\"src/main.fm\")).cloned().unwrap_or_else(|| std::fs::read_to_string(\"src/main.fm\").unwrap_or_default());\n");
+        } else {
+            main_rs.push_str("    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n");
+        }
         main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
         main_rs.push_str("    let mut tokens = Vec::new();\n");
         main_rs.push_str("    loop {\n");
@@ -895,7 +908,7 @@ panic = "abort"
     let done = Arc::new(AtomicBool::new(false));
     let done_clone = done.clone();
     use std::io::Write;
-    print!("\x1b[1;36m     Linking\x1b[0m native static object files...  ");
+    print!("\x1b[1;36m     Linking\x1b[0m flame static object files...  ");
     let _ = std::io::stdout().flush();
     let spinner_thread = std::thread::spawn(move || {
         let chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -942,25 +955,54 @@ panic = "abort"
     let target_exe = target_dir.join(&exe_name);
 
     if status.success() {
-        let compiled_exe_name = format!("{}_aot{}", pkg_name, std::env::consts::EXE_SUFFIX);
-        let compiled_exe = build_cache
+        let cache_target_dir = build_cache
             .join("target")
             .join(if profile == "release" {
                 "release"
             } else {
                 "debug"
-            })
-            .join(&compiled_exe_name);
+            });
+
+        let mut compiled_exe = None;
+        let candidates = [
+            format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX),
+            format!("{}_aot{}", pkg_name, std::env::consts::EXE_SUFFIX),
+            if is_test_mode {
+                format!("{}_test{}", pkg_name, std::env::consts::EXE_SUFFIX)
+            } else {
+                format!("{}{}", pkg_name, std::env::consts::EXE_SUFFIX)
+            },
+        ];
+
+        for c in &candidates {
+            let candidate_path = cache_target_dir.join(c);
+            if candidate_path.exists() {
+                compiled_exe = Some(candidate_path);
+                break;
+            }
+        }
+
+        let compiled_exe = match compiled_exe {
+            Some(p) => p,
+            None => {
+                eprintln!(
+                    "\x1b[1;31m     Error\x1b[0m could not find compiled binary in {}",
+                    cache_target_dir.display()
+                );
+                std::process::exit(1);
+            }
+        };
+
         if let Err(e) = fs::copy(&compiled_exe, &target_exe) {
             eprintln!(
-                "\x1b[1;31m     Error\x1b[0m failed to copy native executable: {}",
+                "\x1b[1;31m     Error\x1b[0m failed to copy executable: {}",
                 e
             );
             std::process::exit(1);
         }
-        println!("\x1b[1;32m     Finished\x1b[0m building native executable!");
+        println!("\x1b[1;32m     Finished\x1b[0m building executable!");
     } else {
-        eprintln!("\x1b[1;31m     Error\x1b[0m failed to build native executable.");
+        eprintln!("\x1b[1;31m     Error\x1b[0m failed to build executable.");
         std::process::exit(1);
     }
 }
@@ -1014,7 +1056,7 @@ fn generate_param_extraction(
     let mut code = String::new();
     code.push_str(&format!("        if c_args.len() <= {} {{\n", c_idx));
     code.push_str(&format!(
-        "            eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m argument mismatch in native function '{}': expected at least {} arguments, got {{}}\", c_args.len());\n",
+        "            eprintln!(\"\\x1b[1;31mRuntime error:\\x1b[0m argument mismatch in rust function '{}': expected at least {} arguments, got {{}}\", c_args.len());\n",
         func_name, c_idx + 1
     ));
     code.push_str("            std::process::exit(1);\n");

@@ -1,0 +1,231 @@
+---
+title: Production Deployment & Docker
+description: How to build, containerize, and deploy Flame server applications using application-specific native runtimes and Docker multi-stage builds.
+---
+
+import { Aside, Steps, Tabs, TabItem, CardGrid } from '@astrojs/starlight/components';
+import LucideCard from '../../../components/LucideCard.astro';
+import { Box, Server, ShieldCheck, Zap } from 'lucide-astro';
+
+Flame's **application-specific native runtime** architecture enables lean, secure, and ultra-fast production deployments. Because the specialized runtime binary compiled by `flame build --release` already contains all native Rust plugins (such as `flamer`) and required runtime capabilities, **your production runtime container does not require Rust, Cargo, or any `.rs` source code**.
+
+---
+
+## Production Architecture Overview
+
+When you build a Flame application for production:
+
+```text
+Build Stage (Development / CI / Docker Builder)
+├── flame.toml
+├── src/ (Flame source)
+└── flame install ──► .flame/pkg/ (.fm source + .fmi interfaces)
+      ↓
+flame build --release
+      ↓
+Produces specialized native binary in target/release/my_server
+
+──────────────────────────────────────────────────────────────
+
+Runner Stage (Production Container / Minimal VM)
+├── my_server (Specialized Native Runtime Binary)
+├── flame.toml
+├── src/
+└── .flame/pkg/ (.fm + .fmi ONLY — zero .rs files required)
+```
+
+At runtime in production:
+1. The specialized native binary (`my_server`) provides the compiled execution engine and all linked native plugins.
+2. The runtime loads the application logic from `src/` and package interfaces from `.flame/pkg/`.
+3. **All `.rs` files can be deleted or omitted** because all native plugin code is already baked directly into the binary during compilation.
+
+---
+
+## Example Project Setup: Flamer HTTP Server
+
+Consider a production web service built with the `flamer` web framework plugin.
+
+### 1. Manifest (`flame.toml`)
+
+```toml
+[package]
+name = "flame_server"
+version = "0.1.0"
+
+[dependencies]
+flamer = "0.1.0"
+```
+
+### 2. Application Entry Point (`src/main.fm`)
+
+```flame
+import flamer
+
+@Flamer
+fn main () {
+  app.get("/", () -> String {
+    return "Hello from Flame Production Server!"
+  })
+
+  app.get("/health", () -> String {
+    return "{\"status\": \"healthy\", \"runtime\": \"application-specific-native\"}"
+  })
+
+  app.listen(8080)
+}
+
+```
+
+---
+
+## Complete Multi-Stage Dockerfile
+
+Here is the canonical, production-ready `Dockerfile` for building and running a Flame application. It uses a multi-stage build:
+* **Stage 1 (`builder`)**: Installs the Flame toolchain, runs `flame install` to fetch packages and generate `.fmi` interface files, and builds the specialized native binary with `flame build --release`.
+* **Stage 2 (`runner`)**: Uses a minimal runtime base image containing **only the compiled binary, Flame source files, `.flame/pkg/` (`.fm` and `.fmi`), and `flame.toml`**. No Rust compiler or `.rs` files are present.
+
+```dockerfile title="Dockerfile"
+# ==============================================================================
+# Stage 1: Build Environment
+# ==============================================================================
+FROM rust:1.82-bookworm AS builder
+
+# Install Flame toolchain
+RUN cargo install --force flamelang
+
+WORKDIR /app
+
+# Copy project manifest and source files
+COPY flame.toml ./
+COPY src/ ./src/
+
+# Step 1: Install dependencies and ensure .fmi interfaces are properly created
+# 'flame install' resolves all packages (e.g., flamer) and creates/caches .fmi metadata
+RUN flame install
+
+# Step 2: Build the application-specific native runtime binary
+# This compiles a specialized native binary into target/release/flame_server
+RUN flame build --release
+
+# Step 3: Optional hygiene - remove any leftover .rs files in .flame/pkg
+# (Demonstrates that the production runner only needs .fm and .fmi files)
+RUN find .flame/pkg -type f -name "*.rs" -delete || true
+
+# ==============================================================================
+# Stage 2: Minimal Production Runner
+# ==============================================================================
+FROM debian:bookworm-slim AS runner
+
+# Install essential runtime libraries (OpenSSL and certificates if using HTTPS)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 1. Copy the specialized native runtime binary from target/release/
+COPY --from=builder /app/target/release/flame_server /app/flame_server
+
+# 2. Copy the Flame application source code and manifest
+COPY --from=builder /app/flame.toml /app/flame.toml
+COPY --from=builder /app/src/ /app/src/
+
+# 3. Copy the resolved package directory containing .fm and .fmi files ONLY
+# (No Rust source code is copied into production)
+COPY --from=builder /app/.flame/pkg/ /app/.flame/pkg/
+
+# Set non-root security user
+RUN useradd -m -u 1000 flameuser && chown -R flameuser:flameuser /app
+USER flameuser
+
+# Expose server port
+EXPOSE 8080
+
+# Configure environment
+ENV PORT=8080
+ENV FLAME_ENV=production
+
+# Run the specialized application runtime binary directly
+CMD ["/app/flame_server"]
+```
+
+---
+
+## Step-by-Step Build & Run Commands
+
+### 1. Build the Docker Image
+
+From the root of your Flame project containing `flame.toml` and `src/`:
+
+```bash
+docker build -t my-flame-server:latest .
+```
+
+### 2. Run the Container
+
+```bash
+docker run -d --name flame-app -p 8080:8080 my-flame-server:latest
+```
+
+### 3. Verify the Deployment
+
+Test the endpoint using `curl`:
+
+```bash
+curl http://localhost:8080/
+# Returns: Hello from Flame Production Server!
+
+curl http://localhost:8080/health
+# Returns: {"status": "healthy", "runtime": "application-specific-native"}
+```
+
+---
+
+## Why This Model Is Superior
+
+<CardGrid>
+  <LucideCard title="No Rust in Production">
+    <ShieldCheck slot="icon" />
+    The runner container does not need `rustc`, `cargo`, or `.rs` files. All native plugin code (`flamer`) is statically baked into the executable.
+  </LucideCard>
+  <LucideCard title="Minimal Image Size">
+    <Box slot="icon" />
+    By excluding compilation tools and unused standard libraries, runner containers typically stay under 80MB.
+  </LucideCard>
+  <LucideCard title="Instant Boot Time">
+    <Zap slot="icon" />
+    Specialized native runtimes start immediately without JVM warmup, V8 cold starts, or universal interpreter startup lag.
+  </LucideCard>
+  <LucideCard title="Hardened Security">
+    <Server slot="icon" />
+    A smaller attack surface with no package managers or compilers running inside the production environment.
+  </LucideCard>
+</CardGrid>
+
+---
+
+## Important Deployment Checks
+
+### 1. Package `.fmi` Generation During `flame install`
+
+When using plugins and packages in Docker:
+- Make sure `flame install` runs before `flame build --release`.
+- `flame install` inspects native packages and generates the corresponding `.fmi` interface metadata files in `.flame/pkg/<pkg_name>/<pkg_name>.fmi`.
+- These `.fmi` files provide the runtime with method signatures, parameter layouts, and type definitions without needing raw Rust files.
+
+### 2. Real Filesystem Execution
+
+Normal builds (`flame build --release`) execute against the real container filesystem:
+- Standard paths such as `/app/src/main.fm` and `/app/.flame/pkg/...` are accessed directly.
+- No VFS overhead or virtual layer is introduced in normal production mode.
+
+### 3. Single-Executable Alternative (`flame build --vfs --release`)
+
+If you prefer a single standalone binary that requires no external folders at all, you can build with:
+
+```bash
+flame build --vfs --release
+```
+
+In this mode, `src/` and `.flame/pkg/` are embedded directly into the binary via VFS, allowing you to copy only `/app/flame_server` into a scratch or distroless container.

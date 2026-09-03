@@ -3,17 +3,24 @@
   Flame
 </h1>
 
-Flame is a statically typed, fast, and modern programming language built in Rust. It serves as a comprehensive toolchain containing a compiler, an ahead-of-time (AOT) builder, automated code formatting, and zero-overhead native FFI bridging capabilities.
+Flame is a statically typed, compiled programming language with **application-specific native runtimes**. Powered by the Blaze compiler and native Rust/Cargo/LLVM toolchain, Flame generates tailored native runtimes containing only the capabilities, packages, and native plugins your application actually imports and uses.
+
+---
+
+## Core Architectural Principle
+
+> **Every Flame application receives a specialized native runtime containing only the runtime capabilities, packages, and native implementations actually required by that application.**
+>
+> Flame analyzes the application's imports and dependencies, resolves the required package `.fmi` interfaces, and constructs the appropriate runtime. The resulting runtime is built as native code through Rust, Cargo, and LLVM, allowing Flame to maintain a small, dependency-specific runtime and an optimized native binary.
+>
+> Normal builds use the real filesystem. VFS is used only when the developer explicitly requests a self-contained single executable.
 
 ---
 
 ## Why Flame?
-Flame is designed to sit between high-level developer experience and
-native systems programming.
+Flame is designed to sit between high-level developer experience and native systems programming.
 
-Write simple Flame code while being able to use native Rust crates,
-native plugins, hardware APIs, and compile everything into a standalone
-native executable.
+Write expressive Flame code while enjoying seamless access to native Rust crates, native plugins, hardware APIs, and an application-specific runtime compiled into an optimized native executable.
 
 ---
 
@@ -26,10 +33,10 @@ Flame avoids the slow, bottlenecked single-threaded event loops common in legacy
 ---
 
 ## Core Features
-- **Ahead-of-Time (AOT) Compilation**: Directly compile Flame scripts into ultra-fast, statically linked executables with zero external library overhead.
+- **Application-Specific Native Runtimes**: Flame creates a specialized native runtime for each application, containing only the imported modules and plugins. No universal runtime bloat.
 - **Native Dependencies & Local Plugins**: Add public Rust crates or build custom local Rust libraries (`./native`) directly into your project. Flame automatically inspects Rust interfaces to export struct types and signatures to JSON `.fmi` bindings!
 - **World-Class IDE Intellisense**: The Flame VS Code Extension uses native `.fmi` definitions to provide rich type hover info, doc comments, and method autocompletion for standard and local native plugins.
-- **Lightweight Package Manager**: Built-in Golang-style dependency management capable of resolving packages over HTTP without requiring `git`.
+- **Lightweight Package Manager**: Built-in dependency management capable of resolving packages cleanly (`flame install`) without requiring developers to manually copy Rust code.
 
 ---
 
@@ -51,9 +58,11 @@ npm i -g flamelang
 The `flame` (or `flamelang`) binary provides an all-in-one developer workspace toolkit:
 
 ### 1. Running & Building Code
+- **`flame install`**: Resolves and downloads dependencies declared in `flame.toml`, caching packages in `.flame/pkg/` and generating required `.fmi` interface metadata for native plugins.
 - **`flame run <file.fm> [--local]`**: Run a Flame script directly using the interactive compiler engine. When `--local` is specified, local plugins and static native bridges are compiled and executed in real time.
-- **`flame build [entry.fm]`**: Compile your Flame program and its native Rust bridges into a standalone, statically linked dev executable inside `target/dev/`.
-- **`flame build --release`**: Produces an optimized, production-grade standalone executable inside `target/release/`. Configures LLVM for maximum performance with full optimization (`opt-level = 3`), fat Link Time Optimization (`lto = "fat"`), single code generation unit across all crates (`codegen-units = 1`), stripped symbol tables (`strip = true`), and zero-overhead aborting panics (`panic = "abort"`). All native plugins and standard bridges are simultaneously compiled with `--release` flags!
+- **`flame build [entry.fm]`**: Constructs an application-specific native runtime and compiles it into a dev executable inside `target/dev/` (uses normal filesystem, no VFS).
+- **`flame build --release`**: Produces an optimized, production-grade standalone executable inside `target/release/` (uses normal filesystem, no VFS). Configures LLVM for maximum performance with full optimization (`opt-level = 3`), fat Link Time Optimization (`lto = "fat"`), single code generation unit across all crates (`codegen-units = 1`), stripped symbol tables (`strip = true`), and zero-overhead aborting panics (`panic = "abort"`).
+- **`flame build --vfs` / `flame build --vfs --release`**: Single-executable packaging mode where the application and package files are embedded directly into the binary via VFS.
 - **`flame <file.fm>`**: Quick-exec shorthand to parse and run any `.fm` source file.
 
 ### 2. Diagnostics & IDE Integration (`check --json`)

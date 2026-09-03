@@ -158,3 +158,33 @@ Flame's FFI boundary natively supports a vast majority of standard Rust elements
    app.listen(3000)
    ```
 </Steps>
+
+---
+
+## Selective Inclusion in the Application-Specific Runtime
+
+Native Rust implementations are incorporated into the executable **only when required by the application's dependency graph**:
+
+```text
+Application
+   │
+   ├── Flame source
+   ├── flame.toml
+   └── package .fm + .fmi
+            ↓
+      Dependency Analysis
+            ↓
+   Required native plugins
+            ↓
+   Application Runtime
+            ↓
+      Cargo + LLVM
+            ↓
+       Native Binary
+```
+
+### Key Principles for Native Plugins:
+1. **No Manual Source Copying**: The application developer does not manually copy Rust plugin source code, Cargo projects, DLL project trees, or native implementation folders into their application.
+2. **Clean Interface Boundary (`.fmi`)**: The application relies on the Flame-side package source (`.fm`) and the `.fmi` interface metadata.
+3. **Dead Code Elimination**: If a native plugin is registered in `flame.toml` but not actually imported in the code, Flame's dependency analysis excludes it from the application's specialized runtime.
+4. **Production Hygiene**: Because the specialized runtime binary compiled by `flame build --release` contains all native plugin code, production runner containers or servers do not need Rust, Cargo, or any `.rs` files.

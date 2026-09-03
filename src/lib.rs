@@ -1,5 +1,5 @@
 #[cfg(feature = "cli")]
-pub mod aot_compiler;
+pub mod compiler;
 pub mod diagnostics;
 pub mod embedded;
 pub mod lexer;

@@ -139,6 +139,37 @@ if is_overtemp and is_overvoltage {
 }
 ```
 
+### Deterministic Pseudo-Random Generation & Bitmasking (LCG Pattern)
+
+A classic real-world systems pattern combining arithmetic operators, grouping parentheses, and bitwise masking is the **Linear Congruential Generator (LCG)**, as featured in Flame's benchmark pipeline (`examples/benchmark/src/main.fm`):
+
+```flame
+// Deterministic pseudo-random generation (31-bit positive LCG)
+seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
+```
+
+#### Detailed Breakdown & Uses:
+
+1. **Recurrence Relation**:
+   Computes the next pseudo-random integer using the linear recurrence formula:
+   $$X_{n+1} = (a \cdot X_n + c) \pmod m$$
+   Here, $a = 1103515245$ (multiplier) and $c = 12345$ (increment), which are the standard POSIX / ANSI C constants for fast linear congruential generation.
+
+2. **Bitwise AND (`&`) as Fast Modulo**:
+   In binary arithmetic, modulo by a power of two ($2^k$) is equivalent to bitwise masking with $(2^k - 1)$. 
+   - Modulo $2^{31}$ corresponds to masking with $2^{31} - 1 = 2147483647$, written in hexadecimal as `0x7FFFFFFF`.
+   - The binary representation of `0x7FFFFFFF` is `01111111 11111111 11111111 11111111`.
+   - Masking with `& 0x7FFFFFFF` clears the most significant sign bit (bit 31), guaranteeing that the result is strictly a **positive 31-bit integer** while avoiding expensive CPU hardware division instructions (`%`).
+
+3. **Operator Precedence**:
+   Multiplicative (`*`, Level 4) and additive (`+`, Level 5) operations have higher precedence than bitwise AND (`&`, Level 9). Enclosing `(seed * 1103515245 + 12345)` in parentheses ensures that the multiplication and addition complete before applying the bitmask, making the arithmetic explicit and portable.
+
+4. **Practical Use Cases in Flame**:
+   - **Deterministic Benchmarking**: As used in `examples/benchmark/src/main.fm`, this pattern creates a predictable, reproducible stream of event records (`user_id`, `category`, `value`) across diverse machines without variability.
+   - **Zero-Dependency PRNG**: Generates pseudo-random numbers without importing external crates or initializing OS entropy pools.
+   - **Game Development & Procedural Generation**: Ideal for seed-based procedural world generation, terrain meshes, and particle effects.
+   - **Hardware & Sensor Simulation**: Simulates noisy sensor signals, encoder jitter, and network telemetry in edge test suites.
+
 ---
 
 ## 6. Comparison & Relational Operators

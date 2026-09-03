@@ -113,28 +113,45 @@ flame run
 ```
 
 #### `flame build`
-Compiles your Flame application and its native Rust bridges into a standalone executable:
+Constructs an **application-specific native runtime** containing only the packages, standard library features, and native plugins imported by your project. It compiles the specialized runtime via Rust/Cargo/LLVM into an executable:
 ```bash title="bash"
-# Debug build in target/dev/
+# Debug build in target/dev/ (uses normal filesystem, no VFS)
 flame build
 
-# Release build in target/release/
+# Release build in target/release/ (uses normal filesystem, no VFS)
 flame build --release
 ```
 
-<Aside type="tip" title="Release Optimizations">
-`flame build --release` configures Cargo and LLVM for maximum performance:
-- Full optimization (`opt-level = 3`)
-- Fat Link Time Optimization (`lto = "fat"`)
-- Single code generation unit (`codegen-units = 1`)
-- Stripped symbol tables (`strip = true`)
-- Zero-overhead aborting panics (`panic = "abort"`)
-- Automatic stripping of all `@Test`, `@Setup`, and `@Cleanup` test fixtures!
+<Aside type="note" title="Normal Filesystem Execution">
+Standard `flame build` and `flame build --release` execute against the real filesystem and **do not use VFS**. Unused packages and runtime components are excluded from the binary.
+</Aside>
+
+#### `flame build --exe` / `flame build --vfs --release` (Single Executable Mode)
+When you require a self-contained single executable that bundles all application source files, packages, and `.fmi` interfaces directly inside the binary, pass `--exe` or `--vfs`:
+```bash title="bash"
+# Self-contained single executable with embedded VFS
+flame build --exe
+
+# Optimized production single executable with embedded VFS
+flame build --exe --release
+# or
+flame build --vfs --release
+```
+
+<Aside type="tip" title="VFS Is an Optional Packaging Mechanism">
+VFS is used **only** when explicitly requesting a self-contained single binary (`--exe` or `--vfs`). Normal builds operate directly on the real host filesystem.
 </Aside>
 
 ---
 
 ### 2. Package & Native Plugin Management
+
+#### `flame install`
+Resolves and installs all dependencies declared in `flame.toml`:
+```bash title="bash"
+flame install
+```
+Flame downloads package repositories from their configured GitHub/registry sources, caches them in `.flame/pkg/`, and ensures `.fmi` interface metadata is generated for all packages with native plugins. Developers **never manually copy Rust source or Cargo projects into the application**.
 
 #### `flame new <name>`
 Initializes a new Flame workspace directory with a starter manifest and directory structure:
@@ -143,7 +160,7 @@ flame new my_app
 ```
 
 #### `flame add <url_or_name>`
-Downloads and registers external Flame modules or packages:
+Downloads and registers external Flame modules or packages into `flame.toml`:
 ```bash title="bash"
 flame add https://github.com/example/flame-package
 ```

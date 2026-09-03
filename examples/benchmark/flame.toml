@@ -5,8 +5,6 @@ edition = "2026"
 type = "pkg"
 
 [dependencies]
-flamer = "https://github.com/shoya-129/flamer"
 std = "0.1.0"
 
 [plugins]
-bridge = "./native"

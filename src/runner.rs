@@ -882,7 +882,7 @@ impl Runner {
                             }
                         }
                     } else {
-                        // In AOT (or when metadata is missing), we gracefully fallback
+                        // In BlazeVM (or when metadata is missing), we gracefully fallback
                         // to an empty formula module. Native method bindings are statically
                         // resolved through the `native_methods` map on method invocation.
                         mod_env.lock().unwrap().define(

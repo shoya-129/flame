@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
+#[cfg(feature = "cli")]
+use std::io::{Read, Write};
+#[cfg(feature = "cli")]
+use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FlameParamMeta {
@@ -386,6 +390,218 @@ pub fn remove_package(pkg_name: &str) {
     println!("\x1b[1;32m     Removed\x1b[0m package '{}'", pkg_name);
 }
 
+// Format helper for bytes (KB, MB, GB)
+#[cfg(feature = "cli")]
+pub fn format_byte_size(bytes: usize) -> String {
+    if bytes >= 1024 * 1024 * 1024 {
+        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    } else if bytes >= 1024 * 1024 {
+        format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.2} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+// Format helper for transfer speed (KB/s, MB/s)
+#[cfg(feature = "cli")]
+pub fn format_transfer_speed(bytes: usize, elapsed_secs: f64) -> String {
+    if elapsed_secs <= 0.04 {
+        return "-- MB/s".to_string();
+    }
+    let bps = bytes as f64 / elapsed_secs;
+    if bps >= 1024.0 * 1024.0 * 1024.0 {
+        format!("{:.2} GB/s", bps / (1024.0 * 1024.0 * 1024.0))
+    } else if bps >= 1024.0 * 1024.0 {
+        format!("{:.2} MB/s", bps / (1024.0 * 1024.0))
+    } else if bps >= 1024.0 {
+        format!("{:.2} KB/s", bps / 1024.0)
+    } else {
+        format!("{:.0} B/s", bps)
+    }
+}
+
+// Line-based downloading loader
+#[cfg(feature = "cli")]
+pub fn download_archive_with_loader(
+    target: &str,
+    source_url: &str,
+    target_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut url = source_url.to_string();
+    let mut version = None;
+    if let Some(idx) = url.rfind('@') {
+        if idx > url.rfind('/').unwrap_or(0) {
+            version = Some(url[idx + 1..].to_string());
+            url = url[..idx].to_string();
+        }
+    }
+
+    let download_url = if let Some(v) = &version {
+        if url.contains("github.com") {
+            let repo = url.replace("https://github.com/", "").replace("github.com/", "");
+            format!("https://api.github.com/repos/{}/zipball/{}", repo, v)
+        } else {
+            format!("{}/archive/refs/tags/{}.zip", url.trim_end_matches('/'), v)
+        }
+    } else {
+        if url.contains("github.com") {
+            let repo = url.replace("https://github.com/", "").replace("github.com/", "");
+            format!("https://api.github.com/repos/{}/zipball/HEAD", repo)
+        } else {
+            format!("{}/archive/refs/heads/main.zip", url.trim_end_matches('/'))
+        }
+    };
+
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("Flamelang-Package-Manager")
+        .build()?;
+
+    let fetch_with_loader = |u: &str| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let mut req = client.get(u);
+        if u.contains("api.github.com") {
+            if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+                req = req.header("Authorization", format!("Bearer {}", token));
+            }
+        }
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let target_name = target.to_string();
+        let spin_handle = std::thread::spawn(move || {
+            let spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let mut i = 0;
+            while rx.try_recv().is_err() {
+                print!(
+                    "\r   \x1b[1;36m⚙\x1b[0m \x1b[1;36m{}\x1b[0m Connecting  to '{}'...\x1b[K",
+                    spinners[i], target_name
+                );
+                let _ = std::io::stdout().flush();
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                i = (i + 1) % spinners.len();
+            }
+        });
+
+        let resp_res = req.send();
+        let _ = tx.send(());
+        let _ = spin_handle.join();
+
+        let mut resp = match resp_res {
+            Ok(r) => r,
+            Err(e) => {
+                if e.is_connect() {
+                    return Err(format!("Network connection failed (could not reach server). Check your internet connection: {}", e).into());
+                } else if e.is_timeout() {
+                    return Err(format!("Request timed out. The remote host took too long to respond: {}", e).into());
+                } else {
+                    return Err(format!("Network transfer error: {}", e).into());
+                }
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Err(format!("Package not found (HTTP 404). Check if repository or tag exists: {}", u).into());
+            } else if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                return Err(format!("GitHub API rate limit exceeded or access forbidden (HTTP {}). Try setting the GITHUB_TOKEN environment variable.", status).into());
+            } else if status.is_server_error() {
+                return Err(format!("Remote server error (HTTP {}). The repository host is currently unavailable.", status).into());
+            } else {
+                return Err(format!("HTTP error {} ({})", status, u).into());
+            }
+        }
+
+        let total_size = resp.content_length();
+        let mut data = Vec::new();
+        let mut chunk = [0u8; 16384];
+        let start = std::time::Instant::now();
+        let mut last_draw = std::time::Instant::now();
+        let spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+        let mut spin = 0;
+
+        loop {
+            let n = resp.read(&mut chunk)?;
+            if n == 0 {
+                break;
+            }
+            data.extend_from_slice(&chunk[..n]);
+
+            if last_draw.elapsed().as_millis() >= 80 {
+                last_draw = std::time::Instant::now();
+                spin = (spin + 1) % spinners.len();
+                let elapsed = start.elapsed().as_secs_f64();
+                let speed = format_transfer_speed(data.len(), elapsed);
+                let size_disp = if let Some(tot) = total_size {
+                    let pct = (data.len() as f64 / tot as f64 * 100.0).clamp(0.0, 100.0);
+                    format!("{} / {} ({:.1}%)", format_byte_size(data.len()), format_byte_size(tot as usize), pct)
+                } else {
+                    format_byte_size(data.len())
+                };
+                print!(
+                    "\r   \x1b[1;36m⚙\x1b[0m \x1b[1;36m{}\x1b[0m Downloading '{}' [{}] at {}\x1b[K",
+                    spinners[spin], target, size_disp, speed
+                );
+                let _ = std::io::stdout().flush();
+            }
+        }
+
+        let total_elapsed = start.elapsed().as_secs_f64();
+        let duration_str = if total_elapsed < 1.0 {
+            let ms = start.elapsed().as_millis().max(1);
+            format!("{}ms", ms)
+        } else {
+            format!("{:.2}s", total_elapsed)
+        };
+        print!(
+            "\r   \x1b[1;32m✓\x1b[0m Downloaded  '{}' ({} in {})\x1b[K\n",
+            target, format_byte_size(data.len()), duration_str
+        );
+        let _ = std::io::stdout().flush();
+        Ok(data)
+    };
+
+    let mut bytes = fetch_with_loader(&download_url);
+    if bytes.is_err() && version.is_none() {
+        let fallback = format!("{}/archive/refs/heads/master.zip", url.trim_end_matches('/'));
+        bytes = fetch_with_loader(&fallback);
+    }
+
+    let data = bytes?;
+    let cursor = std::io::Cursor::new(data);
+    let mut archive = zip::ZipArchive::new(cursor)?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => path.to_owned(),
+            None => continue,
+        };
+
+        let mut components = outpath.components();
+        components.next(); // skip root dir in zip
+        let rel_path: std::path::PathBuf = components.collect();
+        if rel_path.as_os_str().is_empty() {
+            continue;
+        }
+
+        let target_path = target_dir.join(&rel_path);
+        if (*file.name()).ends_with('/') {
+            let _ = fs::create_dir_all(&target_path);
+        } else {
+            if let Some(p) = target_path.parent() {
+                if !p.exists() {
+                    let _ = fs::create_dir_all(p);
+                }
+            }
+            let mut outfile = fs::File::create(&target_path)?;
+            std::io::copy(&mut file, &mut outfile)?;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(feature = "cli")]
 pub fn ensure_dependencies_installed(is_release: bool) {
     // Compile std_bridge directly since it uses #[flame_export] now
@@ -438,8 +654,8 @@ pub fn ensure_dependencies_installed(is_release: bool) {
     let mut native_to_compile = native_deps;
     native_to_compile.extend(plugins);
 
-    // Helper to fetch remote dependency
     let fetch_remote = |target: &str, source: &str| -> String {
+
         let is_local = source.starts_with('.') || source.starts_with('/') || source == "*";
         if is_local {
             if source == "*" {
@@ -451,111 +667,16 @@ pub fn ensure_dependencies_installed(is_release: bool) {
             let pkg_dir = Path::new(".flame").join("pkg");
             let target_dir = pkg_dir.join(&target);
 
-            if !source.starts_with("http") {
-                // If it's a version number and not a URL, we skip remote fetching for now
-                // as there's no central registry. (e.g. `std = "0.1.0"`)
+            if !source.starts_with("http") && !source.contains("github.com") {
                 return target.to_string();
             }
 
             if !target_dir.exists() {
                 let _ = fs::create_dir_all(&pkg_dir);
-                println!(
-                    "\x1b[1;36m   Fetching\x1b[0m '{}' from {}...",
-                    target, source
-                );
-
-                let mut url = source.to_string();
-                let mut version = None;
-                if let Some(idx) = url.rfind('@') {
-                    if idx > url.rfind('/').unwrap_or(0) {
-                        version = Some(url[idx + 1..].to_string());
-                        url = url[..idx].to_string();
-                    }
-                }
-                let download_url = if let Some(v) = &version {
-                    if url.contains("github.com") {
-                        let repo = url.replace("https://github.com/", "").replace("github.com/", "");
-                        format!("https://api.github.com/repos/{}/zipball/{}", repo, v)
-                    } else {
-                        format!("{}/archive/refs/tags/{}.zip", url.trim_end_matches('/'), v)
-                    }
-                } else {
-                    if url.contains("github.com") {
-                        let repo = url.replace("https://github.com/", "").replace("github.com/", "");
-                        format!("https://api.github.com/repos/{}/zipball/HEAD", repo)
-                    } else {
-                        format!("{}/archive/refs/heads/main.zip", url.trim_end_matches('/'))
-                    }
-                };
-
-                let download_zip = |u: &str| -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-                    let client_builder = reqwest::blocking::Client::builder()
-                        .user_agent("Flamelang-Package-Manager");
-                    
-                    let client = client_builder.build()?;
-                    let mut req = client.get(u);
-                    
-                    if u.contains("api.github.com") {
-                        if let Ok(token) = std::env::var("GITHUB_TOKEN") {
-                            req = req.header("Authorization", format!("Bearer {}", token));
-                        }
-                    }
-                    
-                    let resp = req.send()?;
-                    if resp.status().is_success() {
-                        Ok(resp.bytes()?.to_vec())
-                    } else {
-                        Err(format!("HTTP {}", resp.status()).into())
-                    }
-                };
-
-                let mut bytes = download_zip(&download_url);
-                if bytes.is_err() && version.is_none() {
-                    // Fallback to master
-                    let fallback = format!(
-                        "{}/archive/refs/heads/master.zip",
-                        url.trim_end_matches('/')
-                    );
-                    bytes = download_zip(&fallback);
-                }
-
-                if let Ok(data) = bytes {
-                    let cursor = std::io::Cursor::new(data);
-                    if let Ok(mut archive) = zip::ZipArchive::new(cursor) {
-                        for i in 0..archive.len() {
-                            let mut file = archive.by_index(i).unwrap();
-                            let outpath = match file.enclosed_name() {
-                                Some(path) => path.to_owned(),
-                                None => continue,
-                            };
-
-                            let mut components = outpath.components();
-                            components.next(); // skip root dir
-                            let rel_path: std::path::PathBuf = components.collect();
-
-                            if rel_path.as_os_str().is_empty() {
-                                continue;
-                            }
-
-                            let target_path = target_dir.join(&rel_path);
-
-                            if (*file.name()).ends_with('/') {
-                                let _ = fs::create_dir_all(&target_path);
-                            } else {
-                                if let Some(p) = target_path.parent() {
-                                    if !p.exists() {
-                                        let _ = fs::create_dir_all(&p);
-                                    }
-                                }
-                                let mut outfile = fs::File::create(&target_path).unwrap();
-                                std::io::copy(&mut file, &mut outfile).unwrap();
-                            }
-                        }
-                    }
-                } else {
-                    println!(
-                        "\x1b[1;31merror:\x1b[0m failed to fetch plugin '{}'",
-                        target
+                if let Err(e) = download_archive_with_loader(target, source, &target_dir) {
+                    eprintln!(
+                        "\r\x1b[1;31m  ✗ Failed\x1b[0m downloading package '{}': {}\x1b[K",
+                        target, e
                     );
                 }
             }
@@ -563,38 +684,60 @@ pub fn ensure_dependencies_installed(is_release: bool) {
         }
     };
 
-    // Fetch pure Flame dependencies
     for (target, source) in deps {
         fetch_remote(&target, &source);
     }
 
-    // Fetch and compile native dependencies & plugins
     for (target, source) in native_to_compile {
         let plugin_path_str = fetch_remote(&target, &source);
         let plugin_path = Path::new(&plugin_path_str);
 
         if plugin_path.join("Cargo.toml").exists() {
-            println!(
-                "\x1b[1;36m   Compiling\x1b[0m native plugin '{}' ({})...",
-                target,
-                if is_release {
-                    "release [optimized]"
-                } else {
-                    "dev [unoptimized]"
+            let start = std::time::Instant::now();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let target_name = target.to_string();
+            let mode = if is_release { "release" } else { "dev" };
+            let spin_handle = std::thread::spawn(move || {
+                let spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                let mut i = 0;
+                while rx.try_recv().is_err() {
+                    let elapsed = start.elapsed().as_secs_f64();
+                    print!(
+                        "\r   \x1b[1;36m⚙\x1b[0m \x1b[1;36m{}\x1b[0m Compiling   native plugin '{}' ({}, {:.1}s)...\x1b[K",
+                        spinners[i], target_name, mode, elapsed
+                    );
+                    let _ = std::io::stdout().flush();
+                    std::thread::sleep(std::time::Duration::from_millis(80));
+                    i = (i + 1) % spinners.len();
                 }
-            );
+            });
+
             let mut cmd = std::process::Command::new("cargo");
             cmd.arg("build");
             if is_release {
                 cmd.arg("--release");
             }
             let output = cmd.current_dir(plugin_path).output();
+            let _ = tx.send(());
+            let _ = spin_handle.join();
+
+            let elapsed_str = if start.elapsed().as_secs_f64() < 1.0 {
+                format!("{}ms", start.elapsed().as_millis())
+            } else {
+                format!("{:.2}s", start.elapsed().as_secs_f64())
+            };
+
             if let Ok(out) = output {
                 if !out.status.success() {
-                    println!(
-                        "Failed to compile {}: {}",
+                    eprintln!(
+                        "\r   \x1b[1;31m✗\x1b[0m Failed to compile {}: {}\x1b[K",
                         target,
                         String::from_utf8_lossy(&out.stderr)
+                    );
+                } else {
+                    println!(
+                        "\r   \x1b[1;32m✓\x1b[0m Compiled    native plugin '{}' ({}) in {}\x1b[K",
+                        target, mode, elapsed_str
                     );
                 }
             }
@@ -604,11 +747,19 @@ pub fn ensure_dependencies_installed(is_release: bool) {
 }
 
 pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
+    inspect_native_plugin_opt(target, plugin_path, false);
+}
+
+pub fn inspect_native_plugin_forced(target: &str, plugin_path: &Path) {
+    inspect_native_plugin_opt(target, plugin_path, true);
+}
+
+pub fn inspect_native_plugin_opt(target: &str, plugin_path: &Path, force: bool) {
     let pkg_dir = Path::new(".flame").join("pkg").join(target);
     let fmi_path = pkg_dir.join(format!("{}.fmi", target));
 
     let mut needs_update = true;
-    if fmi_path.exists() {
+    if !force && fmi_path.exists() {
         if let Ok(fmi_meta) = fs::metadata(&fmi_path) {
             if let Ok(fmi_mtime) = fmi_meta.modified() {
                 needs_update = false;
@@ -637,9 +788,10 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
     }
 
     println!(
-        "\x1b[1;36m  Inspecting\x1b[0m native Rust plugin '{}' via internal parser...",
+        "\x1b[1;36m  Inspecting\x1b[0m rust plugin '{}' via fmi parser...",
         target
     );
+
 
     let cargo_toml_path = plugin_path.join("Cargo.toml");
     let mut crate_name = target.to_string();
@@ -683,7 +835,306 @@ pub fn inspect_native_plugin(target: &str, plugin_path: &Path) {
     }
 }
 
+#[cfg(feature = "cli")]
+pub fn generate_package_fmi(target: &str, target_dir: &Path, is_release: bool) -> bool {
+    let pkg_fmi_dir = Path::new(".flame").join("pkg").join(target);
+    let fmi_path = pkg_fmi_dir.join(format!("{}.fmi", target));
+
+    // Case 1: Package or plugin with Rust native code (Cargo.toml or native/Cargo.toml)
+    let native_path = if target_dir.join("Cargo.toml").exists() {
+        Some(target_dir.to_path_buf())
+    } else if target_dir.join("native").join("Cargo.toml").exists() {
+        Some(target_dir.join("native"))
+    } else {
+        None
+    };
+
+    if let Some(npath) = native_path {
+        let start_build = std::time::Instant::now();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let target_name = target.to_string();
+        let spin_handle = std::thread::spawn(move || {
+            let spinners = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let mut i = 0;
+            while rx.try_recv().is_err() {
+                let elapsed = start_build.elapsed().as_secs_f64();
+                print!(
+                    "\r   \x1b[1;36m⚙\x1b[0m \x1b[1;36m{}\x1b[0m Compiling   rust plugin '{}' ({:.1}s)...\x1b[K",
+                    spinners[i], target_name, elapsed
+                );
+                let _ = std::io::stdout().flush();
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                i = (i + 1) % spinners.len();
+            }
+        });
+
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.arg("build");
+        if is_release {
+            cmd.arg("--release");
+        }
+        let res = cmd.current_dir(&npath).output();
+        let _ = tx.send(());
+        let _ = spin_handle.join();
+
+        let elapsed_str = if start_build.elapsed().as_secs_f64() < 1.0 {
+            format!("{}ms", start_build.elapsed().as_millis())
+        } else {
+            format!("{:.2}s", start_build.elapsed().as_secs_f64())
+        };
+
+        if let Ok(out) = res {
+            if !out.status.success() {
+                eprintln!(
+                    "\r   \x1b[1;31m✗\x1b[0m Failed to compile native plugin '{}': {}\x1b[K",
+                    target,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                return false;
+            }
+        }
+        print!(
+            "\r   \x1b[1;32m✓\x1b[0m Compiled    rust plugin '{}' in {}\x1b[K\n",
+            target, elapsed_str
+        );
+        let _ = std::io::stdout().flush();
+
+        inspect_native_plugin_forced(target, &npath);
+        println!(
+            "   \x1b[1;32m✓\x1b[0m Generated   .fmi interface for '{}' at {}",
+            target,
+            fmi_path.display()
+        );
+        return true;
+    }
+
+    // Case 2: Pure Flame package - inspect .fm files to generate cached .fmi interface
+    let src_dir = if target_dir.join("src").exists() {
+        target_dir.join("src")
+    } else {
+        target_dir.to_path_buf()
+    };
+
+    let mut functions = Vec::new();
+    let mut structs = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(&src_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("fm") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    let mut lexer = crate::lexer::Lexer::new(&content);
+                    let mut tokens = Vec::new();
+                    loop {
+                        let tok = lexer.next_token();
+                        let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                        tokens.push(tok);
+                        if is_eof {
+                            break;
+                        }
+                    }
+                    let mut parser = crate::parser::Parser::new(tokens, path.to_string_lossy().to_string());
+                    if let Ok(stmts) = parser.parse() {
+                        for stmt in stmts {
+                            match stmt {
+                                crate::parser::Stmt::FuncDecl { name, params, return_type, .. } => {
+                                    functions.push(FlameFunctionMeta {
+                                        name: name.clone(),
+                                        flame_name: name,
+                                        params: params.into_iter().map(|p| FlameParamMeta {
+                                            name: p.name,
+                                            type_name: if p.type_name.is_empty() { "any".to_string() } else { p.type_name },
+                                            is_callback: false,
+                                            is_ref: p.is_ref,
+                                            is_mut: p.is_mut,
+                                        }).collect(),
+                                        return_type: return_type.unwrap_or_else(|| "void".to_string()),
+                                        is_static: false,
+                                        is_generic: false,
+                                        is_async: false,
+                                        is_constructor: false,
+                                        persistent_runtime: false,
+                                        receiver: None,
+                                        docs: None,
+                                        requires: Vec::new(),
+                                        permissions: Vec::new(),
+                                    });
+                                }
+                                crate::parser::Stmt::StructDecl { name, fields, .. } => {
+                                    structs.push(FlameStructMeta {
+                                        name: name.clone(),
+                                        flame_name: name,
+                                        methods: Vec::new(),
+                                        fields: fields.into_iter().map(|(f_name, f_type)| FlameStructFieldMeta {
+                                            name: f_name,
+                                            type_name: if f_type.is_empty() { "any".to_string() } else { f_type },
+                                            docs: None,
+                                        }).collect(),
+                                        docs: None,
+                                    });
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !functions.is_empty() || !structs.is_empty() {
+        let meta = FlameMeta {
+            module: target.to_string(),
+            kind: "flame".to_string(),
+            lib: None,
+            functions,
+            structs,
+            docs: None,
+        };
+        let _ = fs::create_dir_all(&pkg_fmi_dir);
+        if let Ok(meta_str) = serde_json::to_string_pretty(&meta) {
+            let _ = fs::write(&fmi_path, meta_str);
+            println!(
+                "   \x1b[1;32m✓\x1b[0m Generated   .fmi interface for '{}' at {}",
+                target,
+                fmi_path.display()
+            );
+            return true;
+        }
+    }
+
+    false
+}
+
+#[cfg(feature = "cli")]
+pub fn install_all_packages(args: &[String]) {
+    let toml_path = Path::new("flame.toml");
+    if !toml_path.exists() {
+        println!("\x1b[1;31merror:\x1b[0m no flame.toml manifest file found in the current directory.");
+        println!("help: run this command inside a valid Flame project directory.");
+        return;
+    }
+
+    let is_release = args.contains(&"--release".to_string()) || args.contains(&"-r".to_string());
+    let force = args.contains(&"--force".to_string()) || args.contains(&"-f".to_string());
+
+    println!();
+    println!("\x1b[1;36m  Installing\x1b[0m dependencies declared in flame.toml...\n");
+
+    let content = match fs::read_to_string(toml_path) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("\x1b[1;31merror:\x1b[0m failed to read flame.toml: {}", e);
+            return;
+        }
+    };
+
+    let deps = parse_section_entries(&content, "[dependencies]");
+    let native_deps = parse_section_entries(&content, "[native-dependencies]");
+    let plugins = parse_section_entries(&content, "[plugins]");
+
+    let pkg_dir = Path::new(".flame").join("pkg");
+    let _ = fs::create_dir_all(&pkg_dir);
+
+    let mut successful_installs = 0;
+    let mut errors = 0;
+
+    // 1. Process pure Flame dependencies & remote packages
+    for (target, source) in deps {
+        let is_local = source.starts_with('.') || source.starts_with('/') || source == "*";
+        if is_local {
+            println!("   \x1b[1;35m•\x1b[0m Linked      local package '{}' ({})", target, source);
+            let local_dir = if source == "*" { PathBuf::from(&target) } else { PathBuf::from(&source) };
+            generate_package_fmi(&target, &local_dir, is_release);
+            successful_installs += 1;
+        } else if source.starts_with("http") || source.contains("github.com") {
+            let target_dir = pkg_dir.join(&target);
+            let mut download_ok = true;
+            if !target_dir.exists() || force {
+                if target_dir.exists() && force {
+                    let _ = fs::remove_dir_all(&target_dir);
+                }
+                match download_archive_with_loader(&target, &source, &target_dir) {
+                    Ok(_) => {
+                        successful_installs += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("   \x1b[1;31m✗\x1b[0m Failed downloading package '{}': {}", target, e);
+                        errors += 1;
+                        download_ok = false;
+                    }
+                }
+            } else {
+                println!("   \x1b[1;34m•\x1b[0m Cached      package '{}' (use --force to re-download)", target);
+                successful_installs += 1;
+            }
+
+            if download_ok && target_dir.exists() {
+                generate_package_fmi(&target, &target_dir, is_release);
+            }
+        } else {
+            println!("   \x1b[1;36m•\x1b[0m Resolved    package '{}' version {}", target, source);
+            successful_installs += 1;
+        }
+    }
+
+    // 2. Process native-dependencies and plugins
+    let mut native_to_process = native_deps;
+    native_to_process.extend(plugins);
+
+    if !native_to_process.is_empty() {
+        println!();
+    }
+
+    for (target, source) in native_to_process {
+        let is_local = source.starts_with('.') || source.starts_with('/') || source == "*";
+        let target_dir = if is_local {
+            if source == "*" {
+                PathBuf::from(&target)
+            } else {
+                PathBuf::from(&source)
+            }
+        } else if source.starts_with("http") || source.contains("github.com") {
+            let dest = pkg_dir.join(&target);
+            if !dest.exists() || force {
+                if dest.exists() && force {
+                    let _ = fs::remove_dir_all(&dest);
+                }
+                if let Err(e) = download_archive_with_loader(&target, &source, &dest) {
+                    eprintln!("   \x1b[1;31m✗\x1b[0m Failed downloading plugin '{}': {}", target, e);
+                    errors += 1;
+                    continue;
+                }
+            } else {
+                println!("   \x1b[1;34m•\x1b[0m Cached      plugin '{}'", target);
+            }
+            dest
+        } else {
+            pkg_dir.join(&target)
+        };
+
+        if generate_package_fmi(&target, &target_dir, is_release) {
+            successful_installs += 1;
+        } else if is_local {
+            println!("   \x1b[1;33m⚠\x1b[0m Warning: local plugin '{}' at '{}' does not contain Cargo.toml", target, target_dir.display());
+        }
+    }
+
+    if errors > 0 {
+        println!(
+            "\n\x1b[1;31merror:\x1b[0m completed with {} error(s) during installation.\n",
+            errors
+        );
+    } else {
+        println!(
+            "\n\x1b[1;32m  Finished\x1b[0m successfully installed {} package(s) and plugins.\n",
+            successful_installs
+        );
+    }
+}
+
 pub fn gen_fmi_from_rust_file(rust_file_path: &std::path::Path) {
+
     if !rust_file_path.exists() {
         println!("\x1b[1;31merror:\x1b[0m file '{}' not found", rust_file_path.display());
         return;

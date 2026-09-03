@@ -157,10 +157,13 @@ Because `type = "pkg"`, Flame acts as a package bundler. It will create a direct
 
 You don't need a centralized package registry to distribute your package! Just push your repository to GitHub. 
 
-Consumers can install your package exactly as it is configured natively:
+Consumers can install your package using the package manager:
 
-```bash
+```bash title="bash"
 flame add github.com/username/my_package@v1.0.0
+# or declare in flame.toml and run:
+flame install
 ```
 
-Flame will clone the repository natively, parse the exported annotations and functions, and make your bundled Rust plugins instantly available in their projects.
+Flame fetches the package natively, caches the Flame sources and `.fmi` interface files, and makes your package functionality instantly available. Consumers **never need to manually copy Rust source code or manage Cargo files in their applications**. During `flame build`, Flame's dependency analysis automatically integrates only the required native plugins into that application's specialized runtime.
+

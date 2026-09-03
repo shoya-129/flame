@@ -37,7 +37,7 @@ fn process_events(events: [(Int, Int, Int, Float, Int)]) -> (Int, Float, Float, 
     let mut count = 0
     let mut total = 0.0
     let mut minimum = math.inf()
-    let mut maximum = - math.inf()
+    let mut maximum =-math.inf()
     let mut cat0 = 0.0
     let mut cat1 = 0.0
     let mut cat2 = 0.0
@@ -64,13 +64,11 @@ fn process_events(events: [(Int, Int, Int, Float, Int)]) -> (Int, Float, Float, 
             let t_millis = t_val.toInt()
 
             checksum = checksum^event_id^timestamp^user_id^t_millis^category
-            
             // Statistics
             count = count + 1
             total = total + transformed.clone()
             minimum = math.min(minimum, transformed.clone())
             maximum = math.max(maximum, transformed.clone())
-
             match category {
                 0 => cat0 = cat0 + transformed.clone(),
                 1 => cat1 = cat1 + transformed.clone(),
@@ -82,11 +80,14 @@ fn process_events(events: [(Int, Int, Int, Float, Int)]) -> (Int, Float, Float, 
                 7 => cat7 = cat7 + transformed.clone(),
                 8 => cat8 = cat8 + transformed.clone(),
                 9 => cat9 = cat9 + transformed.clone(),
-                _ => {}
+                _ => {
+                }
+
             }
 
             processed.push((transformed, event_id))
         }
+
     }
 
     // Flame currently lacks a built-in array `.sort()`, so we do a simple pass or leave it.

@@ -1,7 +1,7 @@
 {
   "name": "flamelang",
-  "version": "4.0.0",
-  "description": "",
+  "version": "4.1.0",
+  "description": "A fast, statically typed systems programming language built in Rust",
   "license": "ISC",
   "author": "shoya-129",
   "type": "module",

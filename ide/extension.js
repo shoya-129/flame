@@ -186,8 +186,59 @@ async function runCheck(document, position) {
     return result;
 }
 
+function removeTableBorders(markdown) {
+    if (!markdown || typeof markdown !== 'string' || !markdown.includes('|')) return markdown;
+
+    const lines = markdown.split('\n');
+    const result = [];
+    let inTable = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+            const cells = trimmed
+                .split('|')
+                .map(c => c.trim())
+                .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1);
+
+            // Separator row (| --- | --- |)
+            if (cells.every(c => /^:?-+:?$/.test(c))) {
+                inTable = true;
+                continue;
+            }
+
+            // Header row
+            if (!inTable) {
+                inTable = true;
+                continue;
+            }
+
+            // Data rows: format as clean borderless bullet items
+            if (cells.length >= 3) {
+                const col1 = cells[0].replace(/^`|`$/g, '');
+                const col2 = cells[1].replace(/^`|`$/g, '');
+                const col3 = cells.slice(2).join(' — ');
+                result.push(`- \`${col1}: ${col2}\` — ${col3}`);
+            } else if (cells.length === 2) {
+                const col1 = cells[0].replace(/^`|`$/g, '');
+                const col2 = cells[1];
+                result.push(`- \`${col1}\`: ${col2}`);
+            } else if (cells.length === 1) {
+                result.push(`- \`${cells[0]}\``);
+            }
+        } else {
+            inTable = false;
+            result.push(lines[i]);
+        }
+    }
+
+    return result.join('\n');
+}
+
 function toCompletionItem(entry) {
     let kind = vscode.CompletionItemKind.Function;
+    let isCallable = false;
+
     switch (entry.kind) {
         case 'plugin':
         case 'module':
@@ -200,6 +251,7 @@ function toCompletionItem(entry) {
             kind = vscode.CompletionItemKind.Keyword;
             break;
         case 'struct':
+        case 'class':
             kind = vscode.CompletionItemKind.Struct;
             break;
         case 'property':
@@ -207,19 +259,29 @@ function toCompletionItem(entry) {
             break;
         case 'method':
             kind = vscode.CompletionItemKind.Method;
+            isCallable = true;
             break;
         case 'variable':
             kind = vscode.CompletionItemKind.Variable;
             break;
+        case 'function':
+            kind = vscode.CompletionItemKind.Function;
+            isCallable = true;
+            break;
         default:
             kind = vscode.CompletionItemKind.Function;
+            if (entry.detail && (entry.detail.includes('fn ') || entry.detail.includes('->') || entry.detail.includes('method') || entry.detail.includes('function'))) {
+                isCallable = true;
+            }
             break;
     }
 
     const item = new vscode.CompletionItem(entry.label, kind);
     item.detail = entry.detail || '';
     if (entry.documentation) {
-        item.documentation = new vscode.MarkdownString(entry.documentation);
+        const md = new vscode.MarkdownString(removeTableBorders(entry.documentation));
+        md.supportHtml = true;
+        item.documentation = md;
     }
     if (entry.sortText) {
         item.sortText = entry.sortText;
@@ -228,7 +290,12 @@ function toCompletionItem(entry) {
     // Fix annotation @@ issue by stripping @ from insertText
     if (entry.kind === 'annotation' && entry.label.startsWith('@')) {
         item.insertText = entry.label.substring(1);
+    } else if (isCallable) {
+        // Functions and methods are callable with parameter hints
+        item.insertText = new vscode.SnippetString(`${entry.label}($0)`);
+        item.command = { command: 'editor.action.triggerParameterHints', title: 'Trigger Parameter Hints' };
     }
+    // Default things (variables, keywords, properties, modules, structs) are NOT closables/callables
 
     return item;
 }
@@ -322,7 +389,9 @@ function activate(context) {
 
             const blocks = [];
             if (result.hover.documentation) {
-                blocks.push(new vscode.MarkdownString(result.hover.documentation));
+                const md = new vscode.MarkdownString(removeTableBorders(result.hover.documentation));
+                md.supportHtml = true;
+                blocks.push(md);
             } else if (result.hover.label) {
                 blocks.push(new vscode.MarkdownString('`' + result.hover.label + '`'));
             }

@@ -36,6 +36,7 @@ use std::collections::HashMap;
 use crate::vm::NativeModuleDef;
 
 pub fn get_module_defs() -> Vec<NativeModuleDef> {
+    #[allow(unused_mut)]
     let mut defs = vec![
         fmt::def(),
     ];

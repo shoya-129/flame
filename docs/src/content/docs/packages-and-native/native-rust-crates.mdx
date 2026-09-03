@@ -68,13 +68,24 @@ You should commit `flame.lock` to your version control system. This ensures that
 
 ---
 
-## Under the Hood: The Static Bridge Pipeline
+## Under the Hood: The Application-Specific Native Runtime Pipeline
 
-```
-[ flame.toml ] ──► [ cargo rustdoc ] ──► [ .fmi AST Metadata ]
+Flame ensures that native crates are incorporated **only when required by the application's dependency graph**:
+
+```text
+[ flame.toml ] ──► [ flame install ] ──► [ .fmi Interface Metadata ]
                                                 │
-[ Flame Source ] ──► [ Blaze AOT Engine ] ─────┼──► [ Static Rust Bridge ]
-                                                │
-                                                ▼
-                                     [ Single Executable Binary ]
+[ Flame Source ] ──► [ Dependency Analysis ] ───┴──► [ Application-Specific Runtime ]
+                                                               │
+                                                          Rust / Cargo
+                                                               │
+                                                             LLVM
+                                                               │
+                                                               ▼
+                                                        [ Native Binary ]
 ```
+
+1. **Interface Resolution**: `flame install` resolves dependencies and caches `.fmi` interface files.
+2. **Selective Inclusion**: If a crate listed in `flame.toml` is not actually imported or referenced by the code, it is excluded from the specialized runtime.
+3. **Native Compilation**: The specialized runtime is compiled with LLVM optimizations into an optimized machine code binary.
+4. **Clean Filesystem Access**: Standard builds interact directly with the real host filesystem without VFS overhead.

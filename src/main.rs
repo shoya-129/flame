@@ -1,5 +1,5 @@
 #![cfg(feature = "cli")]
-pub mod aot_compiler;
+pub mod compiler;
 mod diagnostics;
 pub mod embedded;
 mod formatter;
@@ -43,6 +43,9 @@ fn main() {
 
     let command = &args[1];
     match command.as_str() {
+        "install" | "i" => {
+            package_manager::install_all_packages(&args[2..]);
+        }
         "add" => {
             package_manager::add_package(&args[2..]);
         }
@@ -309,6 +312,10 @@ fn print_help() {
     println!();
     println!("{}SUBCOMMANDS:{}", bold, reset);
     println!(
+        "  {}install{} [--force]   Install all packages and compile native plugin interfaces",
+        cyan, reset
+    );
+    println!(
         "  {}add{} <pkg> [--native] Add a dependency (Flame module or native Rust crate)",
         cyan, reset
     );
@@ -321,7 +328,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}build{} [--release]  Compile the workspace project defined in flame.toml",
+        "  {}build{} [--release] [--vfs] Compile project into application-specific native runtime",
         cyan, reset
     );
     println!(
@@ -450,6 +457,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
 
     let is_release = args.contains(&"--release".to_string()) || args.contains(&"-r".to_string());
     let force_local = args.contains(&"--local".to_string());
+    let use_vfs = args.contains(&"--vfs".to_string());
     let mut pkg_name = "app".to_string();
     let mut target = None;
     for i in 0..args.len() {
@@ -483,6 +491,11 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
     if is_release {
         println!(
             "\x1b[1;36m    Building\x1b[0m optimized production release binary (target/release)..."
+        );
+    }
+    if use_vfs {
+        println!(
+            "\x1b[1;36m    Embedding\x1b[0m source tree into single executable VFS (--vfs)..."
         );
     }
 
@@ -695,7 +708,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
         }
 
-        crate::aot_compiler::build_aot_project(
+        crate::compiler::build_project(
             &pkg_name,
             profile,
             &processed_native_deps,
@@ -703,6 +716,7 @@ fn build_project(args: &[String]) -> Option<PathBuf> {
             false,
             false,
             None,
+            use_vfs,
         );
 
         let ext = std::env::consts::EXE_SUFFIX;
@@ -1107,7 +1121,7 @@ fn run_tests(args: &[String]) {
 
     if !native_deps_raw.is_empty() || !plugins_raw.is_empty() {
         println!(
-            "\x1b[1;36m     AOT Testing\x1b[0m Native plugins detected. Compiling test suite natively..."
+            "\x1b[1;36m     Blaze Testing\x1b[0m Native plugins detected. Compiling test suite natively..."
         );
         let mut processed_native_deps = Vec::new();
         for (plugin_name, plugin_path) in native_deps_raw {
@@ -1162,7 +1176,7 @@ fn run_tests(args: &[String]) {
             processed_native_deps.push((plugin_name, format!("{{ path = \"{}\" }}", abs_path_str)));
         }
 
-        crate::aot_compiler::build_aot_project(
+        crate::compiler::build_project(
             &pkg_name,
             "dev",
             &processed_native_deps,
@@ -1170,6 +1184,7 @@ fn run_tests(args: &[String]) {
             false,
             true, // is_test_mode
             Some(files_to_test.clone()),
+            false,
         );
 
         let exe_name = format!("{}_test{}", pkg_name, std::env::consts::EXE_SUFFIX);
@@ -1332,7 +1347,7 @@ fn init_native_bridge(plugin_name: &str) {
     }
 
     println!(
-        "\x1b[1;36mInitializing\x1b[0m native Rust plugin '{}' environment...",
+        "\x1b[1;36mInitializing\x1b[0m Rust plugin '{}' environment...",
         plugin_name
     );
 
@@ -1640,6 +1655,11 @@ fn analyze_file_for_json(
         .collect::<Vec<_>>();
     for (name, _) in parse_manifest_section(&manifest_content, "[plugins]") {
         if !native_modules.contains(&name) {
+            native_modules.push(name);
+        }
+    }
+    for (name, _) in parse_manifest_section(&manifest_content, "[dependencies]") {
+        if !native_modules.contains(&name) && name != "std" {
             native_modules.push(name);
         }
     }
@@ -3878,16 +3898,25 @@ fn analyze_file_for_json(
         }
     }
 
-    let hover = exact_ast_hover
+    let mut hover = exact_ast_hover
         .or(hover_found)
         .or(scanned_var_hover)
         .or_else(|| ide::get_keyword_hover(&word_under_cursor));
+
+    if let Some(h) = &mut hover {
+        if let Some(d) = &mut h.documentation {
+            *d = clean_table_borders(d);
+        }
+    }
 
     let tokens = ide::get_semantic_tokens(&content);
 
     let mut unique_completions = Vec::new();
     let mut seen_labels = std::collections::HashSet::new();
-    for c in completions {
+    for mut c in completions {
+        if let Some(doc) = &mut c.documentation {
+            *doc = clean_table_borders(doc);
+        }
         if seen_labels.insert(c.label.clone()) {
             unique_completions.push(c);
         }
@@ -3904,6 +3933,56 @@ fn analyze_file_for_json(
         signature_help,
         tokens,
     }
+}
+
+fn clean_table_borders(doc: &str) -> String {
+    if !doc.contains('|') {
+        return doc.to_string();
+    }
+    let lines = doc.lines().collect::<Vec<_>>();
+    let mut result = Vec::new();
+    let mut in_table = false;
+
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.starts_with('|') && trimmed.ends_with('|') {
+            let cells: Vec<String> = trimmed
+                .split('|')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            // Check if separator line (| --- | --- |)
+            if cells.iter().all(|c| c.chars().all(|ch| ch == '-' || ch == ':' || ch == ' ')) {
+                in_table = true;
+                continue;
+            }
+
+            if !in_table {
+                in_table = true;
+                continue;
+            }
+
+            // Row in table: convert to borderless list item
+            if cells.len() >= 3 {
+                let col1 = cells[0].trim_matches('`');
+                let col2 = cells[1].trim_matches('`');
+                let col3 = cells[2..].join(" — ");
+                result.push(format!("- `{}: {}` — {}", col1, col2, col3));
+            } else if cells.len() == 2 {
+                let col1 = cells[0].trim_matches('`');
+                let col2 = &cells[1];
+                result.push(format!("- `{}`: {}", col1, col2));
+            } else if !cells.is_empty() {
+                result.push(format!("- `{}`", cells[0]));
+            }
+        } else {
+            in_table = false;
+            result.push(line.to_string());
+        }
+    }
+
+    result.join("\n")
 }
 
 fn find_manifest_root(start: &Path) -> Option<PathBuf> {

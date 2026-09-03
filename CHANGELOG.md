@@ -3,6 +3,31 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.4.1] - 2026-09-03 (Codename: *Fourth Spark*)
+
+### 🏛️ Architectural Evolution: Application-Specific Native Runtimes
+- **Application-Specific Runtime Specialization**: Transitioned Flame from universal monolithic runtimes to **application-specific native runtimes**. Rather than shipping one heavy runtime containing every Flame feature and package, the Blaze compiler and dependency analyzer construct a tailored runtime embedding only the exact packages, standard library modules (HTTP, WebSocket, MQTT, hardware, GPIO, etc.), and native FFI bindings required by the specific application.
+- **VFS Decoupling (`--vfs`)**: Normal builds (`flame build` and `flame build --release`) no longer embed files into an in-memory Virtual File System (VFS). Instead, specialized native runtimes run directly against the physical filesystem (`src/` and `.flame/pkg/`). Embedding the entire source tree into an in-memory VFS table is now strictly opt-in via `--vfs` for single-executable distribution.
+- **Docker & Production Isolation**: Updated multi-stage deployment workflows to leverage application-specific runtimes. Unnecessary Rust files (`.rs`), Cargo build caches, and compiler artifacts are stripped out of final container images, leaving only the specialized native binary and required assets.
+
+### ⚡ CLI & Package Manager Upgrades (`flame install`)
+- **Unified Package Installation (`flame install` / `flame i`)**: Added full installation support for all dependencies (`[dependencies]`, `[native-dependencies]`, and `[plugins]`) declared in `flame.toml`.
+- **Line-Based Download Progress Loader**: Implemented an interactive terminal loader with animated spinners displaying real-time download speeds (`KB/s`, `MB/s`, `GB/s`), total archive size, percentage completion, and elapsed time.
+- **Accurate Download Timing**: Sub-second downloads format accurately in milliseconds (e.g. `24ms`, `115ms`).
+- **Clean CLI Diagnostics**: Polished console output with vertical padding, clear status icons (`✓`, `⚙`, `•`, `✗`), and detailed network error diagnostics for connectivity failures, request timeouts, HTTP 404 missing releases, and HTTP 403 GitHub API rate limits (with automatic `GITHUB_TOKEN` support).
+- **Pre-Cached `.fmi` Interface Generation**: `flame install` automatically compiles native Rust plugins (in root or `native/` directories) and parses pure Flame packages to extract `.flame/pkg/<pkg>/<pkg>.fmi` interface files. This pre-caches all metadata on install, dramatically reducing build and execution times for subsequent `flame run`, `flame build`, and `flame test` commands.
+
+### 🎨 IDE & Language Server Improvements
+- **Borderless Custom Documentation Tables**: Automatically converts markdown parameter tables inside `@Docs(...)` annotations into clean, borderless documentation lists, eliminating heavy grid and side borders in hover tooltips and completions.
+- **Callable Autocompletion**: Functions and methods now autocomplete as callable snippets (`name($0)`) and trigger parameter hints in the IDE, while default items (variables, keywords, modules, properties) remain plain identifiers.
+- **Comprehensive Module Resolution**: Expanded IDE symbol resolution so that packages declared in `[dependencies]` (such as `bot` and `flamer`) provide full autocomplete and hover documentation for their exported members.
+
+### 🐛 Compiler & Runtime Fixes
+- **Build Cache Executable Resolution**: Fixed a binary path lookup issue in the AOT compiler (`compiler.rs`), ensuring the compiler dynamically locates and copies the actual executable from the build cache without naming mismatches.
+- **Feature-Gated Library Compilation**: Guarded CLI-only networking and archiving modules under `#[cfg(feature = "cli")]`, allowing the specialized native runtime engine to compile cleanly with `default-features = false`.
+
+---
+
 ## [0.4.0] - 2026-08-29 (Codename: *Fourth Spark*)
 
 ### ✨ New Features & Enhancements
