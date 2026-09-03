@@ -28,6 +28,49 @@ if score >= 90 {
 }
 ```
 
+### Stored Boolean Conditions & One-Line Checks
+
+In Flame, conditional expressions are first-class and evaluate directly to `Bool` (`true` or `false`). You can capture one-line boolean checks directly into variables and store them for reuse across branching logic.
+
+This is a clean, recommended idiom for hardware register bitmasking, sensor telemetry, and complex validation:
+
+```flame
+const FLAG_OVERTEMP: Int = 1 << 0    // 0x01 (Bit 0)
+const FLAG_OVERVOLTAGE: Int = 1 << 1  // 0x02 (Bit 1)
+
+let register_value: Int = 0x03        // Both flags active
+
+// One-line checks that evaluate to Bool and store in variables
+let is_overtemp = (register_value & FLAG_OVERTEMP) != 0
+let is_overvoltage = (register_value & FLAG_OVERVOLTAGE) != 0
+
+// Combine cleanly using keyword operators (and, or, not)
+if is_overtemp and is_overvoltage {
+    print("[CRITICAL] Dual hardware thermal and electrical fault detected!")
+} else if is_overtemp {
+    print("[WARNING] High temperature detected on thermal sensor.")
+} else if is_overvoltage {
+    print("[WARNING] Electrical over-voltage detected.")
+}
+```
+
+#### Why Stored Boolean Checks Are Recommended:
+- **Self-Documenting Intent**: Naming the condition (such as `is_overtemp`) clarifies business and hardware logic without needing inline comments.
+- **Single Evaluation**: The bitwise or arithmetic expression is computed once and can be safely referenced across multiple branches.
+- **Direct Reusability**: Stored boolean variables can be passed straight to assertions, logged in diagnostics, or returned from helper functions:
+  ```flame
+  @Test
+fn main() {
+    let payload = "Hello, World!"
+    let checksum = &payload
+    let expected = "Hello, World!"
+    let is_valid = payload.len() > 0 and checksum == expected
+
+    println(assert(is_valid))
+}
+
+  ```
+
 ### Pattern Matching (`match`)
 
 Flame features powerful, expressive pattern matching with `match`:

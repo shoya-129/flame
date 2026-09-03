@@ -3,9 +3,7 @@ title: Flame Programming Language
 description: A fast, safe, and modern systems language powered by it's Blaze compiler that natively compiles Rust code.
 template: splash
 hero:
-  tagline: Blazing-fast Ahead-of-Time compilation, memory safety without garbage collection, and seamless zero-cost Rust interoperability.
-  image:
-    file: ../../assets/flame.png
+  tagline: Strictly typed, memory safety without garbage collection, and seamless zero-cost Rust interoperability.
   actions:
     - text: Get Started
       link: /getting-started/introduction/
@@ -15,15 +13,11 @@ hero:
       link: /std/overview/
       icon: open-book
       variant: secondary
-    - text: View on GitHub
-      link: https://github.com/shoya-129/flame
-      icon: github
-      variant: minimal
 ---
 
-import { CardGrid, Tabs, TabItem, Badge } from '@astrojs/starlight/components';
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
 import LucideCard from '../../components/LucideCard.astro';
-import { Trash2, Puzzle, Cpu, CheckCircle2, Zap, ShieldCheck } from 'lucide-astro';
+import { Trash2, Puzzle, Cpu, CheckCircle2, ShieldCheck, Box, Zap, Server } from 'lucide-astro';
 
 ## Why Flame?
 
@@ -46,77 +40,42 @@ import { Trash2, Puzzle, Cpu, CheckCircle2, Zap, ShieldCheck } from 'lucide-astr
 	</LucideCard>
 </CardGrid>
 
+---
 
-## Quick Taste of Flame
+## Flame in Production & Tailored Architecture
 
-<Tabs>
-  <TabItem label="Hello World & Formula">
-```flame
-// Clean, expressive syntax with formula objects
-let user = formula {
-    name: "Alex",
-    role: "Developer",
-    active: true,
-    greet: () {
-        print("Welcome to Flame!")
-    }
-}
+Unlike traditional languages that require massive universal runtimes with unused standard libraries and heavy interpreters, **Flame generates a specialized native runtime for each application**. Blaze analyzes imported modules and `.fmi` interface contracts, emitting an optimized, purpose-built native binary via Rust, Cargo, and LLVM.
 
-print($"Hello, {user.name}! Role: {user.role}")
-user.greet()
-```
-  </TabItem>
+<CardGrid>
+	<LucideCard title="No Rust in Production">
+		<ShieldCheck slot="icon" />
+		The runner container does not need `rustc`, `cargo`, or `.rs` source files. All native plugins and dependencies are statically baked into the executable.
+	</LucideCard>
+	<LucideCard title="Minimal Image Size (<80MB)">
+		<Box slot="icon" />
+		By excluding compilation toolchains and dead standard library subsystems, production container images typically stay under **80MB**.
+	</LucideCard>
+	<LucideCard title="Instant Boot Time">
+		<Zap slot="icon" />
+		Specialized native runtimes start in milliseconds without JVM warmup, V8 cold-start overhead, or universal interpreter startup lag.
+	</LucideCard>
+	<LucideCard title="Hardened Security">
+		<Server slot="icon" />
+		Radically minimized attack surface with zero package managers, build compilers, or unreferenced native code exposed in production.
+	</LucideCard>
+</CardGrid>
 
-  <TabItem label="Native Rust Crates">
-```flame
-// Statically compiles and links external Rust crates!
-import native.uuid
+### Dive Deeper into Flame
 
-let new_id = uuid.new_v4()
-print($"Generated UUID: {new_id}")
-```
-  </TabItem>
-
-  <TabItem label="Async Networking & Threads">
-```flame
-import std.thread
-
-async fn main() {
-    // Spawn a parallel physical compute thread
-    let compute = thread {
-        let mut sum = 0
-        let mut i = 0
-        while i < 1000000 {
-            sum = sum + i
-            i = i + 1
-        }
-        return sum
-    }
-
-    // Await thread completion asynchronously
-    let total = await compute
-    print($"Calculated sum: {total}")
-}
-
-await main()
-```
-  </TabItem>
-
-  <TabItem label="Zero-Cost Testing">
-```flame
-@Test(timeout: 2000)
-fn test_addition() {
-    let sum = 2 + 2
-    assertEq(sum, 4, "Math must be correct")
-}
-
-@Parameterized([
-    [10, 20, 30],
-    [5, 5, 10]
-])
-fn test_math(a: Int, b: Int, expected: Int) {
-    assertEq(a + b, expected)
-}
-```
-  </TabItem>
-</Tabs>
+<CardGrid>
+	<LinkCard
+		title="Architecture & Compiler Deep-Dive"
+		description="Learn how the Blaze compilation pipeline specializes runtimes, compiles .fmi interfaces, and maintains zero GC overhead."
+		href="/getting-started/architecture/"
+	/>
+	<LinkCard
+		title="Production & Docker Deployment Guide"
+		description="Explore multi-stage Docker builds, lean distroless runner setups, and production cloud orchestration with Flame."
+		href="/getting-started/deployment-and-docker/"
+	/>
+</CardGrid>

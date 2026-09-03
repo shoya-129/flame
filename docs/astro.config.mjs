@@ -35,6 +35,9 @@ export default defineConfig({
     },
     integrations: [starlight({
         title: 'Flame',
+        components: {
+            Hero: './src/components/CustomHero.astro',
+        },
         expressiveCode: {
             themes: ['github-dark', 'github-light'],
             

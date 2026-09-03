@@ -1,7 +1,8 @@
 :root {
 	--sl-color-accent-low: #3b0016;
-	--sl-color-accent: #c64c7b;
-	--sl-color-accent-high: #c64c7b;
+	--sl-color-accent: #FF0068;
+	--sl-color-accent-high: #FF0068;
+	--sl-color-text-accent: #FF0068;
 	--sl-color-white: #ffffff;
 	--sl-color-gray-1: #eceef2;
 	--sl-color-gray-2: #c0c2c7;
@@ -16,6 +17,7 @@
 	--sl-color-accent-low: #ffe0ec;
 	--sl-color-accent: #c64c7b;
 	--sl-color-accent-high: #c64c7b;
+	--sl-color-text-accent: #c64c7b;
 }
 
 /* Custom glow and hero tweaks */
@@ -48,7 +50,7 @@
 
 .hero img:hover {
 	transform: scale(1.05) rotate(1deg);
-	filter: drop-shadow(0 0 50px #c64c7b);
+	filter: drop-shadow(0 0 50px #FF0068);
 }
 
 /* Custom 2x2 card alignment and hover styling */
@@ -83,7 +85,7 @@
 .card:hover,
 .sl-link-card:hover {
 	z-index: 10 !important;
-	border-color: #c64c7b !important;
+	border-color: #FF0068 !important;
 	transform: translateY(-4px) !important;
 	box-shadow: 0 12px 32px -8px rgba(255, 0, 104, 0.35) !important;
 }
@@ -105,6 +107,7 @@
 	font-size: 0.95rem !important;
 	color: rgba(255, 255, 255, 0.7) !important;
 }
+
 .sl-markdown-content .starlight-aside .starlight-aside__content p {
 	margin-top: 0.25rem !important;
 }
@@ -114,6 +117,7 @@
 	background-color: rgba(255, 255, 255, 0.05) !important;
 	border: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
+
 .sl-markdown-content .starlight-aside--note .starlight-aside__title,
 .sl-markdown-content .starlight-aside--note .starlight-aside__icon {
 	color: rgba(255, 255, 255, 0.8) !important;
@@ -124,6 +128,7 @@
 	background-color: rgba(46, 160, 67, 0.1) !important;
 	border: 1px solid rgba(46, 160, 67, 0.4) !important;
 }
+
 .sl-markdown-content .starlight-aside--tip .starlight-aside__title,
 .sl-markdown-content .starlight-aside--tip .starlight-aside__icon {
 	color: #3fb950 !important;
@@ -134,6 +139,7 @@
 	background-color: rgba(248, 81, 73, 0.1) !important;
 	border: 1px solid rgba(248, 81, 73, 0.4) !important;
 }
+
 .sl-markdown-content .starlight-aside--danger .starlight-aside__title,
 .sl-markdown-content .starlight-aside--danger .starlight-aside__icon {
 	color: #f85149 !important;
@@ -145,6 +151,7 @@
 	background-color: rgba(210, 153, 34, 0.1) !important;
 	border: 1px solid rgba(210, 153, 34, 0.4) !important;
 }
+
 .sl-markdown-content .starlight-aside--caution .starlight-aside__title,
 .sl-markdown-content .starlight-aside--caution .starlight-aside__icon,
 .sl-markdown-content .starlight-aside--warning .starlight-aside__title,
@@ -166,36 +173,47 @@ pre {
 	font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
 }
 
-/* Sidebar active tab text color */
+/* Sidebar active tab styling */
 sidebar-list a[aria-current="page"],
-.sidebar-content a[aria-current="page"] {
+.sidebar-content a[aria-current="page"],
+.sidebar-content [aria-current="page"],
+.sidebar-pane [aria-current="page"],
+[aria-current="page"],
+[aria-current="page"]:hover,
+[aria-current="page"]:focus {
+	background-color: rgba(255, 255, 255, 0.1) !important;
 	color: var(--sl-color-white) !important;
 	font-weight: 600 !important;
 }
 
 /* Sidebar border to separate from docs */
-.sidebar-pane, 
+.sidebar-pane,
 starlight-sidebar {
 	border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 /* Custom scrollbars */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
 ::-webkit-scrollbar {
 	width: 8px;
 	height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-	background: var(--sl-color-black);
+	background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-	background: var(--sl-color-gray-5);
+	background: rgba(255, 255, 255, 0.1);
 	border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-	background: #c64c7b;
+	background: rgba(255, 255, 255, 0.2);
 }
 
 /* Table styling */
@@ -242,13 +260,13 @@ starlight-sidebar {
 }
 
 /* Search bar styling */
-site-search > button {
+site-search>button {
 	background-color: rgba(255, 255, 255, 0.05) !important;
 	border: 1px solid rgba(255, 255, 255, 0.1) !important;
 	border-radius: 8px !important;
 }
 
-site-search > button:hover {
+site-search>button:hover {
 	border-color: rgba(255, 255, 255, 0.2) !important;
 	background-color: rgba(255, 255, 255, 0.08) !important;
 }
@@ -263,7 +281,8 @@ site-search > button:hover {
 }
 
 .expressive-code .frame.has-title .title {
-	color: rgba(255, 255, 255, 0.7) !important; /* white/70 */
+	color: rgba(255, 255, 255, 0.7) !important;
+	/* white/70 */
 	background: transparent !important;
 	border: none !important;
 	box-shadow: none !important;
@@ -308,16 +327,24 @@ site-search > button:hover {
 	mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>') center/contain no-repeat !important;
 }
 
+/* Override file icon with flame icon for flame code */
+.expressive-code .frame:has(pre[data-language="flame"]).has-title .title::before,
+.expressive-code .frame:has(pre[data-language="fm"]).has-title .title::before {
+	-webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23C16.1421 23 19.5 19.6421 19.5 15.5C19.5 14.6345 19.2697 13.8032 19 13.0296C17.3333 14.6765 16.0667 15.5 15.2 15.5C19.1954 8.5 17 5.5 11 1.5C11.5 6.49951 8.20403 8.77375 6.86179 10.0366C5.40786 11.4045 4.5 13.3462 4.5 15.5C4.5 19.6421 7.85786 23 12 23ZM12.7094 5.23498C15.9511 7.98528 15.9666 10.1223 13.463 14.5086C12.702 15.8419 13.6648 17.5 15.2 17.5C15.8884 17.5 16.5841 17.2992 17.3189 16.9051C16.6979 19.262 14.5519 21 12 21C8.96243 21 6.5 18.5376 6.5 15.5C6.5 13.9608 7.13279 12.5276 8.23225 11.4932C8.35826 11.3747 8.99749 10.8081 9.02477 10.7836C9.44862 10.4021 9.7978 10.0663 10.1429 9.69677C11.3733 8.37932 12.2571 6.91631 12.7094 5.23498Z"></path></svg>') center/contain no-repeat !important;
+	mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M12 23C16.1421 23 19.5 19.6421 19.5 15.5C19.5 14.6345 19.2697 13.8032 19 13.0296C17.3333 14.6765 16.0667 15.5 15.2 15.5C19.1954 8.5 17 5.5 11 1.5C11.5 6.49951 8.20403 8.77375 6.86179 10.0366C5.40786 11.4045 4.5 13.3462 4.5 15.5C4.5 19.6421 7.85786 23 12 23ZM12.7094 5.23498C15.9511 7.98528 15.9666 10.1223 13.463 14.5086C12.702 15.8419 13.6648 17.5 15.2 17.5C15.8884 17.5 16.5841 17.2992 17.3189 16.9051C16.6979 19.262 14.5519 21 12 21C8.96243 21 6.5 18.5376 6.5 15.5C6.5 13.9608 7.13279 12.5276 8.23225 11.4932C8.35826 11.3747 8.99749 10.8081 9.02477 10.7836C9.44862 10.4021 9.7978 10.0663 10.1429 9.69677C11.3733 8.37932 12.2571 6.91631 12.7094 5.23498Z"></path></svg>') center/contain no-repeat !important;
+}
+
 /* Starlight Steps component numbers */
-.sl-steps > li::before,
-.sl-markdown-content .sl-steps > li::before {
-	background-color: rgba(255, 255, 255, 0.2) !important; /* white/20 */
+.sl-steps>li::before,
+.sl-markdown-content .sl-steps>li::before {
+	background-color: rgba(255, 255, 255, 0.2) !important;
+	/* white/20 */
 	border-color: rgba(255, 255, 255, 0.2) !important;
 	color: var(--sl-color-white) !important;
 }
 
 /* Inline code styling */
-:not(pre) > code {
+:not(pre)>code {
 	background-color: rgba(255, 255, 255, 0.1) !important;
 	padding: 0.2rem 0.4rem !important;
 	border-radius: 6px !important;
@@ -338,4 +365,69 @@ header img {
 /* Hide theme selector */
 starlight-theme-select {
 	display: none !important;
+}
+
+/* Site logo and Flame text styling */
+.site-title span {
+	color: #ffffff !important;
+	font-weight: 700 !important;
+	letter-spacing: -0.01em;
+}
+
+/* GitHub icon in navbar */
+.social-icons a,
+.social-icons a svg {
+	color: #ffffff !important;
+	fill: #ffffff !important;
+	opacity: 1 !important;
+}
+
+.social-icons a:hover,
+.social-icons a:hover svg {
+	color: #ffffff !important;
+	fill: #ffffff !important;
+	opacity: 0.8 !important;
+}
+
+/* Button styling with #FF0068 (no shadows) */
+.sl-link-button,
+.sl-link-button.primary,
+.sl-link-button.primary:hover,
+.sl-link-button.secondary,
+.sl-link-button.secondary:hover,
+.sl-link-button.minimal,
+.sl-link-button.minimal:hover {
+	box-shadow: none !important;
+}
+
+.sl-link-button.primary {
+	background: #FF0068 !important;
+	border-color: #FF0068 !important;
+	color: #ffffff !important;
+	font-weight: 600 !important;
+}
+
+.sl-link-button.primary:hover {
+	background: #e6005c !important;
+	border-color: #e6005c !important;
+	color: #ffffff !important;
+	transform: translateY(-2px) !important;
+}
+
+.sl-link-button.secondary {
+	border-color: rgba(255, 255, 255, 0.2) !important;
+	color: #ffffff !important;
+	background: rgba(255, 255, 255, 0.05) !important;
+	backdrop-filter: blur(8px) !important;
+	transition: all 0.2s ease !important;
+}
+
+.sl-link-button.secondary:hover {
+	border-color: #FF0068 !important;
+	color: #FF0068 !important;
+	transform: translateY(-2px) !important;
+}
+
+.sl-link-button.minimal:hover {
+	color: #FF0068 !important;
 }

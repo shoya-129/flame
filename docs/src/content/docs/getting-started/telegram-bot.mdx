@@ -134,7 +134,7 @@ Before starting, ensure you have:
 
    **Webhooks Setup (Production)**  
    If you have a public IP or are using a tunnel (like `ngrok`), you can tell Telegram to push updates directly to your running server:
-   ```bash
+   ```bash title="bash"
    curl -X POST https://api.telegram.org/bot<YOUR_TOKEN>/setWebhook -d "url=https://your-ngrok-url.app/webhook"
    ```
 
@@ -142,7 +142,7 @@ Before starting, ensure you have:
 
    Start your application:
    
-   ```powershell
+   ```bash title="bash"
    flame run
    ```
    

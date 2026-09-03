@@ -1,0 +1,423 @@
+---
+import { Image } from "astro:assets";
+import { LinkButton, Tabs, TabItem, Code } from "@astrojs/starlight/components";
+
+const { data } = Astro.locals.starlightRoute.entry;
+const { title = data.title, tagline, image, actions = [] } = data.hero || {};
+
+const isLanding = Astro.url.pathname === "/" || Astro.url.pathname === "";
+
+let darkImage: ImageMetadata | undefined;
+let lightImage: ImageMetadata | undefined;
+let rawHtml: string | undefined;
+if (image) {
+	if ("file" in image) {
+		darkImage = image.file;
+	} else if ("dark" in image) {
+		darkImage = image.dark;
+		lightImage = image.light;
+	} else {
+		rawHtml = image.html;
+	}
+}
+
+const codeHello = `// Clean, expressive syntax with formula objects
+let user = formula {
+    name: "Alex",
+    role: "Developer",
+    active: true,
+    greet: () {
+        print("Welcome to Flame!")
+    }
+}
+
+print($"Hello, {user.name}! Role: {user.role}")
+user.greet()`;
+
+const codeRust = `// Statically compiles and links external Rust crates!
+import native.uuid
+
+let new_id = uuid.new_v4()
+print($"Generated UUID: {new_id}")`;
+
+const codeAsync = `import std.thread
+
+async fn main() {
+    // Spawn a parallel physical compute thread
+    let compute = thread {
+        let mut sum = 0
+        let mut i = 0
+        while i < 1000000 {
+            sum = sum + i
+            i = i + 1
+        }
+        return sum
+    }
+
+    // Await thread completion asynchronously
+    let total = await compute
+    print($"Calculated sum: {total}")
+}
+
+await main()`;
+
+const codeTest = `@Test(timeout: 2000)
+fn test_addition() {
+    let sum = 2 + 2
+    assertEq(sum, 4, "Math must be correct")
+}
+
+@Parameterized([
+    [10, 20, 30],
+    [5, 5, 10]
+])
+fn test_math(a: Int, b: Int, expected: Int) {
+    assertEq(a + b, expected)
+}`;
+---
+
+<div class:list={["hero", { "hero-landing": isLanding }]}>
+	{
+		isLanding ? (
+			<div class="hero-code-wrapper not-content">
+				<div class="tabs-inner">
+					<Tabs>
+						<TabItem label="Hello World" icon="rocket">
+							<Code
+								code={codeHello}
+								lang="flame"
+								title="main.fm"
+							/>
+						</TabItem>
+						<TabItem label="Rust Interop" icon="seti:rust">
+							<Code
+								code={codeRust}
+								lang="flame"
+								title="cargo_interop.fm"
+							/>
+						</TabItem>
+						<TabItem label="Async & Threads" icon="laptop">
+							<Code
+								code={codeAsync}
+								lang="flame"
+								title="concurrency.fm"
+							/>
+						</TabItem>
+						<TabItem
+							label="Zero-Cost Testing"
+							icon="approve-check-circle"
+						>
+							<Code
+								code={codeTest}
+								lang="flame"
+								title="test_runner.fm"
+							/>
+						</TabItem>
+					</Tabs>
+				</div>
+			</div>
+		) : (
+			<>
+				{darkImage && (
+					<Image
+						src={darkImage}
+						width={400}
+						height={400}
+						alt={image?.alt || ""}
+						loading="eager"
+						decoding="async"
+						class:list={{ "light:sl-hidden": Boolean(lightImage) }}
+					/>
+				)}
+				{lightImage && (
+					<Image
+						src={lightImage}
+						width={400}
+						height={400}
+						alt={image?.alt || ""}
+						loading="eager"
+						decoding="async"
+						class="dark:sl-hidden"
+					/>
+				)}
+				{rawHtml && (
+					<div class="hero-html sl-flex" set:html={rawHtml} />
+				)}
+			</>
+		)
+	}
+
+	<div class="sl-flex stack">
+		<div class="sl-flex copy">
+			{
+				isLanding && (
+					<div class="version-badge">
+						<span class="badge-title"><span class="flame-word">Flame</span> v0.4.1</span>
+						<span class="badge-dot">•</span>
+						<span class="badge-subtitle">Third Spark</span>
+					</div>
+				)
+			}
+			<h1 id="_top" data-page-title>
+				<span class="flame-word">Flame</span> {title.replace(/^Flame\s*/, '')}
+			</h1>
+			{tagline && <div class="tagline" set:html={tagline} />}
+		</div>
+		{
+			actions.length > 0 && (
+				<div class="sl-flex actions">
+					{actions.map(
+						({
+							attrs: { class: className, ...attrs } = {},
+							icon,
+							link: href,
+							text,
+							variant,
+						}) => (
+							<LinkButton
+								{href}
+								{variant}
+								icon={icon?.name}
+								class:list={[className]}
+								{...attrs}
+							>
+								{text}
+								{icon?.html && (
+									<Fragment set:html={icon.html} />
+								)}
+							</LinkButton>
+						),
+					)}
+				</div>
+			)
+		}
+	</div>
+</div>
+
+<style>
+	.hero {
+		display: grid;
+		grid-template-columns: 100%;
+		align-items: center;
+		gap: 2rem;
+		padding-bottom: 2rem;
+		margin-bottom: 6rem;
+	}
+
+	.stack {
+		order: 1;
+		flex-direction: column;
+		gap: clamp(1.5rem, calc(1.5rem + 1vw), 2rem);
+		text-align: center;
+	}
+
+	.copy {
+		flex-direction: column;
+		gap: 1.25rem;
+		align-items: center;
+	}
+
+	.copy > * {
+		max-width: 52ch;
+	}
+
+	.version-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.35rem 0.85rem;
+		border-radius: 9999px;
+		background: rgba(255, 0, 104, 0.12);
+		border: 1px solid rgba(255, 0, 104, 0.35);
+		font-size: 0.85rem;
+		color: var(--sl-color-gray-2);
+		backdrop-filter: blur(8px);
+		box-shadow: none !important;
+	}
+
+	.badge-title {
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+
+	.badge-dot {
+		color: rgba(255, 255, 255, 0.3);
+	}
+
+	.badge-subtitle {
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.flame-word {
+		color: #FF0068;
+		text-shadow: none !important;
+	}
+
+	h1 {
+		font-size: clamp(2.2rem, calc(1rem + 3.5vw), 3.75rem);
+		line-height: 1.15;
+		font-weight: 700;
+		color: var(--sl-color-white);
+		letter-spacing: -0.02em;
+	}
+
+	.tagline {
+		font-size: clamp(1.05rem, calc(0.9rem + 0.5vw), 1.25rem);
+		line-height: 1.6;
+		color: var(--sl-color-gray-2);
+	}
+
+	.actions {
+		gap: 1rem 1.5rem;
+		flex-wrap: wrap;
+		justify-content: center;
+	}
+
+	.actions :global(.sl-link-button.primary) {
+		background: #FF0068 !important;
+		border-color: #FF0068 !important;
+		color: #ffffff !important;
+		font-weight: 600 !important;
+		box-shadow: none !important;
+	}
+
+	.actions :global(.sl-link-button.primary:hover) {
+		background: #e6005c !important;
+		border-color: #e6005c !important;
+		transform: translateY(-2px) !important;
+		box-shadow: none !important;
+	}
+
+	.actions :global(.sl-link-button.secondary) {
+		border-color: rgba(255, 255, 255, 0.2) !important;
+		color: #ffffff !important;
+		background: rgba(255, 255, 255, 0.05) !important;
+		backdrop-filter: blur(8px) !important;
+		transition: all 0.2s ease !important;
+		box-shadow: none !important;
+	}
+
+	.actions :global(.sl-link-button.secondary:hover) {
+		border-color: #FF0068 !important;
+		color: #FF0068 !important;
+		transform: translateY(-2px) !important;
+		box-shadow: none !important;
+	}
+
+	/* Hero Code Container */
+	.hero-code-wrapper {
+		order: 2;
+		min-width: 0;
+		width: 100%;
+		border-radius: 16px;
+		backdrop-filter: blur(16px);
+		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.hero > img,
+	.hero > .hero-html {
+		order: 2;
+	}
+
+	.tabs-inner {
+		padding: 0.75rem;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* Tab appearance enhancements inside hero */
+	.tabs-inner :global(starlight-tabs) {
+		margin-top: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.tabs-inner :global([role="tablist"]) {
+		border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+		gap: 0.25rem;
+		padding-bottom: 0.25rem;
+	}
+
+	.tabs-inner :global(.tab > [role="tab"]) {
+		font-size: 0.85rem;
+		padding: 0.4rem 0.75rem;
+		border-radius: 6px 6px 0 0;
+		box-shadow: none !important;
+		border-bottom: 2px solid transparent;
+		transition: all 0.2s ease;
+	}
+
+	.tabs-inner :global(.tab [role="tab"][aria-selected="true"]) {
+		background: rgba(255, 0, 104, 0.15);
+		color: #ffffff !important;
+	}
+
+	.tabs-inner :global(.tab [role="tab"]:hover:not([aria-selected="true"])) {
+		color: rgba(255, 255, 255, 0.85);
+		background: rgba(255, 255, 255, 0.04);
+	}
+
+	/* Fixed constant height for all tabs to prevent jumping/layout shifts */
+	.tabs-inner :global([role="tabpanel"]) {
+		margin-top: 0.5rem !important;
+		height: 380px;
+	}
+
+	.tabs-inner :global([role="tabpanel"]:not([hidden])) {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.tabs-inner :global(.expressive-code) {
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.tabs-inner :global(.expressive-code .frame) {
+		border-radius: 10px !important;
+		background: rgba(0, 0, 0, 0.4) !important;
+		border: 1px solid rgba(255, 255, 255, 0.06) !important;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.tabs-inner :global(.expressive-code .frame pre) {
+		flex: 1 1 auto;
+		height: 100%;
+		max-height: none !important;
+		overflow-y: auto;
+		font-size: 0.86rem !important;
+		line-height: 1.55 !important;
+		padding: 0.85rem 1rem !important;
+	}
+
+	@media (min-width: 50rem) {
+		.hero-landing {
+			grid-template-columns: 1fr 1.25fr;
+			gap: 3rem;
+			padding-block: clamp(2.5rem, calc(1.5rem + 5vmin), 6rem);
+			align-items: center;
+		}
+
+		.hero-landing .hero-code-wrapper {
+			order: 2;
+		}
+
+		.hero-landing .stack {
+			order: 1;
+			text-align: start;
+		}
+
+		.hero-landing .copy {
+			align-items: flex-start;
+		}
+
+		.hero-landing .actions {
+			justify-content: flex-start;
+		}
+	}
+</style>

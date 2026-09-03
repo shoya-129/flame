@@ -152,12 +152,14 @@ seed = (seed * 1103515245 + 12345) & 0x7FFFFFFF
 
 1. **Recurrence Relation**:
    Computes the next pseudo-random integer using the linear recurrence formula:
-   $$X_{n+1} = (a \cdot X_n + c) \pmod m$$
-   Here, $a = 1103515245$ (multiplier) and $c = 12345$ (increment), which are the standard POSIX / ANSI C constants for fast linear congruential generation.
+   ```text
+   X_{n+1} = (a · X_n + c) mod m
+   ```
+   Here, `a = 1103515245` (multiplier) and `c = 12345` (increment), which are the standard POSIX / ANSI C constants for fast linear congruential generation.
 
 2. **Bitwise AND (`&`) as Fast Modulo**:
-   In binary arithmetic, modulo by a power of two ($2^k$) is equivalent to bitwise masking with $(2^k - 1)$. 
-   - Modulo $2^{31}$ corresponds to masking with $2^{31} - 1 = 2147483647$, written in hexadecimal as `0x7FFFFFFF`.
+   In binary arithmetic, modulo by a power of two (`2^k`) is equivalent to bitwise masking with `(2^k - 1)`. 
+   - Modulo `2^31` corresponds to masking with `2^31 - 1 = 2147483647`, written in hexadecimal as `0x7FFFFFFF`.
    - The binary representation of `0x7FFFFFFF` is `01111111 11111111 11111111 11111111`.
    - Masking with `& 0x7FFFFFFF` clears the most significant sign bit (bit 31), guaranteeing that the result is strictly a **positive 31-bit integer** while avoiding expensive CPU hardware division instructions (`%`).
 
