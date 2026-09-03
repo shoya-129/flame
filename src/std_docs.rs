@@ -533,17 +533,50 @@ fs.write(\"data.txt\", \"Hello World\")
         ("byte" | "std.byte", "readByteAt") => {
             Some("Reads a single byte from a file at a specific offset.")
         }
-        ("math" | "std.math", "abs") => Some("Returns the absolute value of a number."),
-        ("math" | "std.math", "pow") => Some("Returns the base raised to the power exponent."),
-        ("math" | "std.math", "sqrt") => Some("Returns the square root of a number."),
-        ("math" | "std.math", "sin") => Some("Returns the sine of an angle (in radians)."),
-        ("math" | "std.math", "cos") => Some("Returns the cosine of an angle (in radians)."),
-        ("math" | "std.math", "tan") => Some("Returns the tangent of an angle (in radians)."),
-        ("math" | "std.math", "floor") => Some("Rounds a number down to the nearest integer."),
-        ("math" | "std.math", "ceil") => Some("Rounds a number up to the nearest integer."),
-        ("math" | "std.math", "round") => Some("Rounds a number to the nearest integer."),
+        ("math" | "std.math", "pi") => Some(
+            "```flame\nconst pi: Float = 3.141592653589793\n```\nMathematical constant Archimedes' constant $\\pi$, representing the ratio of a circle's circumference to its diameter.\n\n**Example**:\n```flame\nlet circumference = 2 * math.pi * r\n```",
+        ),
+        ("math" | "std.math", "e") => Some(
+            "```flame\nconst e: Float = 2.718281828459045\n```\nMathematical constant Euler's number $e$, the base of the natural logarithm.\n\n**Example**:\n```flame\nlet growth = math.e\n```",
+        ),
+        ("math" | "std.math", "inf") => Some(
+            "```flame\nfn inf() -> Float\n```\nReturns positive floating-point infinity.",
+        ),
+        ("math" | "std.math", "abs") => Some(
+            "```flame\nfn abs(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the absolute magnitude of a number, quantity, or unit while strictly preserving physical unit dimensions.\n\n**Example**:\n```flame\nlet d = math.abs(-10.5 * unit.meter) // 10.5 m\n```",
+        ),
+        ("math" | "std.math", "sqrt") => Some(
+            "```flame\nfn sqrt(x: Float | Int | Quantity | Unit) -> Float | Quantity | Unit\n```\nReturns the square root of a number, quantity, or unit. For quantities and units, every dimensional exponent must be even and is safely halved.\n\n**Example**:\n```flame\nlet t = math.sqrt(4 * unit.second^2) // 2 s\n```",
+        ),
+        ("math" | "std.math", "pow") => Some(
+            "```flame\nfn pow(base: Float | Int | Quantity | Unit, exp: Int | Float) -> Float | Quantity | Unit\n```\nRaises a base number, quantity, or unit to the specified power exponent, correctly scaling both magnitude and dimensional powers.\n\n**Example**:\n```flame\nlet volume = math.pow(3 * unit.meter, 3) // 27 m^3\n```",
+        ),
+        ("math" | "std.math", "sin") => Some(
+            "```flame\nfn sin(rad: Float | Int) -> Float\n```\nReturns the trigonometric sine of a dimensionless angle specified in radians.\n\n**Example**:\n```flame\nlet y = math.sin(math.pi / 2)\n```",
+        ),
+        ("math" | "std.math", "cos") => Some(
+            "```flame\nfn cos(rad: Float | Int) -> Float\n```\nReturns the trigonometric cosine of a dimensionless angle specified in radians.\n\n**Example**:\n```flame\nlet x = math.cos(0.0)\n```",
+        ),
+        ("math" | "std.math", "tan") => Some(
+            "```flame\nfn tan(rad: Float | Int) -> Float\n```\nReturns the tangent of a dimensionless angle specified in radians.",
+        ),
+        ("math" | "std.math", "min") => Some(
+            "```flame\nfn min(a: Float | Int | Quantity | Unit, b: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the smaller of two numbers or quantities with matching physical dimensions.\n\n**Example**:\n```flame\nlet shortest = math.min(5 * unit.meter, 12 * unit.meter) // 5 m\n```",
+        ),
+        ("math" | "std.math", "max") => Some(
+            "```flame\nfn max(a: Float | Int | Quantity | Unit, b: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the larger of two numbers or quantities with matching physical dimensions.\n\n**Example**:\n```flame\nlet longest = math.max(5 * unit.meter, 12 * unit.meter) // 12 m\n```",
+        ),
+        ("math" | "std.math", "round") => Some(
+            "```flame\nfn round(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the nearest integer to a number or quantity, preserving physical dimensions.\n\n**Example**:\n```flame\nlet r = math.round(2.837 * unit.second) // 3 s\n```",
+        ),
+        ("math" | "std.math", "floor") => Some(
+            "```flame\nfn floor(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the largest integer less than or equal to a number or quantity.\n\n**Example**:\n```flame\nlet f = math.floor(2.837 * unit.second) // 2 s\n```",
+        ),
+        ("math" | "std.math", "ceil") => Some(
+            "```flame\nfn ceil(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the smallest integer greater than or equal to a number or quantity.\n\n**Example**:\n```flame\nlet c = math.ceil(2.1 * unit.second) // 3 s\n```",
+        ),
         ("math" | "std.math", "random") => {
-            Some("Returns a random floating point number between 0 and 1.")
+            Some("```flame\nfn random() -> Float\n```\nReturns a pseudo-random floating point number between 0.0 and 1.0.")
         }
         ("time" | "std.time", "now") => Some(
             "Returns the current Unix timestamp in milliseconds.
@@ -703,45 +736,6 @@ let port = serial.open(\"COM3\", 9600)
         ),
         ("unit" | "std.unit", "Equation") => Some(
             "```flame\nfn Equation(kg: Int, m: Int, s: Int) -> Quantity\n```\nCreates a new custom unit by specifying the exponents for kilograms (`kg`), meters (`m`), and seconds (`s`).\n\n**Example**:\n```flame\nlet speed = unit.Equation(0, 1, -1)\n```",
-        ),
-        ("math" | "std.math", "pi") => Some(
-            "```flame\nconst pi: Float = 3.141592653589793\n```\nMathematical constant Archimedes' constant $\\pi$, representing the ratio of a circle's circumference to its diameter.\n\n**Example**:\n```flame\nlet circumference = 2 * math.pi * r\n```",
-        ),
-        ("math" | "std.math", "e") => Some(
-            "```flame\nconst e: Float = 2.718281828459045\n```\nMathematical constant Euler's number $e$, the base of the natural logarithm.\n\n**Example**:\n```flame\nlet growth = math.e\n```",
-        ),
-        ("math" | "std.math", "inf") => Some(
-            "```flame\nfn inf() -> Float\n```\nReturns positive floating-point infinity.",
-        ),
-        ("math" | "std.math", "abs") => Some(
-            "```flame\nfn abs(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the absolute magnitude of a number, quantity, or unit while strictly preserving physical unit dimensions.\n\n**Example**:\n```flame\nlet d = math.abs(-10.5 * unit.meter) // 10.5 m\n```",
-        ),
-        ("math" | "std.math", "sqrt") => Some(
-            "```flame\nfn sqrt(x: Float | Int | Quantity | Unit) -> Float | Quantity | Unit\n```\nReturns the square root of a number, quantity, or unit. For quantities and units, every dimensional exponent must be even and is safely halved.\n\n**Example**:\n```flame\nlet t = math.sqrt(4 * unit.second^2) // 2 s\n```",
-        ),
-        ("math" | "std.math", "pow") => Some(
-            "```flame\nfn pow(base: Float | Int | Quantity | Unit, exp: Int | Float) -> Float | Quantity | Unit\n```\nRaises a base number, quantity, or unit to the specified power exponent, correctly scaling both magnitude and dimensional powers.\n\n**Example**:\n```flame\nlet volume = math.pow(3 * unit.meter, 3) // 27 m^3\n```",
-        ),
-        ("math" | "std.math", "sin") => Some(
-            "```flame\nfn sin(rad: Float | Int) -> Float\n```\nReturns the trigonometric sine of a dimensionless angle specified in radians.\n\n**Example**:\n```flame\nlet y = math.sin(math.pi / 2)\n```",
-        ),
-        ("math" | "std.math", "cos") => Some(
-            "```flame\nfn cos(rad: Float | Int) -> Float\n```\nReturns the trigonometric cosine of a dimensionless angle specified in radians.\n\n**Example**:\n```flame\nlet x = math.cos(0.0)\n```",
-        ),
-        ("math" | "std.math", "min") => Some(
-            "```flame\nfn min(a: Float | Int | Quantity | Unit, b: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the smaller of two numbers or quantities with matching physical dimensions.\n\n**Example**:\n```flame\nlet shortest = math.min(5 * unit.meter, 12 * unit.meter) // 5 m\n```",
-        ),
-        ("math" | "std.math", "max") => Some(
-            "```flame\nfn max(a: Float | Int | Quantity | Unit, b: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the larger of two numbers or quantities with matching physical dimensions.\n\n**Example**:\n```flame\nlet longest = math.max(5 * unit.meter, 12 * unit.meter) // 12 m\n```",
-        ),
-        ("math" | "std.math", "round") => Some(
-            "```flame\nfn round(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the nearest integer to a number or quantity, preserving physical dimensions.\n\n**Example**:\n```flame\nlet r = math.round(2.837 * unit.second) // 3 s\n```",
-        ),
-        ("math" | "std.math", "floor") => Some(
-            "```flame\nfn floor(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the largest integer less than or equal to a number or quantity.\n\n**Example**:\n```flame\nlet f = math.floor(2.837 * unit.second) // 2 s\n```",
-        ),
-        ("math" | "std.math", "ceil") => Some(
-            "```flame\nfn ceil(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the smallest integer greater than or equal to a number or quantity.\n\n**Example**:\n```flame\nlet c = math.ceil(2.1 * unit.second) // 3 s\n```",
         ),
         _ => None,
     }
