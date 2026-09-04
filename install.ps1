@@ -33,7 +33,7 @@ if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
 Set-Location $scriptDir
 
 Write-Host ""
-Write-Host "[1/3] Building and installing Flame binaries (flame & flamelang)..." -ForegroundColor Cyan
+Write-Host "[1/3] Building and installing Flame binaries (fmp & flamelang)..." -ForegroundColor Cyan
 & cargo install --path . --force
 
 # 3. Locate Cargo bin directory
@@ -42,22 +42,22 @@ if ($env:CARGO_HOME) {
     $cargoBin = if ($env:CARGO_HOME.EndsWith("bin")) { $env:CARGO_HOME } else { Join-Path $env:CARGO_HOME "bin" }
 }
 
-# Ensure flame.exe exists
-$flameExe = Join-Path $cargoBin "flame.exe"
+# Ensure fmp.exe exists
+$fmpExe = Join-Path $cargoBin "fmp.exe"
 $flamelangExe = Join-Path $cargoBin "flamelang.exe"
 
-if ((Test-Path $flamelangExe) -and (-not (Test-Path $flameExe))) {
-    Copy-Item $flamelangExe $flameExe -Force
+if (Test-Path $flamelangExe) {
+    Copy-Item $flamelangExe $fmpExe -Force
 }
-elseif ((Test-Path $flameExe) -and (-not (Test-Path $flamelangExe))) {
-    Copy-Item $flameExe $flamelangExe -Force
+elseif (Test-Path $fmpExe) {
+    Copy-Item $fmpExe $flamelangExe -Force
 }
 
 # Create command shims
-$flameCmd = Join-Path $cargoBin "flame.cmd"
-$flameBat = Join-Path $cargoBin "flame.bat"
-Set-Content -Path $flameCmd -Value '@"%~dp0flame.exe" %*' -Encoding ASCII
-Set-Content -Path $flameBat -Value '@"%~dp0flame.exe" %*' -Encoding ASCII
+$fmpCmd = Join-Path $cargoBin "fmp.cmd"
+$fmpBat = Join-Path $cargoBin "fmp.bat"
+Set-Content -Path $fmpCmd -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
+Set-Content -Path $fmpBat -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
 
 # 4. Install Blaze standard library definitions
 Write-Host ""
@@ -120,14 +120,14 @@ if ($primaryBlazeDir) {
 Write-Host ""
 Write-Host "[OK] Flame and Blaze toolchain successfully installed!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Primary Command:  flame (also available as flamelang)" -ForegroundColor Cyan
-Write-Host "  Binary Location:  $flameExe"
+Write-Host "  Primary Command:  fmp (also available as flamelang)" -ForegroundColor Cyan
+Write-Host "  Binary Location:  $fmpExe"
 Write-Host "  Blaze Definitions:$primaryBlazeDir\std"
 
 Write-Host ""
 Write-Host "Quick Start:" -ForegroundColor Yellow
-Write-Host "  Check version:    flame --version"
-Write-Host "  CLI Help menu:    flame help"
-Write-Host "  Update release:   flame update"
-Write-Host "  Uninstall:        flame uninstall"
+Write-Host "  Check version:    fmp --version"
+Write-Host "  CLI Help menu:    fmp help"
+Write-Host "  Update release:   fmp update"
+Write-Host "  Uninstall:        fmp uninstall"
 Write-Host ""

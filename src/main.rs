@@ -277,7 +277,7 @@ fn run_update_command(_args: &[String]) {
 
     match status {
         Ok(s) if s.success() => {
-            println!("\x1b[1;34m[3/3]\x1b[0m Synchronizing 'flame' binary alias...");
+            println!("\x1b[1;34m[3/3]\x1b[0m Synchronizing 'fmp' binary alias...");
             if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
                 if cargo_bin.exists() {
                     let flamelang_bin = if cfg!(windows) {
@@ -285,18 +285,22 @@ fn run_update_command(_args: &[String]) {
                     } else {
                         cargo_bin.join("flamelang")
                     };
-                    let flame_bin = if cfg!(windows) {
-                        cargo_bin.join("flame.exe")
+                    let fmp_bin = if cfg!(windows) {
+                        cargo_bin.join("fmp.exe")
                     } else {
-                        cargo_bin.join("flame")
+                        cargo_bin.join("fmp")
                     };
-                    if flamelang_bin.exists() && !flame_bin.exists() {
-                        let _ = fs::copy(&flamelang_bin, &flame_bin);
+                    if flamelang_bin.exists() {
+                        let _ = fs::copy(&flamelang_bin, &fmp_bin);
+                    }
+                    if cfg!(windows) {
+                        let _ = fs::write(cargo_bin.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
+                        let _ = fs::write(cargo_bin.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
                     }
                 }
             }
             println!("\n\x1b[1;32m✓ Successfully updated Flame!\x1b[0m");
-            println!("Run \x1b[1mflame --version\x1b[0m to check your active release.\n");
+            println!("Run \x1b[1mfmp --version\x1b[0m to check your active release.\n");
         }
         Ok(s) => {
             eprintln!("\x1b[1;31merror:\x1b[0m Cargo failed to update flamelang with exit code: {}", s);
@@ -349,6 +353,10 @@ fn run_uninstall_command(_args: &[String]) {
     let mut files_to_delete = Vec::new();
 
     if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
+        files_to_delete.push(cargo_bin.join("fmp.exe"));
+        files_to_delete.push(cargo_bin.join("fmp.cmd"));
+        files_to_delete.push(cargo_bin.join("fmp.bat"));
+        files_to_delete.push(cargo_bin.join("fmp"));
         files_to_delete.push(cargo_bin.join("flame.exe"));
         files_to_delete.push(cargo_bin.join("flame.cmd"));
         files_to_delete.push(cargo_bin.join("flame.bat"));
@@ -361,6 +369,10 @@ fn run_uninstall_command(_args: &[String]) {
 
     if let Ok(cur) = std::env::current_exe() {
         if let Some(parent) = cur.parent() {
+            files_to_delete.push(parent.join("fmp.exe"));
+            files_to_delete.push(parent.join("fmp.cmd"));
+            files_to_delete.push(parent.join("fmp.bat"));
+            files_to_delete.push(parent.join("fmp"));
             files_to_delete.push(parent.join("flame.exe"));
             files_to_delete.push(parent.join("flame.cmd"));
             files_to_delete.push(parent.join("flame.bat"));
@@ -375,7 +387,7 @@ fn run_uninstall_command(_args: &[String]) {
 
     // Also query system PATH lookups
     if cfg!(windows) {
-        for binary in ["flame", "flamelang"] {
+        for binary in ["fmp", "flame", "flamelang"] {
             if let Ok(output) = std::process::Command::new("where").arg(binary).output() {
                 if output.status.success() {
                     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -389,7 +401,7 @@ fn run_uninstall_command(_args: &[String]) {
             }
         }
     } else {
-        for binary in ["flame", "flamelang"] {
+        for binary in ["fmp", "flame", "flamelang"] {
             if let Ok(output) = std::process::Command::new("which").arg(binary).output() {
                 if output.status.success() {
                     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -543,7 +555,7 @@ fn print_help() {
     );
     println!("Designed for systems programming with supreme DX.");
     println!();
-    println!("{}USAGE:{} flame <SUBCOMMAND> [args]", bold, reset);
+    println!("{}USAGE:{} fmp <SUBCOMMAND> [args]", bold, reset);
     println!();
     println!("{}SUBCOMMANDS:{}", bold, reset);
     println!(

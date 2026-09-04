@@ -1,11 +1,11 @@
 ---
 title: Installation & CLI Reference
-description: Complete guide to installing Flame via npm or cargo, running applications, managing native plugins, and using the comprehensive Flame CLI toolchain.
+description: Complete guide to installing Flame, running applications, managing native plugins, and using the comprehensive Flame CLI toolchain.
 ---
 
 import { Steps, Tabs, TabItem, Aside, Badge } from '@astrojs/starlight/components';
 
-Flame provides an all-in-one developer workspace toolchain containing a compiler, an Ahead-of-Time (AOT) builder, an automated code formatter, diagnostics engine, and zero-overhead native FFI bridging capabilities.
+Flame provides an all-in-one developer workspace toolchain containing a compiler, an automated code formatter, diagnostics engine, and zero-overhead native FFI bridging capabilities.
 
 ---
 
@@ -60,64 +60,30 @@ bash install.sh
 </Tabs>
 
 <Aside type="tip" title="What the installer does">
-The installer automatically builds `flame` (and `flamelang`), registers the `flame` binary command in your permanent User PATH, and provisions the canonical `Blaze/std` definition interface directory into your system programs folder (e.g. `C:\Program Files\Blaze` or `~/.blaze`) for instant Go-to-Definition and IDE LSP support.
+The installer automatically builds `flame` (and `flamelang`), registers the `fmp` binary command in your permanent User PATH, and provisions the canonical `Blaze/std` definition interface directory into your system programs folder (e.g. `C:\Program Files\Blaze` or `~/.blaze`) for instant Go-to-Definition and IDE LSP support.
 </Aside>
-
-### Alternative Package Managers
-
-You can also install via Cargo or standard Node package managers:
-
-<Tabs>
-  <TabItem label="cargo">
-```bash title="bash"
-cargo install --force flamelang
-```
-  </TabItem>
-
-  <TabItem label="npm">
-```bash title="bash"
-npm install -g flamelang
-```
-  </TabItem>
-
-  <TabItem label="pnpm">
-```bash title="bash"
-pnpm add -g flamelang
-```
-  </TabItem>
-
-  <TabItem label="yarn">
-```bash title="bash"
-yarn global add flamelang
-```
-  </TabItem>
-
-  <TabItem label="bun">
-```bash title="bash"
-bun add -g flamelang
-```
-  </TabItem>
-</Tabs>
 
 ---
 
 ## Verifying the Installation
 
-Check that `flame` (or `flamelang`) is accessible from your terminal:
+Check that `fmp` is accessible from your terminal:
 
 ```bash title="bash"
-flame --version
+fmp --version
 ```
 
 To view the complete help menu and all available flags:
 
 ```bash title="bash"
-flame --help
+fmp --help
 ```
 
 ---
 
 ## Project Structure & Manifest
+
+Run `fmp init <project_name>` to create a new Flame project:
 
 A standard Flame project contains a `flame.toml` manifest file and source code in `src/`:
 
@@ -150,46 +116,46 @@ Just like a normal `Cargo.toml`, users can configure native crate features and v
 
 ## CLI & Toolchain Reference
 
-The `flame` binary provides a unified command set for your entire development workflow:
+The `fmp` cli provides a unified command set for your entire development workflow:
 
 ### 1. Running & Building Applications
 
-#### ⚡ Quick-Run (`flame`)
-Inside any Flame project directory (where `flame.toml` is present), simply type `flame` and press enter to instantly compile and run your application entry point:
+#### ⚡ Quick-Run (`fmp`)
+Inside any Flame project directory (where `flame.toml` is present), simply type `fmp` and press enter to instantly compile and run your application entry point:
 ```bash title="bash"
-flame
+fmp
 ```
 
-#### `flame run`
+#### `fmp run`
 Runs the Flame entry file `main.fm`:
 ```bash title="bash"
-flame run
+fmp run
 ```
 
-#### `flame build`
+#### `fmp build`
 Constructs an **application-specific native runtime** containing only the packages, standard library features, and native plugins imported by your project. It compiles the specialized runtime via Rust/Cargo/LLVM into an executable:
 ```bash title="bash"
 # Debug build in target/dev/ (uses normal filesystem, no VFS)
-flame build
+fmp build
 
 # Release build in target/release/ (uses normal filesystem, no VFS)
-flame build --release
+fmp build --release
 ```
 
 <Aside type="note" title="Normal Filesystem Execution">
-Standard `flame build` and `flame build --release` execute against the real filesystem and **do not use VFS**. Unused packages and runtime components are excluded from the binary.
+Standard `fmp build` and `fmp build --release` execute against the real filesystem and **do not use VFS**. Unused packages and runtime components are excluded from the binary.
 </Aside>
 
-#### `flame build --exe` / `flame build --vfs --release` (Single Executable Mode)
+#### `fmp build --exe` / `fmp build --vfs --release` (Single Executable Mode)
 When you require a self-contained single executable that bundles all application source files, packages, and `.fmi` interfaces directly inside the binary, pass `--exe` or `--vfs`:
 ```bash title="bash"
 # Self-contained single executable with embedded VFS
-flame build --exe
+fmp build --exe
 
 # Optimized production single executable with embedded VFS
-flame build --exe --release
+fmp build --exe --release
 # or
-flame build --vfs --release
+fmp build --vfs --release
 ```
 
 <Aside type="tip" title="VFS Is an Optional Packaging Mechanism">
@@ -200,29 +166,29 @@ VFS is used **only** when explicitly requesting a self-contained single binary (
 
 ### 2. Package & Native Plugin Management
 
-#### `flame install`
+#### `fmp install`
 Resolves and installs all dependencies declared in `flame.toml`:
 ```bash title="bash"
-flame install
+fmp install
 ```
 Flame downloads package repositories from their configured GitHub/registry sources, caches them in `.flame/pkg/`, and ensures `.fmi` interface metadata is generated for all packages with native plugins. Developers **never manually copy Rust source or Cargo projects into the application**.
 
-#### `flame new <name>`
+#### `fmp new <name>`
 Initializes a new Flame workspace directory with a starter manifest and directory structure:
 ```bash title="bash"
-flame new my_app
+fmp new my_app
 ```
 
-#### `flame add <url_or_name>`
+#### `fmp add <url_or_name>`
 Downloads and registers external Flame modules or packages into `flame.toml`:
 ```bash title="bash"
-flame add https://github.com/example/flame-package
+fmp add https://github.com/example/flame-package
 ```
 
-#### `flame add <crate_name> --native`
+#### `fmp add <crate_name> --native`
 Adds a Rust crate as a native dependency under `[native-dependencies]` in your `flame.toml`:
 ```bash title="bash"
-flame add uuid --native
+fmp add uuid --native
 ```
 
 Just like a normal `Cargo.toml`, users can configure crate features manually by editing `flame.toml`:
@@ -231,24 +197,24 @@ Just like a normal `Cargo.toml`, users can configure crate features manually by 
 uuid = { version = "1.0", features = ["v4"] }
 ```
 
-#### `flame native init [plugin_name]`
+#### `fmp native init [plugin_name]`
 Scaffolds a native Rust plugin workspace (`./native`) inside your current project. It creates a starter `Cargo.toml`, bridge boilerplate code, and automatically registers the plugin in your `flame.toml`:
 ```bash title="bash"
-flame native init server
+fmp native init server
 ```
 
-#### `flame add --plugin <path_to_plugin> [--name <plugin_name>]`
+#### `fmp add --plugin <path_to_plugin> [--name <plugin_name>]`
 Registers an existing local or external native Rust plugin inside your `flame.toml` manifest. If `--name` is omitted, Flame automatically discovers the plugin name from its `Cargo.toml` or folder name:
 ```bash title="bash"
 # Register using flag
-flame add --plugin ./native --name server
+fmp add --plugin ./native --name server
 ```
 
 ---
 
 ### 3. Diagnostics & IDE Integration (`check --json`)
 
-#### `flame check <file.fm> [--json] [--line N --col N]`
+#### `fmp check <file.fm> [--json] [--line N --col N]`
 Performs instantaneous syntactic analysis, type inference, and static diagnostics without compiling or linking binaries.
 
 When invoked with `--json`, it emits structured metadata designed for IDEs and the Language Server Protocol (LSP):
@@ -259,7 +225,7 @@ When invoked with `--json`, it emits structured metadata designed for IDEs and t
 #### Example Command & JSON Payload
 
 ```bash title="bash"
-flame check automation/src/main.fm --json --line 47 --col 18
+fmp check automation/src/main.fm --json --line 47 --col 18
 ```
 
 ```json
@@ -288,47 +254,46 @@ flame check automation/src/main.fm --json --line 47 --col 18
 
 ### 4. Code Formatting
 
-#### `flame format <file.fm>`
+#### `fmp format <file.fm>`
 Automatically formats your source code to adhere to Flame's canonical style rules:
 ```bash title="bash"
 # Format a specific file and write changes
-flame format src/main.fm
+fmp format src/main.fm
 
 # Output formatted code to stdout without writing
-flame format src/main.fm --stdout
+fmp format src/main.fm --stdout
 ```
 
-#### `flame format --all`
+#### `fmp format --all`
 Formats all `.fm` source files across your entire project workspace:
 ```bash title="bash"
-flame format --all
+fmp format --all
 # or simply:
-flame format
+fmp format
 ```
 
 ---
 
 ### 5. Native Test Runner
 
-#### `flame test`
+#### `fmp test`
 Discovers and executes all `@Test` annotated functions across your project files:
 ```bash title="bash"
-flame test
+fmp test
 ```
 
 ---
 
 ### 6. Updating & Toolchain Maintenance
 
-#### `flame update`
-Automatically updates your Flame compiler to the latest published release on Cargo (crates.io), synchronizes the `flame` binary alias, and keeps your toolchain current:
+#### `fmp update`
+Automatically updates your Flame compiler to the latest published release on Cargo (crates.io), synchronizes the `fmp` binary alias, and keeps your toolchain current:
 ```bash title="bash"
-flame update
+fmp update
 ```
 
-#### `flame uninstall`
-Removes the Flame compiler binaries from your Cargo environment and purges the installed `Blaze` standard library definition directories:
+#### `fmp uninstall`
+Removes the Flame compiler binaries (`fmp`, `flamelang`) from your Cargo environment and purges the installed `Blaze` standard library definition directories:
 ```bash title="bash"
-flame uninstall
+fmp uninstall
 ```
-

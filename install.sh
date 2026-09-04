@@ -128,8 +128,8 @@ fi
 
 mkdir -p "$CARGO_BIN" 2>/dev/null || true
 
-# 4. Build and install flame & flamelang binaries via Cargo
-echo -e "\n${BOLD}[1/3] Building and installing Flame binaries (flame & flamelang)...${RESET}"
+# 4. Build and install fmp & flamelang binaries via Cargo
+echo -e "\n${BOLD}[1/3] Building and installing Flame binaries (fmp & flamelang)...${RESET}"
 
 if [[ "$CARGO_CMD" == "cargo.exe" && -n "$(command -v wslpath)" ]]; then
     WIN_BUILD_DIR="$(wslpath -w "$SCRIPT_DIR")"
@@ -138,31 +138,31 @@ else
     "$CARGO_CMD" install --path . --force
 fi
 
-# Ensure flame command executable exists and is linked
+# Ensure fmp command executable exists and is linked
 if [[ "$TARGET_IS_WINDOWS" == true ]]; then
     FLAMELANG_EXE="$CARGO_BIN/flamelang.exe"
-    FLAME_EXE="$CARGO_BIN/flame.exe"
+    FMP_EXE="$CARGO_BIN/fmp.exe"
 
-    if [[ -f "$FLAMELANG_EXE" && ! -f "$FLAME_EXE" ]]; then
-        cp "$FLAMELANG_EXE" "$FLAME_EXE" 2>/dev/null || true
-    elif [[ -f "$FLAME_EXE" && ! -f "$FLAMELANG_EXE" ]]; then
-        cp "$FLAME_EXE" "$FLAMELANG_EXE" 2>/dev/null || true
+    if [[ -f "$FLAMELANG_EXE" ]]; then
+        cp "$FLAMELANG_EXE" "$FMP_EXE" 2>/dev/null || true
+    elif [[ -f "$FMP_EXE" ]]; then
+        cp "$FMP_EXE" "$FLAMELANG_EXE" 2>/dev/null || true
     fi
 
     # Create batch and cmd shims for Windows command prompt and powershell
-    cat << 'EOF' > "$CARGO_BIN/flame.cmd"
-@"%~dp0flame.exe" %*
+    cat << 'EOF' > "$CARGO_BIN/fmp.cmd"
+@"%~dp0fmp.exe" %*
 EOF
-    cat << 'EOF' > "$CARGO_BIN/flame.bat"
-@"%~dp0flame.exe" %*
+    cat << 'EOF' > "$CARGO_BIN/fmp.bat"
+@"%~dp0fmp.exe" %*
 EOF
-    chmod +x "$CARGO_BIN/flame.cmd" "$CARGO_BIN/flame.bat" 2>/dev/null || true
+    chmod +x "$CARGO_BIN/fmp.cmd" "$CARGO_BIN/fmp.bat" 2>/dev/null || true
 else
     # Linux / macOS symlinks
-    if [[ -f "$CARGO_BIN/flamelang" && ! -f "$CARGO_BIN/flame" ]]; then
-        ln -sf "$CARGO_BIN/flamelang" "$CARGO_BIN/flame"
-    elif [[ -f "$CARGO_BIN/flame" && ! -f "$CARGO_BIN/flamelang" ]]; then
-        ln -sf "$CARGO_BIN/flame" "$CARGO_BIN/flamelang"
+    if [[ -f "$CARGO_BIN/flamelang" ]]; then
+        ln -sf "$CARGO_BIN/flamelang" "$CARGO_BIN/fmp"
+    elif [[ -f "$CARGO_BIN/fmp" ]]; then
+        ln -sf "$CARGO_BIN/fmp" "$CARGO_BIN/flamelang"
     fi
 fi
 
@@ -272,12 +272,12 @@ else
 fi
 
 echo -e "\n${GREEN}${BOLD}✓ Flame and Blaze toolchain successfully installed!${RESET}\n"
-echo -e "  Primary Command:  ${GREEN}flame${RESET} (also available as ${BLUE}flamelang${RESET})"
-echo -e "  Binary Location:  ${BLUE}$CARGO_BIN/flame${RESET}"
+echo -e "  Primary Command:  ${GREEN}fmp${RESET} (also available as ${BLUE}flamelang${RESET})"
+echo -e "  Binary Location:  ${BLUE}$CARGO_BIN/fmp${RESET}"
 echo -e "  Blaze Definitions:${BLUE}$PRIMARY_BLAZE_DIR/std${RESET}"
 
 echo -e "\n${BOLD}Quick Start:${RESET}"
-echo -e "  Check version:    ${GREEN}flame --version${RESET}"
-echo -e "  CLI Help menu:    ${GREEN}flame help${RESET}"
-echo -e "  Update release:   ${GREEN}flame update${RESET}"
-echo -e "  Uninstall:        ${GREEN}flame uninstall${RESET}\n"
+echo -e "  Check version:    ${GREEN}fmp --version${RESET}"
+echo -e "  CLI Help menu:    ${GREEN}fmp help${RESET}"
+echo -e "  Update release:   ${GREEN}fmp update${RESET}"
+echo -e "  Uninstall:        ${GREEN}fmp uninstall${RESET}\n"

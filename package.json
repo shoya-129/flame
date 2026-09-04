@@ -10,6 +10,7 @@
     "build:npm": "cargo build --release && mkdir -p bin && cp target/release/flamelang.exe bin/"
   },
   "bin": {
-    "flame": "bin/flamelang.exe"
+    "fmp": "bin/flamelang.exe",
+    "flamelang": "bin/flamelang.exe"
   }
 }
