@@ -94,8 +94,10 @@ to_posix_path() {
 }
 
 # 3. Locate Cargo bin directory
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]:-$0}" )" 2>/dev/null && pwd )"
+if [[ -z "$SCRIPT_DIR" || ! -d "$SCRIPT_DIR" ]]; then
+    SCRIPT_DIR="$(pwd)"
+fi
 
 CARGO_BIN=""
 
@@ -131,11 +133,20 @@ mkdir -p "$CARGO_BIN" 2>/dev/null || true
 # 4. Build and install fmp & flamelang binaries via Cargo
 echo -e "\n${BOLD}[1/3] Building and installing Flame binaries (fmp & flamelang)...${RESET}"
 
-if [[ "$CARGO_CMD" == "cargo.exe" && -n "$(command -v wslpath)" ]]; then
-    WIN_BUILD_DIR="$(wslpath -w "$SCRIPT_DIR")"
-    cargo.exe install --path "$WIN_BUILD_DIR" --force
+if [[ -f "$SCRIPT_DIR/Cargo.toml" ]]; then
+    echo -e "Installing from local repository at ${GREEN}$SCRIPT_DIR${RESET}..."
+    if [[ "$CARGO_CMD" == "cargo.exe" && -n "$(command -v wslpath)" ]]; then
+        WIN_BUILD_DIR="$(wslpath -w "$SCRIPT_DIR")"
+        cargo.exe install --path "$WIN_BUILD_DIR" --force
+    else
+        "$CARGO_CMD" install --path "$SCRIPT_DIR" --force
+    fi
 else
-    "$CARGO_CMD" install --path . --force
+    echo -e "Installing flamelang from Cargo registry (crates.io)..."
+    if ! "$CARGO_CMD" install --force flamelang; then
+        echo -e "${YELLOW}Registry install not yet available or failed; installing latest from Git repository...${RESET}"
+        "$CARGO_CMD" install --git https://github.com/shoya-129/flame.git --force
+    fi
 fi
 
 # Ensure fmp command executable exists and is linked
@@ -208,37 +219,57 @@ else
 fi
 
 # Locate source Blaze/std directory
-SOURCE_BLAZE="$SCRIPT_DIR/Blaze/std"
-if [[ ! -d "$SOURCE_BLAZE" ]]; then
+SOURCE_BLAZE=""
+if [[ -d "$SCRIPT_DIR/Blaze/std" ]]; then
+    SOURCE_BLAZE="$SCRIPT_DIR/Blaze/std"
+elif [[ -d "$SCRIPT_DIR/std" ]]; then
     SOURCE_BLAZE="$SCRIPT_DIR/std"
 fi
 
-if [[ ! -d "$SOURCE_BLAZE" ]]; then
-    echo -e "${RED}Error: Could not locate source standard library definitions at $SOURCE_BLAZE${RESET}"
-    exit 1
+CLEANUP_TEMP=""
+if [[ -z "$SOURCE_BLAZE" || ! -d "$SOURCE_BLAZE" ]]; then
+    echo -e "${YELLOW}Fetching Blaze standard library definitions from repository...${RESET}"
+    TEMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t 'flame_std')"
+    CLEANUP_TEMP="$TEMP_DIR"
+    if curl -fsSL "https://github.com/shoya-129/flame/archive/refs/heads/main.tar.gz" | tar -xz -C "$TEMP_DIR" 2>/dev/null; then
+        if [[ -d "$TEMP_DIR/flame-main/Blaze/std" ]]; then
+            SOURCE_BLAZE="$TEMP_DIR/flame-main/Blaze/std"
+        elif [[ -d "$TEMP_DIR/flame-main/std" ]]; then
+            SOURCE_BLAZE="$TEMP_DIR/flame-main/std"
+        fi
+    fi
 fi
 
-COPIED_COUNT=0
-PRIMARY_BLAZE_DIR=""
+if [[ -n "$SOURCE_BLAZE" && -d "$SOURCE_BLAZE" ]]; then
+    COPIED_COUNT=0
+    PRIMARY_BLAZE_DIR=""
 
-for DEST in "${TARGET_DIRS[@]}"; do
-    mkdir -p "$DEST" 2>/dev/null || true
-    if [[ -d "$DEST" && -w "$DEST" ]]; then
-        cp -r "$SOURCE_BLAZE"/* "$DEST/" 2>/dev/null || true
-        echo -e "  Installed definitions to: ${GREEN}$DEST${RESET}"
-        if [[ -z "$PRIMARY_BLAZE_DIR" ]]; then
-            PRIMARY_BLAZE_DIR="$(dirname "$DEST")"
+    for DEST in "${TARGET_DIRS[@]}"; do
+        mkdir -p "$DEST" 2>/dev/null || true
+        if [[ -d "$DEST" && -w "$DEST" ]]; then
+            cp -r "$SOURCE_BLAZE"/* "$DEST/" 2>/dev/null || true
+            echo -e "  Installed definitions to: ${GREEN}$DEST${RESET}"
+            if [[ -z "$PRIMARY_BLAZE_DIR" ]]; then
+                PRIMARY_BLAZE_DIR="$(dirname "$DEST")"
+            fi
+            COPIED_COUNT=$((COPIED_COUNT + 1))
         fi
-        COPIED_COUNT=$((COPIED_COUNT + 1))
-    fi
-done
+    done
 
-if [[ $COPIED_COUNT -eq 0 ]]; then
-    FALLBACK_DEST="$HOME/.blaze/std"
-    mkdir -p "$FALLBACK_DEST"
-    cp -r "$SOURCE_BLAZE"/* "$FALLBACK_DEST/"
-    PRIMARY_BLAZE_DIR="$HOME/.blaze"
-    echo -e "  Installed definitions to: ${GREEN}$FALLBACK_DEST${RESET}"
+    if [[ $COPIED_COUNT -eq 0 ]]; then
+        FALLBACK_DEST="$HOME/.blaze/std"
+        mkdir -p "$FALLBACK_DEST"
+        cp -r "$SOURCE_BLAZE"/* "$FALLBACK_DEST/"
+        PRIMARY_BLAZE_DIR="$HOME/.blaze"
+        echo -e "  Installed definitions to: ${GREEN}$FALLBACK_DEST${RESET}"
+    fi
+else
+    echo -e "${YELLOW}Warning: Standard library definitions could not be located.${RESET}"
+    echo -e "${YELLOW}Definitions can be initialized later via 'fmp update'.${RESET}"
+fi
+
+if [[ -n "$CLEANUP_TEMP" && -d "$CLEANUP_TEMP" ]]; then
+    rm -rf "$CLEANUP_TEMP" 2>/dev/null || true
 fi
 
 # 6. Shell environment and permanent PATH persistence

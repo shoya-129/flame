@@ -28,13 +28,35 @@ $cargoVer = & cargo --version
 Write-Host "Rust/Cargo detected: $cargoVer" -ForegroundColor Green
 
 # 2. Build and install via Cargo
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
-Set-Location $scriptDir
+$scriptDir = ""
+if ($MyInvocation.MyCommand.Path) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if (-not $scriptDir) {
+    $scriptDir = (Get-Location).Path
+}
 
 Write-Host ""
 Write-Host "[1/3] Building and installing Flame binaries (fmp & flamelang)..." -ForegroundColor Cyan
-& cargo install --path . --force
+
+$localCargo = Join-Path $scriptDir "Cargo.toml"
+if (Test-Path $localCargo) {
+    Write-Host "Installing from local repository at $scriptDir..." -ForegroundColor Green
+    & cargo install --path $scriptDir --force
+} else {
+    Write-Host "Installing flamelang from Cargo registry (crates.io)..." -ForegroundColor Green
+    $installOk = $false
+    try {
+        & cargo install --force flamelang
+        if ($LASTEXITCODE -eq 0) { $installOk = $true }
+    } catch {
+        $installOk = $false
+    }
+    if (-not $installOk) {
+        Write-Host "Registry install not yet available or failed; installing latest from Git repository..." -ForegroundColor Yellow
+        & cargo install --git https://github.com/shoya-129/flame.git --force
+    }
+}
 
 # 3. Locate Cargo bin directory
 $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
@@ -63,42 +85,73 @@ Set-Content -Path $fmpBat -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
 Write-Host ""
 Write-Host "[2/3] Setting up Blaze standard library definition directory..." -ForegroundColor Cyan
 
-$sourceBlaze = Join-Path $scriptDir "Blaze\std"
-if (-not (Test-Path $sourceBlaze)) {
+$sourceBlaze = ""
+if (Test-Path (Join-Path $scriptDir "Blaze\std")) {
+    $sourceBlaze = Join-Path $scriptDir "Blaze\std"
+} elseif (Test-Path (Join-Path $scriptDir "std")) {
     $sourceBlaze = Join-Path $scriptDir "std"
 }
 
-if (-not (Test-Path $sourceBlaze)) {
-    Write-Host "Error: Could not locate source standard library definitions at $sourceBlaze" -ForegroundColor Red
-    exit 1
-}
-
-$targetBlazeDirs = @(
-    (Join-Path $env:LOCALAPPDATA "Blaze\std"),
-    (Join-Path $env:USERPROFILE ".blaze\std")
-)
-
-if ($env:ProgramFiles) {
-    $progBlaze = Join-Path $env:ProgramFiles "Blaze\std"
-    $targetBlazeDirs = @($progBlaze) + $targetBlazeDirs
-}
-
-$primaryBlazeDir = ""
-
-foreach ($dest in $targetBlazeDirs) {
+$cleanupTemp = $null
+if (-not $sourceBlaze) {
+    Write-Host "Fetching Blaze standard library definitions from repository..." -ForegroundColor Yellow
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("flame_std_" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    $cleanupTemp = $tempDir
+    $tempZip = Join-Path $tempDir "repo.zip"
     try {
-        if (-not (Test-Path $dest)) {
-            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri "https://github.com/shoya-129/flame/archive/refs/heads/main.zip" -OutFile $tempZip -UseBasicParsing
+        Expand-Archive -Path $tempZip -DestinationPath $tempDir -Force
+        $extractedBlaze = Join-Path $tempDir "flame-main\Blaze\std"
+        if (Test-Path $extractedBlaze) {
+            $sourceBlaze = $extractedBlaze
+        } else {
+            $extractedStd = Join-Path $tempDir "flame-main\std"
+            if (Test-Path $extractedStd) {
+                $sourceBlaze = $extractedStd
+            }
         }
-        Copy-Item -Path "$sourceBlaze\*" -Destination $dest -Recurse -Force | Out-Null
-        Write-Host "  Installed definitions to: $dest" -ForegroundColor Green
-        if (-not $primaryBlazeDir) {
-            $primaryBlazeDir = (Split-Path -Parent $dest)
+    } catch {
+        Write-Host "Warning: Could not download definitions archive: $_" -ForegroundColor Yellow
+    }
+}
+
+if (-not $sourceBlaze -or -not (Test-Path $sourceBlaze)) {
+    Write-Host "Warning: Standard library definitions could not be located." -ForegroundColor Yellow
+    Write-Host "Definitions can be initialized later via 'fmp update'." -ForegroundColor Yellow
+} else {
+    $targetBlazeDirs = @(
+        (Join-Path $env:LOCALAPPDATA "Blaze\std"),
+        (Join-Path $env:USERPROFILE ".blaze\std")
+    )
+
+    if ($env:ProgramFiles) {
+        $progBlaze = Join-Path $env:ProgramFiles "Blaze\std"
+        $targetBlazeDirs = @($progBlaze) + $targetBlazeDirs
+    }
+
+    $primaryBlazeDir = ""
+
+    foreach ($dest in $targetBlazeDirs) {
+        try {
+            if (-not (Test-Path $dest)) {
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            }
+            Copy-Item -Path "$sourceBlaze\*" -Destination $dest -Recurse -Force | Out-Null
+            Write-Host "  Installed definitions to: $dest" -ForegroundColor Green
+            if (-not $primaryBlazeDir) {
+                $primaryBlazeDir = (Split-Path -Parent $dest)
+            }
+        }
+        catch {
+            # continue to next candidate directory if permission denied
         }
     }
-    catch {
-        # continue to next candidate directory if permission denied
-    }
+}
+
+if ($cleanupTemp -and (Test-Path $cleanupTemp)) {
+    Remove-Item -Path $cleanupTemp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # 5. Environment & Permanent PATH persistence
