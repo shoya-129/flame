@@ -130,8 +130,91 @@ fi
 
 mkdir -p "$CARGO_BIN" 2>/dev/null || true
 
+# Helper: Ensure Linux development libraries are present for native crates (dbus, udev, pkg-config)
+ensure_linux_dependencies() {
+    if [[ "$TARGET_IS_WINDOWS" == true || "$OS_TYPE" == "macos" ]]; then
+        return 0
+    fi
+
+    local missing_pkgs=()
+    local apt_pkgs=()
+    local dnf_pkgs=()
+    local pacman_pkgs=()
+
+    if ! command -v pkg-config &>/dev/null; then
+        missing_pkgs+=("pkg-config")
+        apt_pkgs+=("pkg-config")
+        dnf_pkgs+=("pkgconf-pkg-config")
+        pacman_pkgs+=("pkgconf")
+    fi
+
+    if ! pkg-config --exists dbus-1 2>/dev/null; then
+        missing_pkgs+=("dbus-1 (libdbus-1-dev)")
+        apt_pkgs+=("libdbus-1-dev")
+        dnf_pkgs+=("dbus-devel")
+        pacman_pkgs+=("dbus")
+    fi
+
+    if ! pkg-config --exists libudev 2>/dev/null; then
+        missing_pkgs+=("libudev (libudev-dev)")
+        apt_pkgs+=("libudev-dev")
+        dnf_pkgs+=("systemd-devel")
+        pacman_pkgs+=("systemd-libs")
+    fi
+
+    if [[ ${#missing_pkgs[@]} -gt 0 ]]; then
+        echo -e "\n${YELLOW}Missing required Linux build dependencies:${RESET} ${missing_pkgs[*]}"
+        echo -e "Attempting to install required system packages..."
+
+        local installed=false
+        local SUDO_CMD=""
+        if [[ $EUID -ne 0 ]]; then
+            if command -v sudo &>/dev/null; then
+                SUDO_CMD="sudo"
+            fi
+        fi
+
+        if command -v apt-get &>/dev/null; then
+            echo -e "Installing via ${GREEN}apt-get${RESET}: ${apt_pkgs[*]}"
+            if $SUDO_CMD apt-get update -y && $SUDO_CMD apt-get install -y "${apt_pkgs[@]}"; then
+                installed=true
+            fi
+        elif command -v dnf &>/dev/null; then
+            echo -e "Installing via ${GREEN}dnf${RESET}: ${dnf_pkgs[*]}"
+            if $SUDO_CMD dnf install -y "${dnf_pkgs[@]}"; then
+                installed=true
+            fi
+        elif command -v pacman &>/dev/null; then
+            echo -e "Installing via ${GREEN}pacman${RESET}: ${pacman_pkgs[*]}"
+            if $SUDO_CMD pacman -S --noconfirm "${pacman_pkgs[@]}"; then
+                installed=true
+            fi
+        elif command -v zypper &>/dev/null; then
+            if $SUDO_CMD zypper install -y dbus-1-devel systemd-devel pkg-config; then
+                installed=true
+            fi
+        elif command -v apk &>/dev/null; then
+            if $SUDO_CMD apk add pkgconf dbus-dev eudev-dev; then
+                installed=true
+            fi
+        fi
+
+        if [[ "$installed" == true ]]; then
+            echo -e "${GREEN}✓ System dependencies installed successfully!${RESET}\n"
+        else
+            echo -e "\n${YELLOW}Notice: Could not automatically install system dependencies.${RESET}"
+            echo -e "Please install the missing packages manually:"
+            echo -e "  Debian/Ubuntu/WSL: ${GREEN}sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev${RESET}"
+            echo -e "  Fedora/RHEL:       ${GREEN}sudo dnf install -y pkgconf-pkg-config dbus-devel systemd-devel${RESET}"
+            echo -e "  Arch Linux:        ${GREEN}sudo pacman -S --noconfirm pkgconf dbus systemd-libs${RESET}\n"
+        fi
+    fi
+}
+
 # 4. Build and install fmp & flamelang binaries via Cargo
 echo -e "\n${BOLD}[1/3] Building and installing Flame binaries (fmp & flamelang)...${RESET}"
+
+ensure_linux_dependencies
 
 if [[ -f "$SCRIPT_DIR/Cargo.toml" ]]; then
     echo -e "Installing from local repository at ${GREEN}$SCRIPT_DIR${RESET}..."
@@ -145,7 +228,15 @@ else
     echo -e "Installing flamelang from Cargo registry (crates.io)..."
     if ! "$CARGO_CMD" install --force flamelang; then
         echo -e "${YELLOW}Registry install not yet available or failed; installing latest from Git repository...${RESET}"
-        "$CARGO_CMD" install --git https://github.com/shoya-129/flame.git --force
+        if ! "$CARGO_CMD" install --git https://github.com/shoya-129/flame.git --force; then
+            echo -e "\n${RED}Build failed.${RESET}"
+            if [[ "$TARGET_IS_WINDOWS" != true && "$OS_TYPE" != "macos" ]]; then
+                echo -e "If this build failed due to missing system headers (like dbus-1 or libudev), run:"
+                echo -e "  ${GREEN}sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev${RESET}"
+                echo -e "Then re-run the installer."
+            fi
+            exit 1
+        fi
     fi
 fi
 

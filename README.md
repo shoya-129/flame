@@ -59,19 +59,6 @@ Or from a local cloned repository:
 .\install.ps1
 ```
 
-#### Windows (Command Prompt / CMD)
-Run in standard Windows Command Prompt (`cmd.exe`):
-
-```cmd
-curl -fsSL https://raw.githubusercontent.com/shoya-129/flame/main/install.cmd -o install.cmd && install.cmd && del install.cmd
-```
-
-Or from a local cloned repository:
-
-```cmd
-install.cmd
-```
-
 #### Linux & macOS (Bash)
 Run the universal bash script (Linux, macOS, and Windows via Git Bash / WSL / MSYS):
 

@@ -20,7 +20,7 @@ Choose your operating system and preferred shell to install Flame and the Blaze 
 Run in Windows PowerShell (Standard or Administrator):
 
 ```powershell title="powershell"
-irm https://raw.githubusercontent.com/shoya-129/flame/main/install.ps1 | iex
+powershell -c "irm https://raw.githubusercontent.com/shoya-129/flame/main/install.ps1 | iex"
 ```
 
 Or from a local cloned repository:
@@ -28,20 +28,7 @@ Or from a local cloned repository:
 ```powershell title="powershell"
 .\install.ps1
 ```
-  </TabItem>
 
-  <TabItem label="Windows (Command Prompt / CMD)">
-Run in standard Windows Command Prompt (`cmd.exe`):
-
-```cmd title="cmd"
-curl -fsSL https://raw.githubusercontent.com/shoya-129/flame/main/install.cmd -o install.cmd && install.cmd && del install.cmd
-```
-
-Or from a local cloned repository:
-
-```cmd title="cmd"
-install.cmd
-```
   </TabItem>
 
   <TabItem label="Linux & macOS (Bash)">
@@ -56,6 +43,13 @@ Or from a local cloned repository:
 ```bash title="bash"
 bash install.sh
 ```
+
+:::note[Linux Prerequisites]
+Native hardware and Bluetooth capabilities require development headers for `dbus` and `udev`. The installer will attempt to install these automatically, or you can install them manually:
+- **Debian / Ubuntu / WSL**: `sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev`
+- **Fedora / RHEL**: `sudo dnf install -y pkgconf-pkg-config dbus-devel systemd-devel`
+- **Arch Linux**: `sudo pacman -S --noconfirm pkgconf dbus systemd-libs`
+:::
   </TabItem>
 </Tabs>
 
