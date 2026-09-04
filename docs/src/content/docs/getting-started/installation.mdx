@@ -45,10 +45,10 @@ bash install.sh
 ```
 
 :::note[Linux Prerequisites]
-Native hardware and Bluetooth capabilities require development headers for `dbus` and `udev`. The installer will attempt to install these automatically, or you can install them manually:
-- **Debian / Ubuntu / WSL**: `sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev`
-- **Fedora / RHEL**: `sudo dnf install -y pkgconf-pkg-config dbus-devel systemd-devel`
-- **Arch Linux**: `sudo pacman -S --noconfirm pkgconf dbus systemd-libs`
+Native hardware, Bluetooth, and camera capabilities require development headers for `dbus`, `udev`, and `libclang` (used by `bindgen` for video devices). The installer will attempt to install these automatically, or you can install them manually:
+- **Debian / Ubuntu / WSL**: `sudo apt-get update && sudo apt-get install -y build-essential pkg-config libdbus-1-dev libudev-dev libclang-dev clang`
+- **Fedora / RHEL**: `sudo dnf install -y gcc gcc-c++ pkgconf-pkg-config dbus-devel systemd-devel clang-devel`
+- **Arch Linux**: `sudo pacman -S --noconfirm base-devel pkgconf dbus systemd-libs clang`
 :::
   </TabItem>
 </Tabs>

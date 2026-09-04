@@ -141,6 +141,13 @@ ensure_linux_dependencies() {
     local dnf_pkgs=()
     local pacman_pkgs=()
 
+    if ! command -v cc &>/dev/null && ! command -v gcc &>/dev/null; then
+        missing_pkgs+=("build-essential (gcc / cc)")
+        apt_pkgs+=("build-essential")
+        dnf_pkgs+=("gcc" "gcc-c++")
+        pacman_pkgs+=("base-devel")
+    fi
+
     if ! command -v pkg-config &>/dev/null; then
         missing_pkgs+=("pkg-config")
         apt_pkgs+=("pkg-config")
@@ -160,6 +167,22 @@ ensure_linux_dependencies() {
         apt_pkgs+=("libudev-dev")
         dnf_pkgs+=("systemd-devel")
         pacman_pkgs+=("systemd-libs")
+    fi
+
+    local has_libclang=false
+    if ldconfig -p 2>/dev/null | grep -q 'libclang\.so'; then
+        has_libclang=true
+    elif compgen -G "/usr/lib*/**/libclang*.so*" &>/dev/null || compgen -G "/usr/lib*/libclang*.so*" &>/dev/null; then
+        has_libclang=true
+    elif command -v llvm-config &>/dev/null && [[ -f "$(llvm-config --libdir 2>/dev/null)/libclang.so" ]]; then
+        has_libclang=true
+    fi
+
+    if [[ "$has_libclang" != true ]]; then
+        missing_pkgs+=("libclang (clang / libclang-dev)")
+        apt_pkgs+=("libclang-dev" "clang")
+        dnf_pkgs+=("clang-devel")
+        pacman_pkgs+=("clang")
     fi
 
     if [[ ${#missing_pkgs[@]} -gt 0 ]]; then
@@ -204,9 +227,9 @@ ensure_linux_dependencies() {
         else
             echo -e "\n${YELLOW}Notice: Could not automatically install system dependencies.${RESET}"
             echo -e "Please install the missing packages manually:"
-            echo -e "  Debian/Ubuntu/WSL: ${GREEN}sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev${RESET}"
-            echo -e "  Fedora/RHEL:       ${GREEN}sudo dnf install -y pkgconf-pkg-config dbus-devel systemd-devel${RESET}"
-            echo -e "  Arch Linux:        ${GREEN}sudo pacman -S --noconfirm pkgconf dbus systemd-libs${RESET}\n"
+            echo -e "  Debian/Ubuntu/WSL: ${GREEN}sudo apt-get update && sudo apt-get install -y build-essential pkg-config libdbus-1-dev libudev-dev libclang-dev clang${RESET}"
+            echo -e "  Fedora/RHEL:       ${GREEN}sudo dnf install -y gcc gcc-c++ pkgconf-pkg-config dbus-devel systemd-devel clang-devel${RESET}"
+            echo -e "  Arch Linux:        ${GREEN}sudo pacman -S --noconfirm base-devel pkgconf dbus systemd-libs clang${RESET}\n"
         fi
     fi
 }
@@ -231,8 +254,8 @@ else
         if ! "$CARGO_CMD" install --git https://github.com/shoya-129/flame.git --force; then
             echo -e "\n${RED}Build failed.${RESET}"
             if [[ "$TARGET_IS_WINDOWS" != true && "$OS_TYPE" != "macos" ]]; then
-                echo -e "If this build failed due to missing system headers (like dbus-1 or libudev), run:"
-                echo -e "  ${GREEN}sudo apt-get update && sudo apt-get install -y pkg-config libdbus-1-dev libudev-dev${RESET}"
+                echo -e "If this build failed due to missing system headers (like dbus-1, libudev, or libclang), run:"
+                echo -e "  ${GREEN}sudo apt-get update && sudo apt-get install -y build-essential pkg-config libdbus-1-dev libudev-dev libclang-dev clang${RESET}"
                 echo -e "Then re-run the installer."
             fi
             exit 1
