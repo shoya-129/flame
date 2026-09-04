@@ -41,15 +41,79 @@ Flame avoids the slow, bottlenecked single-threaded event loops common in legacy
 ---
 
 ## Installation
-Install the Flame toolchain directly using Cargo:
 
-```bash
-cargo install --force flamelang
+### Quick Install (Recommended)
+
+Choose your operating system and preferred shell to install Flame and the Blaze toolchain:
+
+#### Windows (PowerShell)
+Run in Windows PowerShell (Standard or Administrator):
+
+```powershell
+irm https://raw.githubusercontent.com/shoya-129/flame/main/install.ps1 | iex
 ```
-or using npm:
+
+Or from a local cloned repository:
+
+```powershell
+.\install.ps1
+```
+
+#### Windows (Command Prompt / CMD)
+Run in standard Windows Command Prompt (`cmd.exe`):
+
+```cmd
+curl -fsSL https://raw.githubusercontent.com/shoya-129/flame/main/install.cmd -o install.cmd && install.cmd && del install.cmd
+```
+
+Or from a local cloned repository:
+
+```cmd
+install.cmd
+```
+
+#### Linux & macOS (Bash)
+Run the universal bash script (Linux, macOS, and Windows via Git Bash / WSL / MSYS):
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/shoya-129/flame/main/install.sh | bash
+```
+
+Or from a local cloned repository:
+
+```bash
+bash install.sh
+```
+
+#### Alternative: Cargo & npm
+You can also install the binary directly from package registries:
+
+```bash
+# Via Cargo
+cargo install --force flamelang
+
+# Via npm
 npm i -g flamelang
+```
+
+> [!TIP]
+> **What the installer does:**
+> The installer automatically builds `flame` (and `flamelang`), registers the `fmp` binary command in your permanent User PATH, and provisions the canonical `Blaze/std` definition interface directory into your local application data folder (`%LOCALAPPDATA%\Blaze` on Windows or `~/.blaze` on Unix) for instant Go-to-Definition and IDE LSP support.
+
+---
+
+## Verifying the Installation
+
+Check that `fmp` is accessible from your terminal:
+
+```bash
+fmp --version
+```
+
+To view the complete help menu and all available flags:
+
+```bash
+fmp --help
 ```
 
 ---
