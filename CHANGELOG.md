@@ -4,6 +4,23 @@ All pre-release versions in the `0.x.x` series carry the official codename **Fla
 
 ---
 
+## [0.4.5] - 2026-09-04 (Codename: *Fourth Spark*)
+
+### 🔄 Blaze Standard Library Auto-Updating (`fmp update`)
+- **Automated Toolchain & Definitions Synchronization**:
+  - `fmp update` now automatically refreshes and synchronizes all Blaze standard library definition directories (`BLAZE_HOME/std`, `%LOCALAPPDATA%\Blaze\std`, `~/.blaze/std`, etc.) taking the latest `.fm` definition files.
+  - Automatically fetches and extracts the latest definitions directly from the GitHub repository (`shoya-129/flame`, `main` branch archive).
+  - During local development, automatically prioritizes local workspace definitions (`Blaze/std`), enabling instant propagation of edits to installed toolchain directories.
+- **Embedded Offline Fallback**:
+  - Bundled all 20 standard library interface definitions (`annotations.fm`, `bluetooth.fm`, `builtins.fm`, `byte.fm`, `camera.fm`, `desktop.fm`, `embedded.fm`, `env.fm`, `fs.fm`, `hardware.fm`, `hid.fm`, `json.fm`, `math.fm`, `net.fm`, `os.fm`, `process.fm`, `serial.fm`, `thread.fm`, `time.fm`, `unit.fm`) directly into the `flamelang` binary via compile-time `include_str!`, ensuring definitions can always be updated or initialized even when offline.
+- **Fast-Path `fmp update std`**:
+  - Introduced `fmp update std` (aliased to `fmp update blaze`) to quickly update and refresh all Blaze standard library definition files in seconds without waiting for Cargo to reinstall or recompile the binary.
+  - Added `--remote` flag to force pulling the latest definitions from GitHub even when working inside a local repository.
+- **Language Server Self-Healing**:
+  - Integrated `ensure_blaze_definitions_installed()` into `locate_blaze_dir()`, ensuring language server completion, hover, and diagnostics have standard library definitions available immediately on first run even when installed directly via `cargo install flamelang` without installer scripts.
+
+---
+
 ## [0.4.4] - 2026-09-04 (Codename: *Fourth Spark*)
 
 ### 🐛 Linux Compilation & Dependency Fixes

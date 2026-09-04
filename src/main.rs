@@ -1,5 +1,6 @@
 #![cfg(feature = "cli")]
 pub mod compiler;
+pub mod blaze;
 mod diagnostics;
 pub mod embedded;
 mod formatter;
@@ -259,56 +260,78 @@ fn dirs_fallback_cargo_bin() -> Option<PathBuf> {
     None
 }
 
-fn run_update_command(_args: &[String]) {
-    println!("\x1b[1;34m[1/3]\x1b[0m Checking Cargo toolchain...");
-    let cargo_check = std::process::Command::new("cargo")
-        .arg("--version")
-        .output();
-    if cargo_check.is_err() {
-        eprintln!("\x1b[1;31merror:\x1b[0m Cargo is not installed or not found in PATH.");
-        eprintln!("Please install Rust and Cargo from https://rustup.rs/ to update Flame.");
-        return;
-    }
+fn run_update_command(args: &[String]) {
+    let update_std_only = args.iter().any(|a| a == "std" || a == "--std" || a == "blaze" || a == "--blaze");
+    let prefer_remote = args.iter().any(|a| a == "--remote");
 
-    println!("\x1b[1;34m[2/3]\x1b[0m Fetching and installing the latest published Flame release from Cargo...");
-    let status = std::process::Command::new("cargo")
-        .args(["install", "flamelang", "--force"])
-        .status();
+    if !update_std_only {
+        println!("\x1b[1;34m[1/4]\x1b[0m Checking Cargo toolchain...");
+        let cargo_check = std::process::Command::new("cargo")
+            .arg("--version")
+            .output();
+        if cargo_check.is_err() {
+            eprintln!("\x1b[1;31merror:\x1b[0m Cargo is not installed or not found in PATH.");
+            eprintln!("Please install Rust and Cargo from https://rustup.rs/ to update Flame.");
+            return;
+        }
 
-    match status {
-        Ok(s) if s.success() => {
-            println!("\x1b[1;34m[3/3]\x1b[0m Synchronizing 'fmp' binary alias...");
-            if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
-                if cargo_bin.exists() {
-                    let flamelang_bin = if cfg!(windows) {
-                        cargo_bin.join("flamelang.exe")
-                    } else {
-                        cargo_bin.join("flamelang")
-                    };
-                    let fmp_bin = if cfg!(windows) {
-                        cargo_bin.join("fmp.exe")
-                    } else {
-                        cargo_bin.join("fmp")
-                    };
-                    if flamelang_bin.exists() {
-                        let _ = fs::copy(&flamelang_bin, &fmp_bin);
-                    }
-                    if cfg!(windows) {
-                        let _ = fs::write(cargo_bin.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
-                        let _ = fs::write(cargo_bin.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
+        println!("\x1b[1;34m[2/4]\x1b[0m Fetching and installing the latest published Flame release from Cargo...");
+        let status = std::process::Command::new("cargo")
+            .args(["install", "flamelang", "--force"])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {
+                println!("\x1b[1;34m[3/4]\x1b[0m Synchronizing 'fmp' binary alias...");
+                if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
+                    if cargo_bin.exists() {
+                        let flamelang_bin = if cfg!(windows) {
+                            cargo_bin.join("flamelang.exe")
+                        } else {
+                            cargo_bin.join("flamelang")
+                        };
+                        let fmp_bin = if cfg!(windows) {
+                            cargo_bin.join("fmp.exe")
+                        } else {
+                            cargo_bin.join("fmp")
+                        };
+                        if flamelang_bin.exists() {
+                            let _ = fs::copy(&flamelang_bin, &fmp_bin);
+                        }
+                        if cfg!(windows) {
+                            let _ = fs::write(cargo_bin.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
+                            let _ = fs::write(cargo_bin.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
+                        }
                     }
                 }
             }
-            println!("\n\x1b[1;32m✓ Successfully updated Flame!\x1b[0m");
-            println!("Run \x1b[1mfmp --version\x1b[0m to check your active release.\n");
-        }
-        Ok(s) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m Cargo failed to update flamelang with exit code: {}", s);
-        }
-        Err(e) => {
-            eprintln!("\x1b[1;31merror:\x1b[0m Failed executing cargo: {}", e);
+            Ok(s) => {
+                eprintln!("\x1b[1;31merror:\x1b[0m Cargo failed to update flamelang with exit code: {}", s);
+                return;
+            }
+            Err(e) => {
+                eprintln!("\x1b[1;31merror:\x1b[0m Failed executing cargo: {}", e);
+                return;
+            }
         }
     }
+
+    let step_label = if update_std_only { "[1/1]" } else { "[4/4]" };
+    println!("\x1b[1;34m{}\x1b[0m Updating Blaze standard library definitions...", step_label);
+    let effective_prefer_remote = prefer_remote || !Path::new("Blaze/std").exists();
+    match blaze::update_blaze_definitions(effective_prefer_remote) {
+        Ok(count) => {
+            if count == 0 {
+                println!("  \x1b[1;33mwarning:\x1b[0m No Blaze definition directories could be resolved.");
+            }
+        }
+        Err(e) => {
+            eprintln!("  \x1b[1;31merror:\x1b[0m Failed updating Blaze definitions: {}", e);
+        }
+    }
+
+    println!("\n\x1b[1;32m✓ Successfully updated Flame & Blaze toolchain!\x1b[0m");
+    println!("Run \x1b[1mfmp --version\x1b[0m to check your active release.\n");
 }
 
 fn run_uninstall_command(_args: &[String]) {
@@ -611,7 +634,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}update{}                  Update Flame to latest published Cargo crate version",
+        "  {}update{} [std]             Update Flame toolchain and Blaze standard library definitions",
         cyan, reset
     );
     println!(

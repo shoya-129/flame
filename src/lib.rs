@@ -1,5 +1,6 @@
 #[cfg(feature = "cli")]
 pub mod compiler;
+pub mod blaze;
 pub mod diagnostics;
 pub mod embedded;
 pub mod lexer;

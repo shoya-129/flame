@@ -1339,7 +1339,8 @@ pub fn locate_blaze_dir() -> Option<std::path::PathBuf> {
         }
     }
 
-    None
+    // 5. Automatic self-healing: if no definition directory exists yet, populate default
+    crate::blaze::ensure_blaze_definitions_installed()
 }
 
 pub fn find_declaration_in_stmts(
