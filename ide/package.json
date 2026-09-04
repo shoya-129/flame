@@ -2,7 +2,7 @@
   "name": "flame-language-support",
   "displayName": "Flame",
   "description": "Rich IDE syntax highlighting and configuration for the Flame programming language.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "icon": "flame.png",
   "publisher": "ezet-galaxy",
   "license": "ISC",
@@ -86,6 +86,12 @@
           "default": "",
           "description": "Custom path to the Flame compiler CLI binary (e.g. flame or flamelang executable)."
         }
+      }
+    },
+    "configurationDefaults": {
+      "explorer.autoRevealExclude": {
+        "**/.flame": true,
+        "**/.flame/**": true
       }
     }
   }

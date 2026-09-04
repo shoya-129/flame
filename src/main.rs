@@ -78,6 +78,15 @@ fn main() {
         "check" => {
             run_check_command(&args);
         }
+        "definition" => {
+            run_definition_command(&args);
+        }
+        "update" => {
+            run_update_command(&args);
+        }
+        "uninstall" => {
+            run_uninstall_command(&args);
+        }
         "format" => {
             if args.len() < 3 {
                 println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to format");
@@ -236,6 +245,232 @@ fn main() {
     }
 }
 
+fn dirs_fallback_cargo_bin() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("CARGO_HOME") {
+        let p = PathBuf::from(home);
+        return Some(if p.ends_with("bin") { p } else { p.join("bin") });
+    }
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        return Some(PathBuf::from(user_profile).join(".cargo").join("bin"));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return Some(PathBuf::from(home).join(".cargo").join("bin"));
+    }
+    None
+}
+
+fn run_update_command(_args: &[String]) {
+    println!("\x1b[1;34m[1/3]\x1b[0m Checking Cargo toolchain...");
+    let cargo_check = std::process::Command::new("cargo")
+        .arg("--version")
+        .output();
+    if cargo_check.is_err() {
+        eprintln!("\x1b[1;31merror:\x1b[0m Cargo is not installed or not found in PATH.");
+        eprintln!("Please install Rust and Cargo from https://rustup.rs/ to update Flame.");
+        return;
+    }
+
+    println!("\x1b[1;34m[2/3]\x1b[0m Fetching and installing the latest published Flame release from Cargo...");
+    let status = std::process::Command::new("cargo")
+        .args(["install", "flamelang", "--force"])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            println!("\x1b[1;34m[3/3]\x1b[0m Synchronizing 'flame' binary alias...");
+            if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
+                if cargo_bin.exists() {
+                    let flamelang_bin = if cfg!(windows) {
+                        cargo_bin.join("flamelang.exe")
+                    } else {
+                        cargo_bin.join("flamelang")
+                    };
+                    let flame_bin = if cfg!(windows) {
+                        cargo_bin.join("flame.exe")
+                    } else {
+                        cargo_bin.join("flame")
+                    };
+                    if flamelang_bin.exists() && !flame_bin.exists() {
+                        let _ = fs::copy(&flamelang_bin, &flame_bin);
+                    }
+                }
+            }
+            println!("\n\x1b[1;32m✓ Successfully updated Flame!\x1b[0m");
+            println!("Run \x1b[1mflame --version\x1b[0m to check your active release.\n");
+        }
+        Ok(s) => {
+            eprintln!("\x1b[1;31merror:\x1b[0m Cargo failed to update flamelang with exit code: {}", s);
+        }
+        Err(e) => {
+            eprintln!("\x1b[1;31merror:\x1b[0m Failed executing cargo: {}", e);
+        }
+    }
+}
+
+fn run_uninstall_command(_args: &[String]) {
+    println!("\x1b[1;33mUninstalling Flame and Blaze toolchain...\x1b[0m");
+
+    // 1. Remove Blaze definition directories
+    println!("\x1b[1;34m[1/3]\x1b[0m Removing Blaze standard library definition directories...");
+    let mut dirs_to_remove = Vec::new();
+    if let Ok(val) = std::env::var("BLAZE_HOME") {
+        dirs_to_remove.push(PathBuf::from(val));
+    }
+    if let Ok(prog_files) = std::env::var("ProgramFiles") {
+        dirs_to_remove.push(PathBuf::from(prog_files).join("Blaze"));
+    }
+    if let Ok(local_app) = std::env::var("LOCALAPPDATA") {
+        dirs_to_remove.push(PathBuf::from(local_app).join("Blaze"));
+    }
+    if let Ok(user_prof) = std::env::var("USERPROFILE") {
+        dirs_to_remove.push(PathBuf::from(user_prof).join(".blaze"));
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        dirs_to_remove.push(PathBuf::from(home).join(".blaze"));
+    }
+    dirs_to_remove.push(PathBuf::from("/usr/local/share/blaze"));
+
+    for d in dirs_to_remove {
+        if d.exists() {
+            let _ = fs::remove_dir_all(&d);
+            println!("  Removed: {}", d.display());
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = std::process::Command::new("reg")
+            .args(["delete", r"HKCU\Environment", "/v", "BLAZE_HOME", "/f"])
+            .output();
+    }
+
+    // 2. Discover all flame / flamelang binaries and shims to delete
+    println!("\x1b[1;34m[2/3]\x1b[0m Removing Flame binaries and command aliases...");
+    let mut files_to_delete = Vec::new();
+
+    if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
+        files_to_delete.push(cargo_bin.join("flame.exe"));
+        files_to_delete.push(cargo_bin.join("flame.cmd"));
+        files_to_delete.push(cargo_bin.join("flame.bat"));
+        files_to_delete.push(cargo_bin.join("flame"));
+        files_to_delete.push(cargo_bin.join("flamelang.exe"));
+        files_to_delete.push(cargo_bin.join("flamelang.cmd"));
+        files_to_delete.push(cargo_bin.join("flamelang.bat"));
+        files_to_delete.push(cargo_bin.join("flamelang"));
+    }
+
+    if let Ok(cur) = std::env::current_exe() {
+        if let Some(parent) = cur.parent() {
+            files_to_delete.push(parent.join("flame.exe"));
+            files_to_delete.push(parent.join("flame.cmd"));
+            files_to_delete.push(parent.join("flame.bat"));
+            files_to_delete.push(parent.join("flame"));
+            files_to_delete.push(parent.join("flamelang.exe"));
+            files_to_delete.push(parent.join("flamelang.cmd"));
+            files_to_delete.push(parent.join("flamelang.bat"));
+            files_to_delete.push(parent.join("flamelang"));
+        }
+        files_to_delete.push(cur);
+    }
+
+    // Also query system PATH lookups
+    if cfg!(windows) {
+        for binary in ["flame", "flamelang"] {
+            if let Ok(output) = std::process::Command::new("where").arg(binary).output() {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            files_to_delete.push(PathBuf::from(trimmed));
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        for binary in ["flame", "flamelang"] {
+            if let Ok(output) = std::process::Command::new("which").arg(binary).output() {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            files_to_delete.push(PathBuf::from(trimmed));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    files_to_delete.sort();
+    files_to_delete.dedup();
+
+    // 3. Uninstall flamelang via Cargo first (if cargo is available)
+    println!("\x1b[1;34m[3/3]\x1b[0m Uninstalling flamelang via Cargo...");
+    let _ = std::process::Command::new("cargo")
+        .args(["uninstall", "flamelang"])
+        .status();
+
+    // Remove or rename files; any locked files (like the running flame.exe) are renamed and scheduled for background deletion
+    let mut pending_delete = Vec::new();
+    for f in &files_to_delete {
+        if f.exists() {
+            if fs::remove_file(f).is_ok() {
+                println!("  Removed: {}", f.display());
+            } else {
+                // If running on Windows, rename to .deleteme.<pid> so it immediately disappears from PATH
+                let temp_name = format!("{}.deleteme.{}", f.display(), std::process::id());
+                let temp_path = PathBuf::from(&temp_name);
+                if fs::rename(f, &temp_path).is_ok() {
+                    println!("  Removed: {}", f.display());
+                    pending_delete.push(temp_path);
+                } else {
+                    pending_delete.push(f.clone());
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    if !pending_delete.is_empty() {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+
+        let targets: Vec<String> = pending_delete
+            .iter()
+            .map(|p| format!("\"{}\"", p.display()))
+            .collect();
+
+        // Wait 1-2 seconds until the current flame process exits and releases its file lock, then delete
+        let script = format!(
+            "ping 127.0.0.1 -n 2 >nul & del /f /q {} >nul 2>&1",
+            targets.join(" ")
+        );
+
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", &script])
+            .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+            .spawn();
+    }
+
+    #[cfg(not(windows))]
+    if !pending_delete.is_empty() {
+        let targets: Vec<String> = pending_delete
+            .iter()
+            .map(|p| format!("'{}'", p.display()))
+            .collect();
+        let script = format!("sleep 1; rm -f {}", targets.join(" "));
+        let _ = std::process::Command::new("sh")
+            .args(["-c", &script])
+            .spawn();
+    }
+
+    println!("\n\x1b[1;32m✓ Successfully uninstalled Flame and cleaned Blaze toolchain!\x1b[0m\n");
+}
+
 fn run_doctor_command() {
     println!("\nFlame 0.3.0 LTS\n");
 
@@ -361,6 +596,14 @@ fn print_help() {
     );
     println!(
         "  {}native init{}         Scaffold native Rust FFI bridges & Cargo configuration",
+        cyan, reset
+    );
+    println!(
+        "  {}update{}                  Update Flame to latest published Cargo crate version",
+        cyan, reset
+    );
+    println!(
+        "  {}uninstall{}               Uninstall Flame toolchain and remove Blaze standard library",
         cyan, reset
     );
     println!(
@@ -1468,6 +1711,59 @@ struct JsonCheckOutput {
     hover: Option<JsonHover>,
     signature_help: Option<JsonSignatureHelp>,
     pub tokens: Vec<crate::ide::SemanticToken>,
+    pub definition: Option<crate::ide::JsonDefinition>,
+}
+
+fn run_definition_command(args: &[String]) {
+    if args.len() < 3 {
+        println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to inspect");
+        println!("usage: flame definition <file> [--line N] [--col N] [--json]");
+        return;
+    }
+
+    let file = &args[2];
+    let json_mode = args.iter().any(|arg| arg == "--json");
+    let line = args
+        .iter()
+        .position(|arg| arg == "--line")
+        .and_then(|idx| args.get(idx + 1))
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1);
+    let col = args
+        .iter()
+        .position(|arg| arg == "--col")
+        .and_then(|idx| args.get(idx + 1))
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1);
+
+    let stdin_content = if args.iter().any(|arg| arg == "--stdin") {
+        use std::io::Read;
+        let mut buf = String::new();
+        let _ = std::io::stdin().read_to_string(&mut buf);
+        Some(buf)
+    } else {
+        None
+    };
+
+    let output = analyze_file_for_json(file, Some(line), Some(col), stdin_content);
+
+    if json_mode {
+        #[derive(Serialize)]
+        struct DefinitionResponse {
+            definition: Option<crate::ide::JsonDefinition>,
+        }
+        let resp = DefinitionResponse {
+            definition: output.definition,
+        };
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&resp).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else if let Some(ref def) = output.definition {
+        println!("{}:{}:{}", def.file, def.line, def.column);
+    } else {
+        println!("No definition found");
+    }
 }
 
 fn run_check_command(args: &[String]) {
@@ -1509,6 +1805,7 @@ fn run_check_command(args: &[String]) {
             hover: None,
             signature_help: None,
             tokens: vec![],
+            definition: None,
         });
 
     if json_mode {
@@ -1601,8 +1898,10 @@ fn analyze_file_for_json(
 
     let mut parser = Parser::new(tokens, file.to_string());
     let mut tc_opt = None;
+    let mut parsed_stmts = Vec::new();
     match parser.parse() {
         Ok(mut stmts) => {
+            parsed_stmts = stmts.clone();
             let mut target = None;
             for line in manifest_content.lines() {
                 let t = line.trim();
@@ -1677,15 +1976,7 @@ fn analyze_file_for_json(
 
     let _lines = content.lines().collect::<Vec<_>>();
     let current_line = if let Some(l) = line {
-        let line = content.lines().nth(l.saturating_sub(1)).unwrap_or("");
-        eprintln!(
-            "DEBUG_EXTRACT: req.line={}, content.len={}, lines={}, line='{}'",
-            l,
-            content.len(),
-            content.lines().count(),
-            line
-        );
-        line
+        content.lines().nth(l.saturating_sub(1)).unwrap_or("")
     } else {
         ""
     };
@@ -2117,11 +2408,6 @@ fn analyze_file_for_json(
 
             let mut best_span: Option<&crate::lexer::Span> = None;
             let mut best_ty_str = None;
-            eprintln!(
-                "DEBUG_HOVER: byte_idx={}, tc.hover_info keys: {:?}",
-                cursor_byte_idx,
-                tc.hover_info.keys()
-            );
 
             for (span, ty_str) in &tc.hover_info {
                 if cursor_byte_idx >= span.start && cursor_byte_idx <= span.end {
@@ -3922,6 +4208,12 @@ fn analyze_file_for_json(
         }
     }
 
+    let definition = if let (Some(l), Some(c)) = (line, col) {
+        ide::find_definition(file, &content, l, c, &parsed_stmts, &manifest_dir)
+    } else {
+        None
+    };
+
     JsonCheckOutput {
         file: file.to_string(),
         diagnostics,
@@ -3932,6 +4224,7 @@ fn analyze_file_for_json(
         hover,
         signature_help,
         tokens,
+        definition,
     }
 }
 

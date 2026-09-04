@@ -1,0 +1,88 @@
+package net
+
+@Docs("TCP socket networking declarations.")
+export struct TcpSocket {}
+
+impl TcpSocket {
+    fn connect(addr: String) -> TcpSocket {
+        return TcpSocket {}
+    }
+    fn write(data: String) {}
+    fn read() -> String {
+        return ""
+    }
+    fn close() {}
+}
+
+@Docs("TCP socket listener for inbound server connections.")
+export struct TcpListener {}
+
+impl TcpListener {
+    fn bind(addr: String) -> TcpListener {
+        return TcpListener {}
+    }
+    fn accept() -> TcpSocket {
+        return TcpSocket {}
+    }
+    fn close() {}
+}
+
+@Docs("UDP socket for connectionless datagram communication.")
+export struct UdpSocket {}
+
+impl UdpSocket {
+    fn bind(addr: String) -> UdpSocket {
+        return UdpSocket {}
+    }
+    fn send(data: String, addr: String) {}
+    fn recv() -> Formula {
+        return formula {}
+    }
+}
+
+@Docs("HTTP client interface for performing network requests.")
+export struct Http {}
+
+impl Http {
+    @Docs("Performs an HTTP GET request.\n\n**Example:**\n```flame\nlet res = await http.get(\"https://api.example.com/data\")\n```")
+    fn get(url: String) -> Formula {
+        return formula {}
+    }
+
+    @Docs("Performs an HTTP POST request.")
+    fn post(url: String, body: Any) -> Formula {
+        return formula {}
+    }
+
+    @Docs("Performs an HTTP PUT request.")
+    fn put(url: String, body: Any) -> Formula {
+        return formula {}
+    }
+
+    @Docs("Performs an HTTP DELETE request.")
+    fn delete(url: String) -> Formula {
+        return formula {}
+    }
+
+    @Docs("Performs an HTTP PATCH request.")
+    fn patch(url: String, body: Any) -> Formula {
+        return formula {}
+    }
+}
+
+@Docs("Global HTTP client instance.")
+export const http: Http = Http {}
+
+@Docs("WebSocket connection interface.")
+export struct WebSocket {}
+
+impl WebSocket {
+    fn connect(url: String) -> WebSocket {
+        return WebSocket {}
+    }
+    fn send(message: String) {}
+    fn recv() -> String {
+        return ""
+    }
+    fn close() {}
+}

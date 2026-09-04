@@ -11,7 +11,61 @@ Flame provides an all-in-one developer workspace toolchain containing a compiler
 
 ## Installation
 
-Install the Flame toolchain globally using your preferred package manager:
+### Quick Install (Recommended)
+
+Choose your operating system and preferred shell to install Flame and the Blaze toolchain:
+
+<Tabs>
+  <TabItem label="Windows (PowerShell)">
+Run in Windows PowerShell (Standard or Administrator):
+
+```powershell title="powershell"
+irm https://raw.githubusercontent.com/shoya-129/flame/main/install.ps1 | iex
+```
+
+Or from a local cloned repository:
+
+```powershell title="powershell"
+.\install.ps1
+```
+  </TabItem>
+
+  <TabItem label="Windows (Command Prompt / CMD)">
+Run in standard Windows Command Prompt (`cmd.exe`):
+
+```cmd title="cmd"
+curl -fsSL https://raw.githubusercontent.com/shoya-129/flame/main/install.cmd -o install.cmd && install.cmd && del install.cmd
+```
+
+Or from a local cloned repository:
+
+```cmd title="cmd"
+install.cmd
+```
+  </TabItem>
+
+  <TabItem label="Linux & macOS (Bash)">
+Run the universal bash script (Linux, macOS, and Windows via Git Bash / WSL / MSYS):
+
+```bash title="bash"
+curl -fsSL https://raw.githubusercontent.com/shoya-129/flame/main/install.sh | bash
+```
+
+Or from a local cloned repository:
+
+```bash title="bash"
+bash install.sh
+```
+  </TabItem>
+</Tabs>
+
+<Aside type="tip" title="What the installer does">
+The installer automatically builds `flame` (and `flamelang`), registers the `flame` binary command in your permanent User PATH, and provisions the canonical `Blaze/std` definition interface directory into your system programs folder (e.g. `C:\Program Files\Blaze` or `~/.blaze`) for instant Go-to-Definition and IDE LSP support.
+</Aside>
+
+### Alternative Package Managers
+
+You can also install via Cargo or standard Node package managers:
 
 <Tabs>
   <TabItem label="cargo">
@@ -261,3 +315,20 @@ Discovers and executes all `@Test` annotated functions across your project files
 ```bash title="bash"
 flame test
 ```
+
+---
+
+### 6. Updating & Toolchain Maintenance
+
+#### `flame update`
+Automatically updates your Flame compiler to the latest published release on Cargo (crates.io), synchronizes the `flame` binary alias, and keeps your toolchain current:
+```bash title="bash"
+flame update
+```
+
+#### `flame uninstall`
+Removes the Flame compiler binaries from your Cargo environment and purges the installed `Blaze` standard library definition directories:
+```bash title="bash"
+flame uninstall
+```
+

@@ -8,7 +8,7 @@ repository = "https://github.com/shoya-129/flamelang"
 homepage = "https://flamelang.vercel.app"
 
 [dependencies]
-flamelang = "0.3.7"
+flamelang = { version = "0.4.2", path = ".." }
 
 [dev-dependencies]
 tempfile = "3.27.0"

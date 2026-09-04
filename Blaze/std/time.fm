@@ -1,0 +1,20 @@
+package time
+@Docs("Returns the current system Unix timestamp in milliseconds.\n\n**Example:**\n```flame\nlet t = time.now()\n```")
+export fn now() -> Int {
+}
+
+@Docs("Suspends execution for the specified milliseconds.")
+export fn sleep(ms: Int) {
+}
+
+@Docs("Formats an epoch timestamp with a given strftime date format string.")
+export fn format(timestamp: Int, fmt: String) -> String {
+}
+
+@Docs("Parses a datetime string into a timestamp using a format string.")
+export fn parse(date_str: String, fmt: String) -> Int {
+}
+
+@Docs("Returns elapsed time in milliseconds since the given starting timestamp.")
+export fn since(start_ms: Int) -> Int {
+}

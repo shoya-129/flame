@@ -1,0 +1,25 @@
+package desktop
+
+@Docs("Controls mouse cursor position and clicks.")
+export struct Mouse {}
+
+impl Mouse {
+    fn move(x: Int, y: Int) {}
+    fn click() {}
+    fn rightClick() {}
+    fn position() -> Formula {
+        return formula {}
+    }
+}
+
+@Docs("Controls keyboard simulation and typing.")
+export struct Keyboard {}
+
+impl Keyboard {
+    fn typeText(text: String) {}
+    fn keyPress(key: String) {}
+    fn keyRelease(key: String) {}
+}
+
+export const mouse: Mouse = Mouse {}
+export const keyboard: Keyboard = Keyboard {}

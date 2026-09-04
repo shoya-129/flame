@@ -1,0 +1,16 @@
+package os
+
+@Docs("Returns the operating system name (e.g. `\"windows\"`, `\"linux\"`, `\"macos\"`).\n\n**Example:**\n```flame\nlet platform = os.name()\n```")
+export fn name() -> String {}
+
+@Docs("Returns the system CPU architecture (e.g. `\"x86_64\"`, `\"aarch64\"`).")
+export fn arch() -> String {}
+
+@Docs("Returns total system physical memory in bytes.")
+export fn totalMemory() -> Int {}
+
+@Docs("Returns available system free memory in bytes.")
+export fn freeMemory() -> Int {}
+
+@Docs("Returns the host machine hostname.")
+export fn hostname() -> String {}

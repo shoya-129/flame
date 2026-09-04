@@ -1,0 +1,12 @@
+package thread
+@Docs("Suspends current thread execution for the specified milliseconds.\n\n**Example:**\n```flame\nthread.sleep(1000)\n```")
+export fn sleep(ms: Int) {
+}
+
+@Docs("Creates a message channel and returns `(Sender, Receiver)`.")
+export fn channel() -> Any {
+}
+
+@Docs("Yields execution to allow other threads to run.")
+export fn yield_now() {
+}

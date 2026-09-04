@@ -3,6 +3,39 @@
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 ---
 
+## [0.4.3] - 2026-09-04 (Codename: *Fourth Spark*)
+
+### 🧭 Language Server & Go-to-Definition Upgrades
+- **Native Rust Plugin Definition Navigation**:
+  - Implemented deep LSP Go-to-Definition support that resolves symbols across language boundaries. Hovering and jumping on native plugin initializers (e.g. `server.init()`) and instance methods (e.g. `app.get()`, `app.post()`, `app.listen()`) jumps directly into the corresponding Rust source file (e.g. `native/src/lib.rs`).
+  - Added AST inspection for `impl <StructName>` blocks and free functions in Rust source files with exact 1-indexed line and column UTF-8 character positioning.
+  - Added receiver type inference for declarations like `let app = await server.init()` so methods called on receiver variables accurately resolve to the underlying native struct (`FlameServer`).
+- **Nested & Local Function Definition Resolution**:
+  - Implemented recursive body inspection for local helper functions and closures (e.g. `fn create_user(body: String)` declared inside outer functions), enabling instant definition jumps when passing local functions as callbacks.
+- **Folder Expansion Suppression**:
+  - Enforced strict file-only guarantees in definition resolution. Directory paths are never emitted as definition targets, preventing editors from unintentionally expanding collapsed dependency trees.
+  - Added `explorer.autoRevealExclude` configuration defaults in the VS Code extension for `**/.flame` and `**/.flame/**`, keeping `.flame` visible in the explorer while preventing auto-reveal expansion on definition jumps.
+
+### 🎨 Clean Hover Documentation & De-duplication
+- **Eliminated Duplicate Hover Signatures**:
+  - Resolved a bug where `FunctionSig` and `AnnotationDecl` stored full markdown code blocks in `hover_doc`, causing callsites (`serve(port)`) to render double stacked function signatures (`fn serve(port: Int) -> Nil` + `fn serve(port: Int)`).
+  - Cleaned `StructInfo.hover_doc` on native plugin structs to avoid duplicate struct definition fences.
+  - Omitted redundant `-> Nil` return types when a function returns `Type::Nil`, matching idiomatic Flame syntax (`fn serve(port: Int)`).
+- **Subcommand `@Command` Documentation**:
+  - Integrated `@Command(name: "...", about: "...")` into docstring generation so CLI subcommands display their descriptions automatically on hover.
+- **Function Identifier Hover Formatting**:
+  - When referencing functions as first-class values or callbacks (e.g. `app.post("/users", create_user)`), hover tooltips now display clean syntax-highlighted Flame function blocks instead of unformatted text.
+
+### 🛠️ Toolchain & Installation Enhancements
+- **Multi-Platform Installation Suite**:
+  - Added native scripts and verified installer paths for **Windows PowerShell** (`install.ps1`), **Windows Command Prompt** (`install.cmd`), and **Linux/macOS** (`install.sh`).
+  - Updated the official documentation website (`docs`) with interactive tabs for all shell environments.
+- **Toolchain Maintenance Commands**:
+  - Fixed `flame uninstall` to cleanly remove all `flame.exe`, `flame.cmd`, `flame.bat`, and `flamelang.exe` binaries across `.cargo/bin` and system PATH.
+  - Implemented non-blocking detached self-removal on Windows so running `flame uninstall` can delete the running `flame.exe` executable itself upon exit, as well as cleaning `BLAZE_HOME` from the user's environment.
+
+---
+
 ## [0.4.2] - 2026-09-03 (Codename: *Fourth Spark*)
 
 ### 🔬 Physics & Mathematics Engine Upgrades

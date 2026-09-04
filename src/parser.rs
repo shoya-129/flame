@@ -526,7 +526,29 @@ impl Parser {
 
     fn parse_package_decl(&mut self, annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
         let start_tok = self.advance().clone(); // consume "package"
-        let name_tok = self.consume(TokenKind::Identifier, "Expected package name.")?;
+        let name_tok = if self.check(TokenKind::Identifier) {
+            self.advance().clone()
+        } else if matches!(
+            self.peek().kind,
+            TokenKind::Thread
+                | TokenKind::Type
+                | TokenKind::Where
+                | TokenKind::Formula
+                | TokenKind::Async
+                | TokenKind::Await
+                | TokenKind::Mut
+        ) {
+            self.advance().clone()
+        } else {
+            let tok = self.peek();
+            return Err(Diagnostic::new_error(
+                format!("expected Identifier, found '{}'", tok.lexeme),
+                self.filepath.clone(),
+                tok.span.clone(),
+                Some("Expected package name.".to_string()),
+                None,
+            ));
+        };
         let end_span = name_tok.span.clone();
         Ok(Stmt::PackageDecl {
             name: name_tok.lexeme.clone(),

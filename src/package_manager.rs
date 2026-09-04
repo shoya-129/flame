@@ -83,7 +83,7 @@ pub struct PluginSpec {
     pub is_local: bool,
 }
 
-fn parse_section_entries(content: &str, section_name: &str) -> Vec<(String, String)> {
+pub fn parse_section_entries(content: &str, section_name: &str) -> Vec<(String, String)> {
     let mut entries = Vec::new();
     let mut in_section = false;
 

@@ -1,0 +1,28 @@
+package byte
+@Docs("Reads all bytes from a file.\n\n**Example:**\n```flame\nlet b = byte.readBytes(\"data.bin\")\n```")
+export fn readBytes(path: String) -> Byte {
+}
+
+@Docs("Writes a byte array to a file, overwriting existing contents.")
+export fn writeBytes(path: String, bytes: Byte) {
+}
+
+@Docs("Appends bytes to the end of a file.")
+export fn appendBytes(path: String, bytes: Byte) {
+}
+
+@Docs("Reads a single byte from a file at offset 0.")
+export fn readByte(path: String) -> Int {
+}
+
+@Docs("Writes a single byte (0-255) to a file.")
+export fn writeByte(path: String, byte: Int) {
+}
+
+@Docs("Reads a single byte at a specific offset.")
+export fn readByteAt(path: String, offset: Int) -> Int {
+}
+
+@Docs("Writes a single byte at a specific offset.")
+export fn writeByteAt(path: String, offset: Int, byte: Int) {
+}

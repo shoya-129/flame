@@ -1,0 +1,19 @@
+package unit
+
+@Docs("Represents a physical unit formula (e.g. `m/s`).")
+export struct Unit {}
+
+@Docs("Represents a value with a specific dimensional unit (e.g. `10 m/s`).")
+export struct Quantity {}
+
+@Docs("The SI base unit for length.")
+export const meter: Quantity = Quantity {}
+
+@Docs("The SI base unit for time.")
+export const second: Quantity = Quantity {}
+
+@Docs("The SI base unit for mass.")
+export const kilogram: Quantity = Quantity {}
+
+@Docs("Creates a new custom unit by specifying exponents for kilograms (`kg`), meters (`m`), and seconds (`s`).\n\n**Example:**\n```flame\nlet speed = unit.Equation(0, 1, -1)\n```")
+export fn Equation(kg: Int, m: Int, s: Int) -> Quantity {}

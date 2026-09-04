@@ -104,6 +104,7 @@ pub struct TypeChecker {
     pub plugin_functions: HashMap<String, HashMap<String, FunctionSig>>,
     pub annotations: HashSet<String>,
     pub is_importing: bool,
+    pub defined_functions_in_file: HashSet<String>,
 }
 
 impl TypeChecker {
@@ -132,6 +133,7 @@ impl TypeChecker {
             plugin_functions: HashMap::new(),
             annotations: HashSet::new(),
             is_importing: false,
+            defined_functions_in_file: HashSet::new(),
         };
         checker.register_builtins();
         checker
@@ -223,6 +225,27 @@ impl TypeChecker {
                     ann.name_span.clone(),
                     "```flame\n@Suggestions([{name: String, kind: String}])\n```\n\nProvides custom suggestions for IDE autocompletion when typing the package name.".to_string()
                 );
+            } else if ann.name == "Command" {
+                self.insert_hover_info(
+                    ann.name_span.clone(),
+                    "```flame\n@Command(name: String, about: String)\n```\n\nDeclares a CLI subcommand handled by this function.".to_string()
+                );
+                let mut about = None;
+                for (idx, arg) in ann.args.iter().enumerate() {
+                    let trimmed = arg.trim();
+                    if trimmed.starts_with("about:") || trimmed.starts_with("about=") || trimmed.starts_with("about :") || trimmed.starts_with("about =") {
+                        let val = if let Some((_, v)) = trimmed.split_once(':') { v } else if let Some((_, v)) = trimmed.split_once('=') { v } else { trimmed };
+                        about = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                    } else if trimmed.starts_with("description:") || trimmed.starts_with("description=") {
+                        let val = if let Some((_, v)) = trimmed.split_once(':') { v } else if let Some((_, v)) = trimmed.split_once('=') { v } else { trimmed };
+                        about = Some(val.trim().trim_matches('"').trim_matches('\'').to_string());
+                    } else if !trimmed.starts_with("name:") && !trimmed.starts_with("name=") && idx == 1 && about.is_none() {
+                        about = Some(trimmed.trim_matches('"').trim_matches('\'').to_string());
+                    }
+                }
+                if let Some(ab) = about {
+                    docs.push(ab);
+                }
             } else if let Some(func) = self.functions.get(&ann.name).cloned() {
                 if let Some(doc) = func.hover_doc {
                     self.insert_hover_info(ann.name_span.clone(), doc);
@@ -632,7 +655,10 @@ impl TypeChecker {
                     {
                         self.commands.insert(cmd_info.name.clone(), cmd_info);
                     }
-                    if self.functions.contains_key(name) {
+                    let is_builtin_file = self.filepath.ends_with("builtins.fm");
+                    if self.defined_functions_in_file.contains(name)
+                        || (self.functions.contains_key(name) && !is_builtin_file)
+                    {
                         self.diagnostics
                             .push(crate::diagnostics::Diagnostic::new_error(
                                 format!(
@@ -645,6 +671,7 @@ impl TypeChecker {
                                 None,
                             ));
                     }
+                    self.defined_functions_in_file.insert(name.clone());
                     self.functions.insert(
                         name.clone(),
                         FunctionSig {
@@ -658,7 +685,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
-                            hover_doc: Some(hover_str),
+                            hover_doc: hover_doc,
                             return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
@@ -715,7 +742,7 @@ impl TypeChecker {
                                     is_mut: param.is_mut,
                                 })
                                 .collect(),
-                            hover_doc: Some(hover_str),
+                            hover_doc: hover_doc,
                             return_type: return_type
                                 .as_ref()
                                 .map(|ret| self.parse_type_name(ret))
@@ -863,23 +890,10 @@ impl TypeChecker {
                                                             }
                                                         }
 
-                                                        let mut sig_str =
-                                                            format!("```flame\nfn {}(", name);
-                                                        let param_strs: Vec<String> = params
-                                                            .iter()
-                                                            .map(|p| {
-                                                                format!(
-                                                                    "{}: {}",
-                                                                    p.name,
-                                                                    self.format_type(&p.ty)
-                                                                )
-                                                            })
-                                                            .collect();
-                                                        sig_str.push_str(&param_strs.join(", "));
-                                                        sig_str.push_str(&format!(
-                                                            ") -> {}\n```",
-                                                            self.format_type(&ret_ty)
-                                                        ));
+                                                        let doc = func
+                                                            .get("docs")
+                                                            .and_then(|d| d.as_str())
+                                                            .map(|s| s.to_string());
 
                                                         p_funcs.insert(
                                                             name.to_string(),
@@ -887,7 +901,7 @@ impl TypeChecker {
                                                                 is_static: true,
                                                                 params,
                                                                 return_type: ret_ty,
-                                                                hover_doc: Some(sig_str),
+                                                                hover_doc: doc,
                                                             },
                                                         );
                                                     }
@@ -908,7 +922,7 @@ impl TypeChecker {
 
                                                         self.structs.insert(struct_name.to_string(), StructInfo {
                                                             fields: Vec::new(),
-                                                            hover_doc: Some(format!("```flame\nstruct {}\n```\n**Native Plugin Struct**", struct_name)),
+                                                            hover_doc: Some("**Native Plugin Struct**".to_string()),
                                                         });
 
                                                         if let Some(s_methods) = s
@@ -1901,14 +1915,14 @@ impl TypeChecker {
                     hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
 
-                self.insert_hover_info(name_span.clone(), hover_str);
+                self.insert_hover_info(name_span.clone(), hover_str.clone());
 
                 self.define_var(
                     name.clone(),
                     VarInfo {
                         ty: func_type,
                         is_mut: false,
-                        hover_doc: None,
+                        hover_doc: Some(hover_str.clone()),
                     },
                 );
 
@@ -2476,6 +2490,40 @@ impl TypeChecker {
                         } else {
                             format!("```flame\nenum {}\n```", name)
                         }
+                    } else if let Some(func_sig) = self.functions.get(name) {
+                        let mut params_str = Vec::new();
+                        for p in &func_sig.params {
+                            let is_already_ref = matches!(p.ty, Type::Reference { .. });
+                            let mut mods = String::new();
+                            if p.is_ref && !is_already_ref {
+                                mods.push('&');
+                            }
+                            if p.is_mut && !is_already_ref {
+                                mods.push_str("mut ");
+                            }
+                            params_str.push(format!(
+                                "{}{}: {}{}",
+                                if p.is_mut && !p.is_ref { "mut " } else { "" },
+                                p.name,
+                                mods,
+                                self.format_type(&p.ty)
+                            ));
+                        }
+                        let ret_str = if func_sig.return_type == Type::Nil {
+                            "".to_string()
+                        } else {
+                            format!(" -> {}", self.format_type(&func_sig.return_type))
+                        };
+                        let mut s = format!(
+                            "```flame\nfn {}({}){}\n```",
+                            name,
+                            params_str.join(", "),
+                            ret_str
+                        );
+                        if let Some(doc) = &func_sig.hover_doc {
+                            s = format!("{}\n\n{}", s, doc);
+                        }
+                        s
                     } else if let Type::Named(s) = &inferred {
                         s.clone()
                     } else {
@@ -3607,13 +3655,18 @@ impl TypeChecker {
                     ));
                 }
 
+                let ret_str = if sig.return_type == Type::Nil {
+                    "".to_string()
+                } else {
+                    format!(" -> {}", self.format_type(&sig.return_type))
+                };
                 let mut hover_str = format!(
-                    "```flame\nfn {}({}) -> {}\n```",
+                    "```flame\nfn {}({}){}\n```",
                     name,
                     params_str.join(", "),
-                    self.format_type(&sig.return_type)
+                    ret_str
                 );
-                if let Some(doc) = sig.hover_doc {
+                if let Some(doc) = &sig.hover_doc {
                     hover_str = format!("{}\n\n{}", hover_str, doc);
                 }
                 self.insert_hover_info(id_span.clone(), hover_str);
@@ -3756,10 +3809,14 @@ impl TypeChecker {
                                     member, params_str, ret_str
                                 );
                                 if let Some(doc) = &sig.hover_doc {
-                                    self.insert_hover_info(
-                                        span.clone(),
-                                        format!("{}\n{}", fallback, doc),
-                                    );
+                                    if doc.trim().starts_with("```") {
+                                        self.insert_hover_info(span.clone(), doc.clone());
+                                    } else {
+                                        self.insert_hover_info(
+                                            span.clone(),
+                                            format!("{}\n\n{}", fallback, doc),
+                                        );
+                                    }
                                 } else {
                                     self.insert_hover_info(span.clone(), fallback);
                                 }
@@ -3828,13 +3885,18 @@ impl TypeChecker {
                             self.format_type(&p.ty)
                         ));
                     }
+                    let ret_str = if sig.return_type == Type::Nil {
+                        "".to_string()
+                    } else {
+                        format!(" -> {}", self.format_type(&sig.return_type))
+                    };
                     let mut hover_str = format!(
-                        "```flame\nfn {}({}) -> {}\n```",
+                        "```flame\nfn {}({}){}\n```",
                         member,
                         params_str.join(", "),
-                        self.format_type(&sig.return_type)
+                        ret_str
                     );
-                    if let Some(doc) = sig.hover_doc {
+                    if let Some(doc) = &sig.hover_doc {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
                     self.insert_hover_info(span.clone(), hover_str);

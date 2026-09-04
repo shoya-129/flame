@@ -1,0 +1,34 @@
+package fs
+
+@Docs("Reads the entire contents of a file as a UTF-8 String.\n\n**Example:**\n```flame\nlet text = fs.read(\"config.toml\")\n```")
+export fn read(path: String) -> String {}
+
+@Docs("Writes a String into a file, replacing its contents if it already exists.\n\n**Example:**\n```flame\nfs.write(\"output.txt\", \"Hello World\")\n```")
+export fn write(path: String, content: String) {}
+
+@Docs("Appends a String to the end of a file.")
+export fn append(path: String, content: String) {}
+
+@Docs("Deletes a file from the file system.\n\n**Example:**\n```flame\nfs.delete(\"temp.txt\")\n```")
+export fn delete(path: String) {}
+
+@Docs("Returns `true` if the path exists on disk, otherwise `false`.\n\n**Example:**\n```flame\nif fs.exists(\"file.txt\") { ... }\n```")
+export fn exists(path: String) -> Bool {}
+
+@Docs("Reads directory contents and returns an array of child file and folder names.")
+export fn readDir(path: String) -> Vec<String> {}
+
+@Docs("Creates a directory on the file system.")
+export fn makeDir(path: String) {}
+
+@Docs("Removes a directory from the file system.")
+export fn removeDir(path: String) {}
+
+@Docs("Copies a file from source to destination.")
+export fn copy(source: String, dest: String) {}
+
+@Docs("Renames or moves a file from source to destination.")
+export fn move(source: String, dest: String) {}
+
+@Docs("Returns metadata information about a file or directory.")
+export fn stat(path: String) -> Formula {}

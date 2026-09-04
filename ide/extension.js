@@ -399,6 +399,24 @@ function activate(context) {
         }
     }));
 
+    context.subscriptions.push(vscode.languages.registerDefinitionProvider(['flame'], {
+        async provideDefinition(document, position) {
+            const result = await runCheck(document, position);
+            if (!result || !result.definition) return null;
+
+            const targetUri = vscode.Uri.file(result.definition.file);
+            const targetLine = Math.max(0, (result.definition.line || 1) - 1);
+            const targetCol = Math.max(0, (result.definition.column || 1) - 1);
+            const endLine = result.definition.end_line ? Math.max(0, result.definition.end_line - 1) : targetLine;
+            const endCol = result.definition.end_column ? Math.max(0, result.definition.end_column - 1) : targetCol;
+
+            return new vscode.Location(
+                targetUri,
+                new vscode.Range(targetLine, targetCol, endLine, endCol)
+            );
+        }
+    }));
+
     context.subscriptions.push(vscode.languages.registerSignatureHelpProvider(['flame'], {
         async provideSignatureHelp(document, position) {
             const result = await runCheck(document, position);
