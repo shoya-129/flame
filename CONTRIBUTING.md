@@ -13,9 +13,9 @@ developing native plugins.
 2. [How to Add a New Standard Library (Std Lib) Module](#how-to-add-a-new-standard-library-std-lib-module)
 3. [How to Add Built-In Annotations in Flame](#how-to-add-built-in-annotations-in-flame)
 4. [Writing Custom Annotations in Flame (`annotation/` folder)](#writing-custom-annotations-in-flame-annotation-folder)
-5. [Native Plugins & `flame-macro`](#native-plugins--flame-macro)
+5. [Native Plugins & `macro`](#native-plugins--flame-macro)
 6. [Reproducible Builds & `flame.lock`](#reproducible-builds--flamelock)
-7. [IDE Extension (`flame-ide`) Integration](#ide-extension-flame-ide-integration)
+7. [IDE Extension (`ide`) Integration](#ide-extension-flame-ide-integration)
 8. [Running Tests & Validating Changes](#running-tests--validating-changes)
 
 ---
@@ -25,7 +25,7 @@ developing native plugins.
 The Flame repository is organized into several key components:
 
 - **`src/`**: The core Flame compiler, tree-walking interpreter, typechecker,
-  and AOT compiler.
+  and Blaze compiler.
   - `lexer.rs`: Tokenizes Flame source code with span tracking.
   - `parser.rs`: Recursive-descent parser producing AST statements and
     expressions.
@@ -40,7 +40,7 @@ The Flame repository is organized into several key components:
     `math`, `time`, `os`, `net`, etc.).
   - `ide.rs` & `std_docs.rs`: Autocompletion, hover docs, and symbol scanning
     for IDE tooling.
-  - `aot_compiler.rs`: Generates native Rust code, links native object files,
+  - `compiler.rs`: Generates native Rust code, links native object files,
     and produces standalone binaries.
   - `main.rs`: CLI commands (`run`, `build`, `check`, `format`, `new`, `add`,
     `remove`, `list-plugins`).

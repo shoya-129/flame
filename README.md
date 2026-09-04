@@ -36,7 +36,7 @@ Flame avoids the slow, bottlenecked single-threaded event loops common in legacy
 - **Application-Specific Native Runtimes**: Flame creates a specialized native runtime for each application, containing only the imported modules and plugins. No universal runtime bloat.
 - **Native Dependencies & Local Plugins**: Add public Rust crates or build custom local Rust libraries (`./native`) directly into your project. Flame automatically inspects Rust interfaces to export struct types and signatures to JSON `.fmi` bindings!
 - **World-Class IDE Intellisense**: The Flame VS Code Extension uses native `.fmi` definitions to provide rich type hover info, doc comments, and method autocompletion for standard and local native plugins.
-- **Lightweight Package Manager**: Built-in dependency management capable of resolving packages cleanly (`flame install`) without requiring developers to manually copy Rust code.
+- **Lightweight Package Manager**: Built-in dependency management capable of resolving packages cleanly (`fmp install`) without requiring developers to manually copy Rust code.
 
 ---
 
@@ -46,27 +46,28 @@ Install the Flame toolchain directly using Cargo:
 ```bash
 cargo install --force flamelang
 ```
-or using npm
+or using npm:
 
 ```bash
 npm i -g flamelang
 ```
+
 ---
 
 ## CLI & Toolchain Reference
 
-The `flame` (or `flamelang`) binary provides an all-in-one developer workspace toolkit:
+The `fmp` (or `flamelang`) binary provides an all-in-one developer workspace toolkit:
 
 ### 1. Running & Building Code
-- **`flame install`**: Resolves and downloads dependencies declared in `flame.toml`, caching packages in `.flame/pkg/` and generating required `.fmi` interface metadata for native plugins.
-- **`flame run <file.fm> [--local]`**: Run a Flame script directly using the interactive compiler engine. When `--local` is specified, local plugins and static native bridges are compiled and executed in real time.
-- **`flame build [entry.fm]`**: Constructs an application-specific native runtime and compiles it into a dev executable inside `target/dev/` (uses normal filesystem, no VFS).
-- **`flame build --release`**: Produces an optimized, production-grade standalone executable inside `target/release/` (uses normal filesystem, no VFS). Configures LLVM for maximum performance with full optimization (`opt-level = 3`), fat Link Time Optimization (`lto = "fat"`), single code generation unit across all crates (`codegen-units = 1`), stripped symbol tables (`strip = true`), and zero-overhead aborting panics (`panic = "abort"`).
-- **`flame build --vfs` / `flame build --vfs --release`**: Single-executable packaging mode where the application and package files are embedded directly into the binary via VFS.
-- **`flame <file.fm>`**: Quick-exec shorthand to parse and run any `.fm` source file.
+- **`fmp install`**: Resolves and downloads dependencies declared in `flame.toml`, caching packages in `.flame/pkg/` and generating required `.fmi` interface metadata for native plugins.
+- **`fmp run <file.fm> [--local]`**: Run a Flame script directly using the interactive compiler engine. When `--local` is specified, local plugins and static native bridges are compiled and executed in real time.
+- **`fmp build [entry.fm]`**: Constructs an application-specific native runtime and compiles it into a dev executable inside `target/dev/` (uses normal filesystem, no VFS).
+- **`fmp build --release`**: Produces an optimized, production-grade standalone executable inside `target/release/` (uses normal filesystem, no VFS). Configures LLVM for maximum performance with full optimization (`opt-level = 3`), fat Link Time Optimization (`lto = "fat"`), single code generation unit across all crates (`codegen-units = 1`), stripped symbol tables (`strip = true`), and zero-overhead aborting panics (`panic = "abort"`).
+- **`fmp build --vfs` / `fmp build --vfs --release`**: Single-executable packaging mode where the application and package files are embedded directly into the binary via VFS.
+- **`fmp <file.fm>`**: Quick-exec shorthand to parse and run any `.fm` source file.
 
 ### 2. Diagnostics & IDE Integration (`check --json`)
-- **`flame check <file.fm> [--json] [--line N --col N]`**: Performs instantaneous syntactic analysis, type inference, and static diagnostics without compiling or linking binaries.
+- **`fmp check <file.fm> [--json] [--line N --col N]`**: Performs instantaneous syntactic analysis, type inference, and static diagnostics without compiling or linking binaries.
 - **Structured JSON Output**: When invoked with `--json`, it emits a comprehensive machine-readable payload used directly by the Flame VS Code Extension and Language Server Protocol (LSP):
   - **Precision Hover Metadata**: Passing `--line N --col N` instructs the type checker to resolve the exact AST node or symbol under the cursor. It reports inferred primitive types, struct definitions from native `.fmi` bridges, and identifies native AOT packages as `plugin` (e.g., `server: plugin`) rather than regular standard library modules.
   - **Intellisense & Autocomplete**: Extracts available methods, parameters, docstrings, and struct signatures from both standard libraries (`std.*`) and compiled native plugin interfaces (`native.*`).
@@ -74,7 +75,7 @@ The `flame` (or `flamelang`) binary provides an all-in-one developer workspace t
 
 **Example Usage & JSON Payload:**
 ```bash
-flame check automation/src/main.fm --json --line 47 --col 18
+fmp check automation/src/main.fm --json --line 47 --col 18
 ```
 
 ```json
@@ -100,14 +101,14 @@ flame check automation/src/main.fm --json --line 47 --col 18
 ```
 
 ### 3. Code Formatting
-- **`flame format <file.fm>`**: Automatically reformats your source code to adhere to Flame's canonical formatting rules (clean indentation, comment preservation, and exact operator spacing without extraneous padding around dot notation or module accesses like `thread.sleep()`).
-- **`flame format --all`** (or `flame format` directly in a workspace): Formats all `.fm` and `.flame` source files across your repository.
+- **`fmp format <file.fm>`**: Automatically reformats your source code to adhere to Flame's canonical formatting rules (clean indentation, comment preservation, and exact operator spacing without extraneous padding around dot notation or module accesses like `thread.sleep()`).
+- **`fmp format --all`** (or `fmp format` directly in a workspace): Formats all `.fm` and `.flame` source files across your repository.
 
 ### 4. Package & Plugin Management
-- **`flame new <name>`**: Initialize a new Flame workspace directory with a ready-to-run manifest and directory structure.
-- **`flame add <url_or_name>`**: Download and register external Flame modules or repositories.
-- **`flame add --plugin <path_to_plugin> [--name <plugin_name>]`**: Register a local or external native Rust plugin inside your `flame.toml` manifest. If `--name` is omitted, Flame automatically discovers the plugin name by inspecting its `Cargo.toml` or extracting the directory name!
-- **`flame native init [plugin_name]`**: Initialize a native Rust plugin workspace (`./native`) inside your current Flame project, generating a starter `Cargo.toml`, bridge code, and automatically registering the specified plugin name in your `flame.toml`.
+- **`fmp new <name>`**: Initialize a new Flame workspace directory with a ready-to-run manifest and directory structure.
+- **`fmp add <url_or_name>`**: Download and register external Flame modules or repositories.
+- **`fmp add --plugin <path_to_plugin> [--name <plugin_name>]`**: Register a local or external native Rust plugin inside your `flame.toml` manifest. If `--name` is omitted, Flame automatically discovers the plugin name by inspecting its `Cargo.toml` or extracting the directory name!
+- **`fmp native init [plugin_name]`**: Initialize a native Rust plugin workspace (`./native`) inside your current Flame project, generating a starter `Cargo.toml`, bridge code, and automatically registering the specified plugin name in your `flame.toml`.
 
 ---
 
