@@ -210,7 +210,7 @@ fn main() {
             init_native_bridge(plugin_name);
         }
         "version" | "--version" | "-version" | "--v" | "-v" | "-V" => {
-            println!("Flame {} (Third Spark)", env!("CARGO_PKG_VERSION"));
+            println!("Flame {} (Fourth Spark)", env!("CARGO_PKG_VERSION"));
         }
         "help" | "--help" | "-h" => {
             print_help();
