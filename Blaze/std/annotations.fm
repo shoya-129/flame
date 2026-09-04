@@ -36,7 +36,7 @@ export annotation Permission(permissions: String) {
 }
 
 @Docs("Provides custom suggestions for IDE autocompletion when typing the package name.")
-export annotation Suggestions(suggestions: Vec<Any>) {
+export annotation Suggestions(suggestions: Vec<Unknown>) {
 }
 
 @Docs("Runs before every test in the module (equivalent to `beforeEach()`).")
@@ -64,7 +64,7 @@ export annotation Only() {
 }
 
 @Docs("Expands a test into multiple independent test cases, passing each tuple element as parameters.")
-export annotation Parameterized(arguments: Vec<Any>) {
+export annotation Parameterized(arguments: Vec<Unknown>) {
 }
 
 @Docs("Executes the function as a high-precision performance benchmark during `flame test`.")

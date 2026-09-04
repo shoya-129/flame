@@ -1,7 +1,7 @@
 package json
 
 @Docs("Parses a JSON string into a Flame value (formula, array, string, number, boolean, or nil).\n\n**Example:**\n```flame\nlet obj = json.parse(\"{\\\"name\\\": \\\"Flame\\\"}\")\nprintln(obj.name)\n```")
-export fn parse(string: String) -> Any {}
+export fn parse(string: String) -> Object {}
 
 @Docs("Serializes a Flame value into a JSON formatted string.\n\n**Example:**\n```flame\nlet str = json.stringify(formula { key: \"value\" })\n```")
-export fn stringify(value: Any) -> String {}
+export fn stringify(value: Unknown) -> String {}

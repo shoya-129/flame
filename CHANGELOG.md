@@ -1,6 +1,18 @@
 # Flame Toolchain & Language Changelog
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
+
+---
+
+## [0.4.4] - 2026-09-04 (Codename: *Fourth Spark*)
+
+### 🐛 Linux Compilation & Dependency Fixes
+- **Conditional Hardware GPIO (`rppal`) Resolution**:
+  - Resolved `error[E0433]: failed to resolve: use of unresolved module or unlinked crate rppal` and `error[E0282]: type annotations needed` on Linux when running `fmp run` or `fmp build`.
+  - Added feature gating `#[cfg(all(target_os = "linux", feature = "gpio"))]` to hardware GPIO access in `src/native_std/embedded.rs` (`set_high`, `set_low`, and `is_high`). Projects compiled with `default-features = false` now cleanly fall through to the embedded simulation engine without requiring unlinked `rppal` dependencies.
+  - Eliminated compiler warnings for unreachable statements and unused operations in Linux I2C transaction handling.
+  - Cleaned unnecessary mutable bindings on `pin` when compiling with the `gpio` feature.
+
 ---
 
 ## [0.4.3] - 2026-09-04 (Codename: *Fourth Spark*)

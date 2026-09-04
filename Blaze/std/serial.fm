@@ -4,4 +4,4 @@ package serial
 export fn ports() -> Vec<String> {}
 
 @Docs("Opens a serial port connection at a specific baud rate.\n\n**Example:**\n```flame\nlet port = serial.open(\"COM3\", 9600)\n```")
-export fn open(port_name: String, baud_rate: Int = 9600) -> Any {}
+export fn open(port_name: String, baud_rate: Int = 9600) -> Unknown {}

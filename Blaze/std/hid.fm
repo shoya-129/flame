@@ -4,4 +4,4 @@ package hid
 export fn devices() -> Vec<Formula> {}
 
 @Docs("Opens a connection to a specific HID device by vendor and product ID.")
-export fn open(vendor_id: Int, product_id: Int) -> Any {}
+export fn open(vendor_id: Int, product_id: Int) -> Unknown {}

@@ -1,14 +1,14 @@
 package std
 @Docs("Prints a value to standard output followed by a newline.\n\n**Example:**\n```flame\nprintln(\"Hello, Flame!\")\n```")
-export fn println(value: Any) {
+export fn println(value: Unknown) {
 }
 
 @Docs("Prints a value to standard output without a trailing newline.\n\n**Example:**\n```flame\nprint(\"Processing...\")\n```")
-export fn print(value: Any) {
+export fn print(value: Unknown) {
 }
 
 @Docs("Prints a value to standard error.\n\n**Example:**\n```flame\neprint(\"Error: operation failed\")\n```")
-export fn eprint(value: Any) {
+export fn eprint(value: Unknown) {
 }
 
 @Docs("Asserts that condition evaluates to `true`. Terminates execution with an error if false.\n\n**Example:**\n```flame\nassert(x > 0, \"x must be positive\")\n```")
@@ -16,11 +16,11 @@ export fn assert(condition: Bool, message: String = "") {
 }
 
 @Docs("Asserts that `actual` equals `expected`. Terminates execution with an error if values differ.\n\n**Example:**\n```flame\nassertEq(status_code, 200)\n```")
-export fn assertEq(actual: Any, expected: Any, message: String = "") {
+export fn assertEq(actual: Unknown, expected: Unknown, message: String = "") {
 }
 
 @Docs("Asserts that `actual` does NOT equal `unexpected`.\n\n**Example:**\n```flame\nassertNe(result, nil)\n```")
-export fn assertNe(actual: Any, unexpected: Any, message: String = "") {
+export fn assertNe(actual: Unknown, unexpected: Unknown, message: String = "") {
 }
 
 @Docs("Asserts that `condition` is `true`.\n\n**Example:**\n```flame\nassertTrue(list.is_empty())\n```")
@@ -36,7 +36,7 @@ export fn panic(message: String) {
 }
 
 @Docs("Returns the runtime type name of `value` as a String (e.g. `\"Int\"`, `\"String\"`, `\"Formula\"`).\n\n**Example:**\n```flame\nlet t = typeof(42)\n```")
-export fn typeof(value: Any) -> String {
+export fn typeof(value: Unknown) -> String {
 }
 
 @Docs("Generates a vector of integers from `start` up to `end`.\n\n**Example:**\n```flame\nfor i in range(0, 5) { print(i) }\n```")
@@ -56,7 +56,7 @@ export fn mockApi(url: String = "*", body: String = "{}", status: Int = 200) -> 
 }
 
 @Docs("Overrides a named function in the current environment to return `return_value` during tests.\n\n**Example:**\n```flame\nmockFunction(\"fetch_user\", formula { name: \"Alex\" })\n```")
-export fn mockFunction(name: String, return_value: Any) {
+export fn mockFunction(name: String, return_value: Unknown) {
 }
 
 @Docs("Takes a line of text input from standard input.\n\n**Example:**\n```flame\nlet name = input(\"Name: \")\n```")
@@ -65,13 +65,13 @@ export fn input(prompt: String = "") -> String {
 
 @Docs("`Result` represents either success (`Ok`) or failure (`Err`).")
 export enum Result {
-    Ok(Any),
-    Err(Any),
+    Ok(Unknown),
+    Err(Unknown),
 }
 
 @Docs("`Option` represents an optional value: every `Option` is either `Some` and contains a value, or `None`.")
 export enum Option {
-    Some(Any),
+    Some(Unknown),
     None,
 }
 

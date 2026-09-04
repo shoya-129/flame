@@ -19,64 +19,64 @@ export fn pin(pin_number: Int) -> Pin {
 }
 
 @Docs("Creates an ADC (Analog-to-Digital Converter) capability object.")
-export fn analog(pin_number: Int) -> Any {}
+export fn analog(pin_number: Int) -> Unknown {}
 
 @Docs("Creates a Pulse-Width Modulation (PWM) frequency output driver.")
-export fn pwm(pin_number: Int, freq: Int = 1000) -> Any {}
+export fn pwm(pin_number: Int, freq: Int = 1000) -> Unknown {}
 
 @Docs("Creates a Digital-to-Analog Converter (DAC) object for accurate analog voltage generation.")
-export fn dac(pin_number: Int) -> Any {}
+export fn dac(pin_number: Int) -> Unknown {}
 
 @Docs("Creates an asynchronous UART / RS-232 / RS-485 serial communication bus driver.")
-export fn uart(baud: Int = 115200) -> Any {}
+export fn uart(baud: Int = 115200) -> Unknown {}
 
 @Docs("Creates an I2C slave transaction driver object for two-wire synchronized bus communications.")
-export fn i2c(bus: Int = 0) -> Any {}
+export fn i2c(bus: Int = 0) -> Unknown {}
 
 @Docs("Creates a high-speed synchronous SPI bus transaction driver.")
-export fn spi(bus: Int = 0) -> Any {}
+export fn spi(bus: Int = 0) -> Unknown {}
 
 @Docs("Creates a CAN Bus network driver for automotive, industrial, and drone communication networks.")
-export fn can() -> Any {}
+export fn can() -> Unknown {}
 
 @Docs("Creates an angle-controlled PWM actuator object for precision hobby servos.")
-export fn servo(pin_number: Int) -> Any {}
+export fn servo(pin_number: Int) -> Unknown {}
 
 @Docs("Creates an H-bridge DC motor actuator capability object.")
-export fn motor(pin_a: Int, pin_b: Int) -> Any {}
+export fn motor(pin_a: Int, pin_b: Int) -> Unknown {}
 
 @Docs("Creates a precision stepper motor controller via Step and Direction pins.")
-export fn stepper(step_pin: Int, dir_pin: Int) -> Any {}
+export fn stepper(step_pin: Int, dir_pin: Int) -> Unknown {}
 
 @Docs("Creates a hardware quadrature rotary encoder interface.")
-export fn encoder(pin_a: Int, pin_b: Int) -> Any {}
+export fn encoder(pin_a: Int, pin_b: Int) -> Unknown {}
 
 @Docs("Creates an abstract IoT sensor interface (e.g. BME280, MPU6050, DHT22) returning live environmental readings.")
-export fn sensor(model: String) -> Any {}
+export fn sensor(model: String) -> Unknown {}
 
 @Docs("Creates an SPI/I2C framebuffer graphic display controller for OLED and TFT screens.")
-export fn display(width: Int = 128, height: Int = 64) -> Any {}
+export fn display(width: Int = 128, height: Int = 64) -> Unknown {}
 
 @Docs("Creates a two-wheel differential drive kinematics controller for autonomous rovers and robots.")
-export fn diffDrive(left_motor: Any, right_motor: Any) -> Any {}
+export fn diffDrive(left_motor: Unknown, right_motor: Unknown) -> Unknown {}
 
 @Docs("Creates a Proportional-Integral-Derivative (PID) closed-loop algorithmic controller for robotics.")
-export fn pid(kp: Float, ki: Float, kd: Float) -> Any {}
+export fn pid(kp: Float, ki: Float, kd: Float) -> Unknown {}
 
 @Docs("Creates an Inertial Measurement Unit (IMU) sensor reading real-time acceleration vectors and compass orientation.")
-export fn imu() -> Any {}
+export fn imu() -> Unknown {}
 
 @Docs("Inspects host and microcontroller system specs, yielding real detected CPU architecture, processor brand, OS kernel, and memory totals.")
 export fn board() -> Formula {}
 
 @Docs("Hardware Watchdog Timer interface.")
-export fn watchdog(timeout_ms: Int) -> Any {}
+export fn watchdog(timeout_ms: Int) -> Unknown {}
 
 @Docs("Non-volatile Flash memory storage controller.")
-export fn flash() -> Any {}
+export fn flash() -> Unknown {}
 
 @Docs("EEPROM byte-level persistent storage driver.")
-export fn eeprom() -> Any {}
+export fn eeprom() -> Unknown {}
 
 @Docs("Enumerates physical USB hardware microcontrollers and standard COM serial interfaces attached to the system.")
 export fn detect_ports() -> Vec<String> {}

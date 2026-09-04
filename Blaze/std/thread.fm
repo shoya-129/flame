@@ -4,7 +4,7 @@ export fn sleep(ms: Int) {
 }
 
 @Docs("Creates a message channel and returns `(Sender, Receiver)`.")
-export fn channel() -> Any {
+export fn channel() -> Unknown {
 }
 
 @Docs("Yields execution to allow other threads to run.")

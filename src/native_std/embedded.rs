@@ -65,10 +65,10 @@ impl DigitalErrorType for HalPin {
 impl OutputPin for HalPin {
     fn set_high(&mut self) -> Result<(), Self::Error> {
         // 1. Linux ARM GPIO (Raspberry Pi, BeagleBone, OrangePi via rppal)
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "gpio"))]
         {
             if let Ok(gpio) = rppal::gpio::Gpio::new() {
-                if let Ok(mut pin) = gpio.get(self.pin as u8) {
+                if let Ok(pin) = gpio.get(self.pin as u8) {
                     let mut out = pin.into_output();
                     out.set_high();
                     println!(
@@ -122,10 +122,10 @@ impl OutputPin for HalPin {
     }
 
     fn set_low(&mut self) -> Result<(), Self::Error> {
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "gpio"))]
         {
             if let Ok(gpio) = rppal::gpio::Gpio::new() {
-                if let Ok(mut pin) = gpio.get(self.pin as u8) {
+                if let Ok(pin) = gpio.get(self.pin as u8) {
                     let mut out = pin.into_output();
                     out.set_low();
                     println!(
@@ -176,7 +176,7 @@ impl OutputPin for HalPin {
 
 impl InputPin for HalPin {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "gpio"))]
         {
             if let Ok(gpio) = rppal::gpio::Gpio::new() {
                 if let Ok(pin) = gpio.get(self.pin as u8) {
@@ -237,18 +237,22 @@ impl I2c<u8> for HalI2c {
     ) -> Result<(), Self::Error> {
         #[cfg(target_os = "linux")]
         {
+            let _ = operations;
             println!(
                 "\x1b[1;34m[NATIVE HARDWARE I2C]\x1b[0m Transacted directly over /dev/i2c bus on device 0x{:02X}",
                 address
             );
-            return Ok(());
+            Ok(())
         }
-        println!(
-            "\x1b[1;34m[EMBEDDED-HAL I2C]\x1b[0m Executed transaction on I2C slave 0x{:02X} ({} operations)",
-            address,
-            operations.len()
-        );
-        Ok(())
+        #[cfg(not(target_os = "linux"))]
+        {
+            println!(
+                "\x1b[1;34m[EMBEDDED-HAL I2C]\x1b[0m Executed transaction on I2C slave 0x{:02X} ({} operations)",
+                address,
+                operations.len()
+            );
+            Ok(())
+        }
     }
 }
 
