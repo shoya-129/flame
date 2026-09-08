@@ -64,23 +64,23 @@ When working in Flame IDE (VSCode), autocompletions inside quotes instantly sugg
 Flame provides native subcommand integration for compiling, burning, and inspecting physical microcontrollers:
 
 ### 1. Build Zero-Cost Bare-Metal Firmware
-When you execute `flame build`, the compiler detects `@Embedded(target = "...")` in your code (or inspects `flame.toml` / `--target`) and directly transpiles your Flame AST into a freestanding `#![no_std]` Rust binary, generating production-grade `.elf` and `.hex` machine firmware:
+When you execute `fmp build`, the compiler detects `@Embedded(target = "...")` in your code (or inspects `flame.toml` / `--target`) and directly transpiles your Flame AST into a freestanding `#![no_std]` Rust binary, generating production-grade `.elf` and `.hex` machine firmware:
 ```bash
-flame build --target arduino-uno
+fmp build --target arduino-uno
 ```
 
 ### 2. Burn Firmware to Hardware Device (`flame flash`)
 Builds and directly burns the generated machine code onto connected hardware chips over serial or debugging programmers (invoking `avrdude`, `espflash`, or `probe-rs` automatically):
 ```bash
-flame flash --port COM3
+fmp flash --port COM3
 # Or equivalently using the unified run workflow:
-flame run --device
+fmp run --device
 ```
 
 ### 3. Connect to Serial UART Monitor (`flame monitor`)
 Opens an interactive, low-latency UART telemetry session with your connected board to stream print statements and debug metrics:
 ```bash
-flame monitor --port COM3 --baud 115200
+fmp monitor --port COM3 --baud 115200
 ```
 
 ---

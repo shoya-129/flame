@@ -19,9 +19,9 @@ When you build a Flame application for production:
 Build Stage (Development / CI / Docker Builder)
 ├── flame.toml
 ├── src/ (Flame source)
-└── flame install ──► .flame/pkg/ (.fm source + .fmi interfaces)
+└── fmp install ──► .flame/pkg/ (.fm source + .fmi interfaces)
       ↓
-flame build --release
+fmp build --release
       ↓
 Produces specialized native binary in target/release/my_server
 
@@ -100,12 +100,12 @@ COPY flame.toml ./
 COPY src/ ./src/
 
 # Step 1: Install dependencies and ensure .fmi interfaces are properly created
-# 'flame install' resolves all packages (e.g., flamer) and creates/caches .fmi metadata
-RUN flame install
+# 'fmp install' resolves all packages (e.g., flamer) and creates/caches .fmi metadata
+RUN fmp install
 
 # Step 2: Build the application-specific native runtime binary
 # This compiles a specialized native binary into target/release/flame_server
-RUN flame build --release
+RUN fmp build --release
 
 # Step 3: Optional hygiene - remove any leftover .rs files in .flame/pkg
 # (Demonstrates that the production runner only needs .fm and .fmi files)
@@ -207,25 +207,25 @@ curl http://localhost:8080/health
 
 ## Important Deployment Checks
 
-### 1. Package `.fmi` Generation During `flame install`
+### 1. Package `.fmi` Generation During `fmp install`
 
 When using plugins and packages in Docker:
-- Make sure `flame install` runs before `flame build --release`.
-- `flame install` inspects native packages and generates the corresponding `.fmi` interface metadata files in `.flame/pkg/<pkg_name>/<pkg_name>.fmi`.
+- Make sure `fmp install` runs before `fmp build --release`.
+- `fmp install` inspects native packages and generates the corresponding `.fmi` interface metadata files in `.flame/pkg/<pkg_name>/<pkg_name>.fmi`.
 - These `.fmi` files provide the runtime with method signatures, parameter layouts, and type definitions without needing raw Rust files.
 
 ### 2. Real Filesystem Execution
 
-Normal builds (`flame build --release`) execute against the real container filesystem:
+Normal builds (`fmp build --release`) execute against the real container filesystem:
 - Standard paths such as `/app/src/main.fm` and `/app/.flame/pkg/...` are accessed directly.
 - No VFS overhead or virtual layer is introduced in normal production mode.
 
-### 3. Single-Executable Alternative (`flame build --vfs --release`)
+### 3. Single-Executable Alternative (`fmp build --vfs --release`)
 
 If you prefer a single standalone binary that requires no external folders at all, you can build with:
 
 ```bash
-flame build --vfs --release
+fmp build --vfs --release
 ```
 
 In this mode, `src/` and `.flame/pkg/` are embedded directly into the binary via VFS, allowing you to copy only `/app/flame_server` into a scratch or distroless container.

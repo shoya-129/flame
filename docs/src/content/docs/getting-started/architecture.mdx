@@ -177,7 +177,7 @@ The developer only maintains the Flame application source code and its dependenc
 To resolve and install packages, run:
 
 ```bash
-flame install
+fmp install
 ```
 
 The package manager resolves the packages from their configured GitHub repositories or package registries:
@@ -227,12 +227,12 @@ The application source depends only on the Flame-side package source (`.fm`) and
 
 ---
 
-## 7. Normal `flame build`
+## 7. Normal `fmp build`
 
-Running `flame build` is the standard build mode for Flame applications:
+Running `fmp build` is the standard build mode for Flame applications:
 
 ```bash
-flame build
+fmp build
 ```
 
 Normal builds operate on the **normal filesystem**. **They do not use VFS (Virtual File System).**
@@ -263,18 +263,18 @@ The output is an unoptimized development executable that reads from and writes t
 
 ---
 
-## 8. Normal `flame build --release`
+## 8. Normal `fmp build --release`
 
 For production deployment, run:
 
 ```bash
-flame build --release
+fmp build --release
 ```
 
 This command executes the same application-specific runtime architecture, with full LLVM release optimizations enabled:
 
 ```text
-flame build
+fmp build
 
 Application
     ↓
@@ -288,7 +288,7 @@ Normal Filesystem Deployment
 and:
 
 ```text
-flame build --release
+fmp build --release
 
 Application
     ↓
@@ -301,7 +301,7 @@ Optimized Native Binary (target/release/)
 Normal Filesystem Deployment
 ```
 
-`flame build --release` **still does not use VFS**. It benefits from:
+`fmp build --release` **still does not use VFS**. It benefits from:
 * Full compiler optimization (`opt-level = 3`, `lto = "fat"`, `codegen-units = 1`).
 * Stripped debug symbols (`strip = true`).
 * Elimination of all unused packages and unreferenced runtime components.
@@ -315,12 +315,10 @@ Virtual File System (VFS) is used **only when the developer explicitly requests 
 
 ```bash
 # Debug single executable
-flame build --exe
+fmp build --vfs
 
 # Optimized production single executable
-flame build --exe --release
-# or
-flame build --vfs --release
+fmp build --vfs --release
 ```
 
 In this mode, the architecture embeds application files and package scripts directly into the binary:
@@ -386,8 +384,8 @@ The application repository does **not** contain:
 Developers simply run:
 
 ```bash
-flame install
-flame build --release
+fmp install
+fmp build --release
 ```
 
 The runtime creation system automatically generates the application-specific native runtime.

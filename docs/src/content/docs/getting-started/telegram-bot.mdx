@@ -19,7 +19,7 @@ You will learn how to:
 ## Prerequisites
 
 Before starting, ensure you have:
-1. The **Flame toolchain** installed (`cargo run --bin flamelang` or `flame`).
+1. The [Flame toolchain](/getting-started/installation) installed.
 2. A Telegram Bot Token (obtained by talking to the [BotFather](https://t.me/botfather) on Telegram).
 
 ---
@@ -31,7 +31,7 @@ Before starting, ensure you have:
    First, initialize a new Flame project using the CLI:
    
    ```powershell
-   flame new telegram_bot
+   fmp new telegram_bot
    cd telegram_bot
    ```
    
@@ -43,7 +43,7 @@ Before starting, ensure you have:
    Add `flamer` as a dependency by using the `flame add` command:
    
    ```powershell
-   flame add https://github.com/shoya-129/flamer
+   fmp add https://github.com/shoya-129/flamer
    ```
    
    Alternatively, manually add it to your `flame.toml`:
@@ -143,7 +143,7 @@ Before starting, ensure you have:
    Start your application:
    
    ```bash title="bash"
-   flame run
+   fmp run
    ```
    
    <Aside type="caution" title="Security Warning">
