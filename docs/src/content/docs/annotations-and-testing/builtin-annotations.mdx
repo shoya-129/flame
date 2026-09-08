@@ -170,15 +170,15 @@ fn serve(port: Int = 3000) {
 ```
 
 ### Running the Application from the Shell
-When compiled or executed with `flame run`, your Flame program instantly becomes an interactive CLI tool:
+When compiled or executed with `fmp run`, your Flame program instantly becomes an interactive CLI tool:
 
 ```bash
 # Execute build subcommand with flag overrides
-flame run -- build --release --target production
+fmp run -- build --release --target production
 # Output: Building target 'production', release mode engaged: true
 
 # Launch web server on custom HTTP port
-flame run -- serve --port 8080
+fmp run -- serve --port 8080
 # Output: Starting web server on port 8080...
 ```
 
