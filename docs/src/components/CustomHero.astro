@@ -166,28 +166,23 @@ fn test_math(a: Int, b: Int, expected: Int) {
 		{
 			actions.length > 0 && (
 				<div class="sl-flex actions">
-					{actions.map(
-						({
-							attrs: { class: className, ...attrs } = {},
-							icon,
-							link: href,
-							text,
-							variant,
-						}) => (
+					{actions.map((action: any) => {
+						const { class: className, ...attrs } = action.attrs || {};
+						return (
 							<LinkButton
-								{href}
-								{variant}
-								icon={icon?.name}
+								href={action.link}
+								variant={action.variant}
+								icon={action.icon?.name}
 								class:list={[className]}
 								{...attrs}
 							>
-								{text}
-								{icon?.html && (
-									<Fragment set:html={icon.html} />
+								{action.text}
+								{action.icon?.html && (
+									<Fragment set:html={action.icon.html} />
 								)}
 							</LinkButton>
-						),
-					)}
+						);
+					})}
 				</div>
 			)
 		}
