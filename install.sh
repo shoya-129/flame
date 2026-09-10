@@ -278,107 +278,132 @@ else
 fi
 
 # Ensure ONLY fmp command executable exists and remove any flamelang or flame
-if [[ "$TARGET_IS_WINDOWS" == true ]]; then
-    FLAMELANG_EXE="$CARGO_BIN/flamelang.exe"
-    FMP_EXE="$CARGO_BIN/fmp.exe"
-    FLAME_EXE="$CARGO_BIN/flame.exe"
+# 1. Search candidate directories for existing/compiled binaries
+CANDIDATE_SEARCH_DIRS=(
+    "$CARGO_BIN"
+    "$HOME/.cargo/bin"
+    "$REAL_HOME/.cargo/bin"
+    "/usr/local/bin"
+    "$(dirname "$(command -v "$CARGO_CMD" 2>/dev/null || echo "")")"
+    "/mnt/c/Users/$REAL_USER/.cargo/bin"
+    "/mnt/c/Users/clash/.cargo/bin"
+)
 
-    if [[ -f "$FLAMELANG_EXE" ]]; then
-        cp "$FLAMELANG_EXE" "$FMP_EXE" 2>/dev/null || true
-    elif [[ -f "$FLAME_EXE" ]]; then
-        cp "$FLAME_EXE" "$FMP_EXE" 2>/dev/null || true
+# If fmp or flamelang exists as a broken/dangling symlink anywhere, remove it
+for D in "$CARGO_BIN" "$HOME/.cargo/bin" "$REAL_HOME/.cargo/bin" "/usr/local/bin" "$HOME/.local/bin" "$REAL_HOME/.local/bin"; do
+    if [[ -L "$D/fmp" ]]; then
+        rm -f "$D/fmp" 2>/dev/null || true
     fi
+    if [[ -L "$D/flamelang" ]]; then
+        rm -f "$D/flamelang" 2>/dev/null || true
+    fi
+done
 
-    # Remove any lingering flamelang and flame binaries
-    rm -f "$FLAMELANG_EXE" "$FLAME_EXE" 2>/dev/null || true
+FOUND_FLAMELANG_EXE=""
+FOUND_FMP_EXE=""
+FOUND_FLAMELANG_ELF=""
+FOUND_FMP_ELF=""
 
-    # Create batch and cmd shims ONLY for fmp
+for D in "${CANDIDATE_SEARCH_DIRS[@]}"; do
+    if [[ -n "$D" && -d "$D" ]]; then
+        if [[ -z "$FOUND_FLAMELANG_EXE" && -f "$D/flamelang.exe" ]]; then
+            FOUND_FLAMELANG_EXE="$D/flamelang.exe"
+        fi
+        if [[ -z "$FOUND_FMP_EXE" && -f "$D/fmp.exe" ]]; then
+            FOUND_FMP_EXE="$D/fmp.exe"
+        fi
+        if [[ -z "$FOUND_FLAMELANG_ELF" && -f "$D/flamelang" && ! -L "$D/flamelang" ]]; then
+            FOUND_FLAMELANG_ELF="$D/flamelang"
+        fi
+        if [[ -z "$FOUND_FMP_ELF" && -f "$D/fmp" && ! -L "$D/fmp" ]]; then
+            FOUND_FMP_ELF="$D/fmp"
+        fi
+    fi
+done
+
+# 2. Safely make fmp binary from flamelang.exe / flamelang, then delete flamelang binary files
+if [[ -n "$FOUND_FLAMELANG_EXE" ]]; then
+    mkdir -p "$CARGO_BIN" 2>/dev/null || true
+    cp -f "$FOUND_FLAMELANG_EXE" "$CARGO_BIN/fmp.exe" 2>/dev/null || true
+    chmod +x "$CARGO_BIN/fmp.exe" 2>/dev/null || true
+    rm -f "$FOUND_FLAMELANG_EXE" 2>/dev/null || true
+    rm -f "$CARGO_BIN/flamelang.exe" 2>/dev/null || true
+    FOUND_FMP_EXE="$CARGO_BIN/fmp.exe"
+fi
+
+if [[ -n "$FOUND_FLAMELANG_ELF" ]]; then
+    mkdir -p "$CARGO_BIN" 2>/dev/null || true
+    cp -f "$FOUND_FLAMELANG_ELF" "$CARGO_BIN/fmp" 2>/dev/null || true
+    chmod +x "$CARGO_BIN/fmp" 2>/dev/null || true
+    rm -f "$FOUND_FLAMELANG_ELF" 2>/dev/null || true
+    rm -f "$CARGO_BIN/flamelang" 2>/dev/null || true
+    FOUND_FMP_ELF="$CARGO_BIN/fmp"
+fi
+
+# Clean up all flamelang and flame binaries/shims across candidate directories
+for D in "${CANDIDATE_SEARCH_DIRS[@]}"; do
+    if [[ -n "$D" && -d "$D" ]]; then
+        rm -f "$D/flamelang" "$D/flamelang.exe" "$D/flamelang.cmd" "$D/flamelang.bat" 2>/dev/null || true
+        rm -f "$D/flame" "$D/flame.exe" "$D/flame.cmd" "$D/flame.bat" 2>/dev/null || true
+        rm -f "$D"/*.deleteme.* 2>/dev/null || true
+    fi
+done
+
+# Windows shims (fmp.cmd / fmp.bat)
+if [[ "$TARGET_IS_WINDOWS" == true || -f "$CARGO_BIN/fmp.exe" ]]; then
     cat << 'EOF' > "$CARGO_BIN/fmp.cmd"
 @"%~dp0fmp.exe" %*
 EOF
     cat << 'EOF' > "$CARGO_BIN/fmp.bat"
 @"%~dp0fmp.exe" %*
 EOF
-    rm -f "$CARGO_BIN/flamelang.cmd" "$CARGO_BIN/flamelang.bat" "$CARGO_BIN/flame.cmd" "$CARGO_BIN/flame.bat" 2>/dev/null || true
     chmod +x "$CARGO_BIN/fmp.cmd" "$CARGO_BIN/fmp.bat" 2>/dev/null || true
-else
-    # Linux / macOS
-    CANDIDATE_SEARCH_DIRS=(
-        "$CARGO_BIN"
-        "$HOME/.cargo/bin"
-        "$(dirname "$(command -v "$CARGO_CMD" 2>/dev/null || echo "")")"
-        "/usr/local/bin"
-        "$REAL_HOME/.cargo/bin"
-    )
+fi
 
-    FOUND_BIN=""
-    for D in "${CANDIDATE_SEARCH_DIRS[@]}"; do
-        if [[ -n "$D" && -f "$D/fmp" ]]; then
-            FOUND_BIN="$D/fmp"
-            break
-        elif [[ -n "$D" && -f "$D/flamelang" ]]; then
-            FOUND_BIN="$D/flamelang"
-            break
-        elif [[ -n "$D" && -f "$D/flame" ]]; then
-            FOUND_BIN="$D/flame"
-            break
-        fi
-    done
-
-    # If still not found, check PATH
-    if [[ -z "$FOUND_BIN" ]]; then
-        FOUND_BIN="$(command -v fmp 2>/dev/null || command -v flamelang 2>/dev/null || command -v flame 2>/dev/null || true)"
-    fi
-
-    if [[ -n "$FOUND_BIN" && -f "$FOUND_BIN" ]]; then
-        mkdir -p "$CARGO_BIN" 2>/dev/null || true
-        cp -f "$FOUND_BIN" "$CARGO_BIN/fmp" 2>/dev/null || true
+# Linux / WSL / macOS: Ensure executable 'fmp' (without extension) is present and in PATH
+if [[ "$TARGET_IS_WINDOWS" != true || "$IS_WSL" == true || "$OS_TYPE" == "wsl" || "$OS_TYPE" == "linux" ]]; then
+    # If no native ELF fmp exists, but fmp.exe exists, generate wrapper script
+    if [[ ! -f "$CARGO_BIN/fmp" || -L "$CARGO_BIN/fmp" ]]; then
+        rm -f "$CARGO_BIN/fmp" 2>/dev/null || true
+        cat << 'EOF' > "$CARGO_BIN/fmp"
+#!/bin/sh
+DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -x "$DIR/fmp.exe" ]; then
+    exec "$DIR/fmp.exe" "$@"
+elif command -v fmp.exe >/dev/null 2>&1; then
+    exec fmp.exe "$@"
+elif [ -f "/mnt/c/Users/clash/.cargo/bin/fmp.exe" ]; then
+    exec "/mnt/c/Users/clash/.cargo/bin/fmp.exe" "$@"
+fi
+EOF
         chmod +x "$CARGO_BIN/fmp" 2>/dev/null || true
     fi
 
-    # Clean up any flamelang and flame binaries in candidate locations
-    for D in "${CANDIDATE_SEARCH_DIRS[@]}"; do
-        if [[ -n "$D" && -d "$D" ]]; then
-            rm -f "$D/flamelang" "$D/flame" 2>/dev/null || true
+    # Distribute fmp to all system and user PATH directories
+    for DEST in "/usr/local/bin" "$HOME/.local/bin" "$REAL_HOME/.local/bin" "$HOME/.cargo/bin" "$REAL_HOME/.cargo/bin"; do
+        if [[ -d "$DEST" && "$DEST" != "$CARGO_BIN" ]]; then
+            rm -f "$DEST/fmp" 2>/dev/null || true
+            cp -f "$CARGO_BIN/fmp" "$DEST/fmp" 2>/dev/null || true
+            chmod +x "$DEST/fmp" 2>/dev/null || true
+            if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+                chown "$REAL_USER" "$DEST/fmp" 2>/dev/null || true
+            fi
+            rm -f "$DEST/flamelang" "$DEST/flamelang.exe" "$DEST/flame" "$DEST/flame.exe" 2>/dev/null || true
+        elif [[ ! -d "$DEST" && ( "$DEST" == *".local/bin" || "$DEST" == *".cargo/bin" ) ]]; then
+            mkdir -p "$DEST" 2>/dev/null || true
+            cp -f "$CARGO_BIN/fmp" "$DEST/fmp" 2>/dev/null || true
+            chmod +x "$DEST/fmp" 2>/dev/null || true
+            if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+                chown -R "$REAL_USER" "$DEST" 2>/dev/null || true
+            fi
         fi
     done
 
-    # System-wide availability: install to /usr/local/bin so fmp is immediately in PATH for all shells
-    if [[ -f "$CARGO_BIN/fmp" ]]; then
-        if [[ -w "/usr/local/bin" ]]; then
-            ln -sf "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || cp -f "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
-            chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
-            rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
-        elif [[ $EUID -eq 0 ]]; then
-            ln -sf "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || cp -f "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
-            chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
-            rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
-        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
-            sudo -n ln -sf "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
-            sudo -n chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
-            sudo -n rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
-        fi
-
-        # User-local availability: ~/.local/bin/fmp (standard systemd/XDG path)
-        for UHOME in "$HOME" "$REAL_HOME"; do
-            if [[ -n "$UHOME" && -d "$UHOME" ]]; then
-                mkdir -p "$UHOME/.local/bin" 2>/dev/null || true
-                ln -sf "$CARGO_BIN/fmp" "$UHOME/.local/bin/fmp" 2>/dev/null || cp -f "$CARGO_BIN/fmp" "$UHOME/.local/bin/fmp" 2>/dev/null || true
-                chmod +x "$UHOME/.local/bin/fmp" 2>/dev/null || true
-                if [[ $EUID -eq 0 && -n "$SUDO_USER" && "$UHOME" == "$REAL_HOME" ]]; then
-                    chown "$REAL_USER" "$UHOME/.local/bin/fmp" 2>/dev/null || true
-                fi
-            fi
-        done
-
-        # If run as sudo, also copy to real user's ~/.cargo/bin
-        if [[ $EUID -eq 0 && -n "$SUDO_USER" && -n "$REAL_HOME" && "$REAL_HOME" != "$HOME" ]]; then
-            mkdir -p "$REAL_HOME/.cargo/bin" 2>/dev/null || true
-            cp -f "$CARGO_BIN/fmp" "$REAL_HOME/.cargo/bin/fmp" 2>/dev/null || true
-            chmod +x "$REAL_HOME/.cargo/bin/fmp" 2>/dev/null || true
-            chown -R "$REAL_USER" "$REAL_HOME/.cargo/bin" 2>/dev/null || true
-            rm -f "$REAL_HOME/.cargo/bin/flamelang" "$REAL_HOME/.cargo/bin/flame" 2>/dev/null || true
-        fi
+    # Try sudo for /usr/local/bin if not installed yet
+    if [[ ! -f "/usr/local/bin/fmp" ]] && command -v sudo &>/dev/null; then
+        sudo cp -f "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
+        sudo chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
+        sudo rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
     fi
 fi
 

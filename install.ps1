@@ -87,24 +87,40 @@ function Safe-CopyBinary($src, $dst) {
     }
 }
 
-# Ensure ONLY fmp.exe exists, and remove any flamelang.exe or flame.exe
+# Ensure ONLY fmp.exe exists, safely made from flamelang.exe
 $fmpExe = Join-Path $cargoBin "fmp.exe"
 $flameExe = Join-Path $cargoBin "flame.exe"
 $flamelangExe = Join-Path $cargoBin "flamelang.exe"
 
-$candidateSources = @($flamelangExe, $flameExe)
-$flameCmdObj = Get-Command flamelang -ErrorAction SilentlyContinue
-if ($flameCmdObj -and $flameCmdObj.Source) { $candidateSources += $flameCmdObj.Source }
+# If flamelang.exe exists (newly compiled from cargo), safely overwrite fmp.exe
+if (Test-Path $flamelangExe) {
+    Safe-CopyBinary $flamelangExe $fmpExe
+    Remove-Item $flamelangExe -Force -ErrorAction SilentlyContinue
+}
+elseif (Test-Path $flameExe) {
+    Safe-CopyBinary $flameExe $fmpExe
+    Remove-Item $flameExe -Force -ErrorAction SilentlyContinue
+}
 
-foreach ($cand in $candidateSources) {
-    if ((Test-Path $cand) -and (-not (Test-Path $fmpExe))) {
-        Safe-CopyBinary $cand $fmpExe
+# Also check other system path locations if cargo placed flamelang elsewhere
+$flameCmdObj = Get-Command flamelang -ErrorAction SilentlyContinue
+if ($flameCmdObj -and $flameCmdObj.Source -and (Test-Path $flameCmdObj.Source) -and ($flameCmdObj.Source -ne $flamelangExe)) {
+    if (-not (Test-Path $fmpExe)) {
+        Safe-CopyBinary $flameCmdObj.Source $fmpExe
     }
+    Remove-Item $flameCmdObj.Source -Force -ErrorAction SilentlyContinue
 }
 
 # Remove any lingering flamelang and flame binaries across cargo bin
 Remove-Item $flamelangExe -Force -ErrorAction SilentlyContinue
 Remove-Item $flameExe -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flamelang.cmd") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flamelang.bat") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flame.cmd") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flame.bat") -Force -ErrorAction SilentlyContinue
+
+# Clean up any leftover *.deleteme.* files
+Get-ChildItem -Path $cargoBin -Filter "*.deleteme.*" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 
 # Create command shims ONLY for fmp
 $fmpCmd = Join-Path $cargoBin "fmp.cmd"
@@ -112,11 +128,9 @@ $fmpBat = Join-Path $cargoBin "fmp.bat"
 Set-Content -Path $fmpCmd -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
 Set-Content -Path $fmpBat -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
 
-# Remove leftover flamelang and flame shims
-Remove-Item (Join-Path $cargoBin "flamelang.cmd") -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $cargoBin "flamelang.bat") -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $cargoBin "flame.cmd") -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $cargoBin "flame.bat") -Force -ErrorAction SilentlyContinue
+# Create POSIX shell wrapper for WSL and Git Bash so 'fmp' works directly in Linux/WSL terminals
+$fmpSh = Join-Path $cargoBin "fmp"
+Set-Content -Path $fmpSh -Value "#!/bin/sh`nDIR=`"`$(cd `"`$(dirname `"`$0`")`" && pwd)`"`nexec `"`$DIR/fmp.exe`" `"`$@`"" -Encoding ASCII
 
 # 4. Install Blaze standard library definitions
 Write-Host ""
