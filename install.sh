@@ -99,6 +99,13 @@ if [[ -z "$SCRIPT_DIR" || ! -d "$SCRIPT_DIR" ]]; then
     SCRIPT_DIR="$(pwd)"
 fi
 
+REAL_USER="$USER"
+REAL_HOME="$HOME"
+if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+    REAL_USER="$SUDO_USER"
+    REAL_HOME="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || echo "/home/$SUDO_USER")"
+fi
+
 CARGO_BIN=""
 
 if [[ "$TARGET_IS_WINDOWS" == true ]]; then
@@ -122,6 +129,13 @@ else
             CARGO_BIN="$CARGO_HOME"
         else
             CARGO_BIN="$CARGO_HOME/bin"
+        fi
+    elif command -v cargo &>/dev/null; then
+        CARGO_DIR="$(dirname "$(command -v cargo 2>/dev/null)")"
+        if [[ -d "$CARGO_DIR" && -w "$CARGO_DIR" ]]; then
+            CARGO_BIN="$CARGO_DIR"
+        else
+            CARGO_BIN="$HOME/.cargo/bin"
         fi
     else
         CARGO_BIN="$HOME/.cargo/bin"
@@ -289,16 +303,83 @@ EOF
     chmod +x "$CARGO_BIN/fmp.cmd" "$CARGO_BIN/fmp.bat" 2>/dev/null || true
 else
     # Linux / macOS
-    FLAMELANG_BIN="$CARGO_BIN/flamelang"
-    FMP_BIN="$CARGO_BIN/fmp"
-    FLAME_BIN="$CARGO_BIN/flame"
+    CANDIDATE_SEARCH_DIRS=(
+        "$CARGO_BIN"
+        "$HOME/.cargo/bin"
+        "$(dirname "$(command -v "$CARGO_CMD" 2>/dev/null || echo "")")"
+        "/usr/local/bin"
+        "$REAL_HOME/.cargo/bin"
+    )
 
-    if [[ -f "$FLAMELANG_BIN" ]]; then
-        cp "$FLAMELANG_BIN" "$FMP_BIN" 2>/dev/null || true
-    elif [[ -f "$FLAME_BIN" ]]; then
-        cp "$FLAME_BIN" "$FMP_BIN" 2>/dev/null || true
+    FOUND_BIN=""
+    for D in "${CANDIDATE_SEARCH_DIRS[@]}"; do
+        if [[ -n "$D" && -f "$D/fmp" ]]; then
+            FOUND_BIN="$D/fmp"
+            break
+        elif [[ -n "$D" && -f "$D/flamelang" ]]; then
+            FOUND_BIN="$D/flamelang"
+            break
+        elif [[ -n "$D" && -f "$D/flame" ]]; then
+            FOUND_BIN="$D/flame"
+            break
+        fi
+    done
+
+    # If still not found, check PATH
+    if [[ -z "$FOUND_BIN" ]]; then
+        FOUND_BIN="$(command -v fmp 2>/dev/null || command -v flamelang 2>/dev/null || command -v flame 2>/dev/null || true)"
     fi
-    rm -f "$FLAMELANG_BIN" "$FLAME_BIN" 2>/dev/null || true
+
+    if [[ -n "$FOUND_BIN" && -f "$FOUND_BIN" ]]; then
+        mkdir -p "$CARGO_BIN" 2>/dev/null || true
+        cp -f "$FOUND_BIN" "$CARGO_BIN/fmp" 2>/dev/null || true
+        chmod +x "$CARGO_BIN/fmp" 2>/dev/null || true
+    fi
+
+    # Clean up any flamelang and flame binaries in candidate locations
+    for D in "${CANDIDATE_SEARCH_DIRS[@]}"; do
+        if [[ -n "$D" && -d "$D" ]]; then
+            rm -f "$D/flamelang" "$D/flame" 2>/dev/null || true
+        fi
+    done
+
+    # System-wide availability: install to /usr/local/bin so fmp is immediately in PATH for all shells
+    if [[ -f "$CARGO_BIN/fmp" ]]; then
+        if [[ -w "/usr/local/bin" ]]; then
+            ln -sf "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || cp -f "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
+            chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
+            rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
+        elif [[ $EUID -eq 0 ]]; then
+            ln -sf "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || cp -f "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
+            chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
+            rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
+        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+            sudo -n ln -sf "$CARGO_BIN/fmp" "/usr/local/bin/fmp" 2>/dev/null || true
+            sudo -n chmod +x "/usr/local/bin/fmp" 2>/dev/null || true
+            sudo -n rm -f "/usr/local/bin/flamelang" "/usr/local/bin/flame" 2>/dev/null || true
+        fi
+
+        # User-local availability: ~/.local/bin/fmp (standard systemd/XDG path)
+        for UHOME in "$HOME" "$REAL_HOME"; do
+            if [[ -n "$UHOME" && -d "$UHOME" ]]; then
+                mkdir -p "$UHOME/.local/bin" 2>/dev/null || true
+                ln -sf "$CARGO_BIN/fmp" "$UHOME/.local/bin/fmp" 2>/dev/null || cp -f "$CARGO_BIN/fmp" "$UHOME/.local/bin/fmp" 2>/dev/null || true
+                chmod +x "$UHOME/.local/bin/fmp" 2>/dev/null || true
+                if [[ $EUID -eq 0 && -n "$SUDO_USER" && "$UHOME" == "$REAL_HOME" ]]; then
+                    chown "$REAL_USER" "$UHOME/.local/bin/fmp" 2>/dev/null || true
+                fi
+            fi
+        done
+
+        # If run as sudo, also copy to real user's ~/.cargo/bin
+        if [[ $EUID -eq 0 && -n "$SUDO_USER" && -n "$REAL_HOME" && "$REAL_HOME" != "$HOME" ]]; then
+            mkdir -p "$REAL_HOME/.cargo/bin" 2>/dev/null || true
+            cp -f "$CARGO_BIN/fmp" "$REAL_HOME/.cargo/bin/fmp" 2>/dev/null || true
+            chmod +x "$REAL_HOME/.cargo/bin/fmp" 2>/dev/null || true
+            chown -R "$REAL_USER" "$REAL_HOME/.cargo/bin" 2>/dev/null || true
+            rm -f "$REAL_HOME/.cargo/bin/flamelang" "$REAL_HOME/.cargo/bin/flame" 2>/dev/null || true
+        fi
+    fi
 fi
 
 # 5. Determine and setup Blaze definition directories
@@ -413,14 +494,25 @@ if [[ "$TARGET_IS_WINDOWS" == true && -n "$(command -v powershell.exe)" ]]; then
     ' 2>/dev/null || true
 else
     # Linux / macOS shell rc file persistence
-    for RC in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+    RC_FILES=("$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile")
+    if [[ -n "$REAL_HOME" && "$REAL_HOME" != "$HOME" ]]; then
+        RC_FILES+=("$REAL_HOME/.bashrc" "$REAL_HOME/.zshrc" "$REAL_HOME/.profile")
+    fi
+
+    for RC in "${RC_FILES[@]}"; do
         if [[ -f "$RC" ]]; then
             if ! grep -q '\.cargo/bin' "$RC" 2>/dev/null; then
                 echo -e "\n# Flame language and Cargo toolchain" >> "$RC"
                 echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$RC"
             fi
+            if ! grep -q '\.local/bin' "$RC" 2>/dev/null; then
+                echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$RC"
+            fi
             if ! grep -q 'BLAZE_HOME' "$RC" 2>/dev/null; then
                 echo "export BLAZE_HOME=\"$PRIMARY_BLAZE_DIR\"" >> "$RC"
+            fi
+            if [[ $EUID -eq 0 && -n "$SUDO_USER" ]]; then
+                chown "$REAL_USER" "$RC" 2>/dev/null || true
             fi
         fi
     done
@@ -430,6 +522,13 @@ echo -e "\n${GREEN}${BOLD}✓ Flame and Blaze toolchain successfully installed!$
 echo -e "  Primary Command:  ${GREEN}fmp${RESET}"
 echo -e "  Binary Location:  ${BLUE}$CARGO_BIN/fmp${RESET}"
 echo -e "  Blaze Definitions:${BLUE}$PRIMARY_BLAZE_DIR/std${RESET}"
+
+if ! command -v fmp &>/dev/null; then
+    echo -e "\n${YELLOW}Notice: 'fmp' binary is ready at: ${GREEN}$CARGO_BIN/fmp${RESET}"
+    echo -e "To use 'fmp' in your current terminal session, run:"
+    echo -e "  ${GREEN}export PATH=\"$CARGO_BIN:\$PATH\"${RESET}"
+    echo -e "or open a new terminal window.\n"
+fi
 
 echo -e "\n${BOLD}Quick Start:${RESET}"
 echo -e "  Check version:    ${GREEN}fmp --version${RESET}"

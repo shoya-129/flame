@@ -64,19 +64,45 @@ if ($env:CARGO_HOME) {
     $cargoBin = if ($env:CARGO_HOME.EndsWith("bin")) { $env:CARGO_HOME } else { Join-Path $env:CARGO_HOME "bin" }
 }
 
+$cargoCmdObj = Get-Command cargo -ErrorAction SilentlyContinue
+if ($cargoCmdObj -and $cargoCmdObj.Source) {
+    $cargoDir = Split-Path -Parent $cargoCmdObj.Source
+    if (Test-Path (Join-Path $cargoDir "fmp.exe") -or Test-Path (Join-Path $cargoDir "flamelang.exe")) {
+        $cargoBin = $cargoDir
+    }
+}
+
+if (-not (Test-Path $cargoBin)) {
+    New-Item -ItemType Directory -Path $cargoBin -Force | Out-Null
+}
+
+function Safe-CopyBinary($src, $dst) {
+    if (-not (Test-Path $src) -or ($src -eq $dst)) { return }
+    try {
+        Copy-Item $src $dst -Force
+    } catch {
+        $tempPath = "$dst.deleteme.$PID"
+        Move-Item $dst $tempPath -Force -ErrorAction SilentlyContinue
+        Copy-Item $src $dst -Force
+    }
+}
+
 # Ensure ONLY fmp.exe exists, and remove any flamelang.exe or flame.exe
 $fmpExe = Join-Path $cargoBin "fmp.exe"
 $flameExe = Join-Path $cargoBin "flame.exe"
 $flamelangExe = Join-Path $cargoBin "flamelang.exe"
 
-if (Test-Path $flamelangExe) {
-    Copy-Item $flamelangExe $fmpExe -Force
-}
-elseif (Test-Path $flameExe) {
-    Copy-Item $flameExe $fmpExe -Force
+$candidateSources = @($flamelangExe, $flameExe)
+$flameCmdObj = Get-Command flamelang -ErrorAction SilentlyContinue
+if ($flameCmdObj -and $flameCmdObj.Source) { $candidateSources += $flameCmdObj.Source }
+
+foreach ($cand in $candidateSources) {
+    if ((Test-Path $cand) -and (-not (Test-Path $fmpExe))) {
+        Safe-CopyBinary $cand $fmpExe
+    }
 }
 
-# Remove any lingering flamelang and flame binaries
+# Remove any lingering flamelang and flame binaries across cargo bin
 Remove-Item $flamelangExe -Force -ErrorAction SilentlyContinue
 Remove-Item $flameExe -Force -ErrorAction SilentlyContinue
 
@@ -176,8 +202,14 @@ if (-not ($userPath -split ";" -contains $cargoBin)) {
     Write-Host "  Permanently added $cargoBin to User PATH." -ForegroundColor Green
 }
 
+# Update current PowerShell process environment PATH immediately so fmp is available right away
+if (-not ($env:PATH -split ";" -contains $cargoBin)) {
+    $env:PATH = "$cargoBin;$env:PATH"
+}
+
 if ($primaryBlazeDir) {
     [Environment]::SetEnvironmentVariable("BLAZE_HOME", $primaryBlazeDir, "User")
+    $env:BLAZE_HOME = $primaryBlazeDir
     Write-Host "  Set BLAZE_HOME to $primaryBlazeDir in User Environment." -ForegroundColor Green
 }
 
@@ -187,6 +219,14 @@ Write-Host ""
 Write-Host "  Primary Command:  fmp" -ForegroundColor Cyan
 Write-Host "  Binary Location:  $fmpExe"
 Write-Host "  Blaze Definitions:$primaryBlazeDir\std"
+
+$fmpCmdCheck = Get-Command fmp -ErrorAction SilentlyContinue
+if (-not $fmpCmdCheck) {
+    Write-Host ""
+    Write-Host "Notice: If 'fmp' is not recognized in your current shell, run:" -ForegroundColor Yellow
+    Write-Host "  `$env:PATH = `"$cargoBin;`$env:PATH`"" -ForegroundColor Green
+    Write-Host "or open a new PowerShell window."
+}
 
 Write-Host ""
 Write-Host "Quick Start:" -ForegroundColor Yellow
