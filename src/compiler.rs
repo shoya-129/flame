@@ -849,10 +849,11 @@ panic = "abort"
         main_rs.push_str("    }\n");
     } else {
         main_rs.push_str("    let mut runner = base_runner;\n");
+        main_rs.push_str("    let entry_file = std::env::var(\"FLAME_ENTRY_FILE\").ok().or_else(|| std::env::args().nth(1).filter(|a| a.ends_with(\".fm\"))).unwrap_or_else(|| \"src/main.fm\".to_string());\n");
         if use_vfs {
-            main_rs.push_str("    let src = runner.vfs.as_ref().and_then(|vfs| vfs.get(\"src/main.fm\")).cloned().unwrap_or_else(|| std::fs::read_to_string(\"src/main.fm\").unwrap_or_default());\n");
+            main_rs.push_str("    let src = runner.vfs.as_ref().and_then(|vfs| vfs.get(&entry_file)).cloned().unwrap_or_else(|| std::fs::read_to_string(&entry_file).unwrap_or_default());\n");
         } else {
-            main_rs.push_str("    let src = std::fs::read_to_string(\"src/main.fm\").unwrap_or_default();\n");
+            main_rs.push_str("    let src = std::fs::read_to_string(&entry_file).unwrap_or_default();\n");
         }
         main_rs.push_str("    let mut lexer = flamelang::lexer::Lexer::new(&src);\n");
         main_rs.push_str("    let mut tokens = Vec::new();\n");
@@ -863,12 +864,19 @@ panic = "abort"
         main_rs.push_str("        if is_eof { break; }\n");
         main_rs.push_str("    }\n");
         main_rs.push_str(
-            "    let mut parser = flamelang::parser::Parser::new(tokens, \"src/main.fm\".to_string());\n",
+            "    let mut parser = flamelang::parser::Parser::new(tokens, entry_file);\n",
         );
         main_rs.push_str("    match parser.parse() {\n");
         main_rs.push_str("        Ok(mut stmts) => {\n");
         main_rs.push_str("            flamelang::parser::filter_platform_stmts(&mut stmts, Some(std::env::consts::OS));\n");
         main_rs.push_str("            let clean_stmts: Vec<_> = stmts.into_iter().filter(|stmt| !flamelang::parser::is_test_statement(stmt)).collect();\n");
+        main_rs.push_str("            let (tc_res, _) = flamelang::typechecker::TypeChecker::new(entry_file.clone()).check_program(&clean_stmts);\n");
+        main_rs.push_str("            if let Err(diags) = tc_res {\n");
+        main_rs.push_str("                for d in diags {\n");
+        main_rs.push_str("                    d.print(&src);\n");
+        main_rs.push_str("                }\n");
+        main_rs.push_str("                std::process::exit(1);\n");
+        main_rs.push_str("            }\n");
         main_rs.push_str("            let result = runner.run(&clean_stmts);\n");
         main_rs.push_str("            vm::wait_for_all_threads();\n");
         main_rs.push_str("            if let Err(e) = result {\n");

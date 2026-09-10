@@ -1,7 +1,0 @@
-package bluetooth
-
-@Docs("Scans for nearby Bluetooth devices.")
-export fn scan() -> Vec<Formula> {}
-
-@Docs("Connects to a Bluetooth device by address or identifier.")
-export fn connect(address: String) -> Unknown {}

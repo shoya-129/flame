@@ -65,6 +65,14 @@ pub fn init() -> HashMap<String, Value> {
     );
 
     m.insert(
+        "yieldNow".to_string(),
+        Value::NativeCallback(|_args| {
+            thread::yield_now();
+            Ok(Value::Nil)
+        }),
+    );
+
+    m.insert(
         "channel".to_string(),
         Value::NativeCallback(|_args| {
             let mut counter = crate::vm::get_channel_counter().lock().unwrap();

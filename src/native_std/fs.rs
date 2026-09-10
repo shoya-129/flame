@@ -5,9 +5,45 @@ use std::path::{PathBuf};
 use std::env;
 
 pub fn resolve_path(path_str: &str) -> PathBuf {
+    let p = std::path::Path::new(path_str);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
     let base = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let resolved = base.join("src").join(path_str);
-    resolved
+    let direct = base.join(p);
+    if direct.exists() {
+        return direct;
+    }
+    let in_src = base.join("src").join(p);
+    if in_src.exists() {
+        return in_src;
+    }
+    direct
+}
+
+pub fn extract_bytes(val: &Value) -> Result<Vec<u8>, String> {
+    match val {
+        Value::Bytes(b) => Ok(b.clone()),
+        Value::Byte(b) => Ok(vec![*b]),
+        Value::String(s) => Ok(s.as_bytes().to_vec()),
+        Value::Tuple(items) => {
+            let mut buf = Vec::with_capacity(items.len());
+            for item in items {
+                match item {
+                    Value::Byte(b) => buf.push(*b),
+                    Value::Int(n) => {
+                        if *n < 0 || *n > 255 {
+                            return Err(format!("byte value out of range (0..255): {}", n));
+                        }
+                        buf.push(*n as u8);
+                    }
+                    _ => return Err(format!("expected byte/int in byte array, found {}", item.type_name())),
+                }
+            }
+            Ok(buf)
+        }
+        _ => Err(format!("expected Bytes, Byte, [Byte], or String, found {}", val.type_name())),
+    }
 }
 
 pub fn init() -> HashMap<String, Value> {
@@ -66,10 +102,7 @@ pub fn init() -> HashMap<String, Value> {
                 return Err("fs.writeBytes expects 2 arguments (path, bytes)".to_string());
             }
             let path = resolve_path(&args[0].to_string().trim_matches('"'));
-            let bytes = match &args[1] {
-                Value::Bytes(b) => b.clone(),
-                _ => return Err(format!("fs.writeBytes: expected Bytes, found {}", args[1].type_name())),
-            };
+            let bytes = extract_bytes(&args[1]).map_err(|e| format!("fs.writeBytes error: {}", e))?;
             match std::fs::write(&path, bytes) {
                 Ok(_) => Ok(Value::Nil),
                 Err(e) => Err(format!("fs.writeBytes error: {}", e)),
@@ -84,10 +117,7 @@ pub fn init() -> HashMap<String, Value> {
                 return Err("fs.appendBytes expects 2 arguments (path, bytes)".to_string());
             }
             let path = resolve_path(&args[0].to_string().trim_matches('"'));
-            let bytes = match &args[1] {
-                Value::Bytes(b) => b.clone(),
-                _ => return Err(format!("fs.appendBytes: expected Bytes, found {}", args[1].type_name())),
-            };
+            let bytes = extract_bytes(&args[1]).map_err(|e| format!("fs.appendBytes error: {}", e))?;
             match std::fs::OpenOptions::new().append(true).create(true).open(&path) {
                 Ok(mut file) => {
                     use std::io::Write;
@@ -127,6 +157,27 @@ pub fn init() -> HashMap<String, Value> {
             } else {
                 if let Err(e) = fs::remove_file(p) {
                     return Err(format!("fs.remove error: {}", e));
+                }
+            }
+            Ok(Value::Nil)
+        }),
+    );
+
+    m.insert(
+        "delete".to_string(),
+        Value::NativeCallback(|args| {
+            if args.is_empty() {
+                return Err("fs.delete expects 1 argument (path)".to_string());
+            }
+            let path = resolve_path(&args[0].to_string().trim_matches('"'));
+            let p = path.as_path();
+            if p.is_dir() {
+                if let Err(e) = fs::remove_dir_all(p) {
+                    return Err(format!("fs.delete error: {}", e));
+                }
+            } else {
+                if let Err(e) = fs::remove_file(p) {
+                    return Err(format!("fs.delete error: {}", e));
                 }
             }
             Ok(Value::Nil)

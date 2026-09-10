@@ -107,7 +107,6 @@ pub fn register_global_builtins(env: Arc<Mutex<Env>>) {
         Value::EnumValue("Option".to_string(), "None".to_string(), EnumData::Unit),
         false,
     );
-
 }
 pub fn locate_import_file(current_file: &Path, import_path: &[String]) -> Option<PathBuf> {
     if import_path.is_empty() {
@@ -287,16 +286,8 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         "std.env" => Some(crate::native_std::env::init()),
         #[cfg(feature = "os")]
         "std.desktop" => Some(crate::native_std::desktop::init()),
-        #[cfg(feature = "hardware")]
-        "std.hardware" => Some(crate::native_std::hardware::init()),
-        #[cfg(feature = "hardware")]
-        "std.hid" => Some(crate::native_std::hid::init()),
         #[cfg(feature = "camera")]
         "std.camera" => Some(crate::native_std::camera::init()),
-        #[cfg(feature = "bluetooth")]
-        "std.bluetooth" => Some(crate::native_std::bluetooth::init()),
-        #[cfg(feature = "hardware")]
-        "std.serial" => Some(crate::native_std::serial::init()),
         "std.embedded" => Some(crate::native_std::embedded::init()),
         _ => None,
     };
@@ -309,4 +300,3 @@ pub fn register_std_module(mod_name: &str, env: Arc<Mutex<Env>>) {
         }
     }
 }
-

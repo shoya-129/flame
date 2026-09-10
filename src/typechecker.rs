@@ -11,6 +11,8 @@ pub enum Type {
     Bool,
     Nil,
     Byte,
+    Union(Vec<Type>),
+    Nullable(Box<Type>),
     Tuple(Vec<Type>),
     Vector(Box<Type>),
     Formula(HashMap<String, Type>, HashMap<String, String>),
@@ -34,10 +36,10 @@ pub enum Type {
 }
 
 #[derive(Debug, Clone)]
-struct VarInfo {
-    ty: Type,
-    is_mut: bool,
-    hover_doc: Option<String>,
+pub struct VarInfo {
+    pub ty: Type,
+    pub is_mut: bool,
+    pub hover_doc: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -104,7 +106,28 @@ pub struct TypeChecker {
     pub plugin_functions: HashMap<String, HashMap<String, FunctionSig>>,
     pub annotations: HashSet<String>,
     pub is_importing: bool,
-    pub defined_functions_in_file: HashSet<String>,
+    pub defined_functions_in_file: HashMap<String, Vec<Option<String>>>,
+    pub defined_types_in_file: HashMap<String, Vec<(String, Option<String>)>>,
+}
+
+fn get_platform_annotation(annotations: &[Annotation]) -> Option<String> {
+    for ann in annotations {
+        if ann.name.eq_ignore_ascii_case("Platform") && !ann.args.is_empty() {
+            let mut raw = ann.args[0].trim();
+            if let Some(pos) = raw.find(':') {
+                raw = raw[pos + 1..].trim();
+            }
+            let p = raw
+                .trim_matches('"')
+                .trim_matches('\'')
+                .trim()
+                .to_lowercase();
+            if !p.is_empty() {
+                return Some(p);
+            }
+        }
+    }
+    None
 }
 
 impl TypeChecker {
@@ -133,7 +156,8 @@ impl TypeChecker {
             plugin_functions: HashMap::new(),
             annotations: HashSet::new(),
             is_importing: false,
-            defined_functions_in_file: HashSet::new(),
+            defined_functions_in_file: HashMap::new(),
+            defined_types_in_file: HashMap::new(),
         };
         checker.register_builtins();
         checker
@@ -536,14 +560,79 @@ impl TypeChecker {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
                     self.insert_hover_info(name_span.clone(), hover_str);
-                    let fields = fields
+
+                    let is_builtin_file = self.filepath.ends_with("builtins.fm");
+                    let platform = get_platform_annotation(annotations);
+
+                    if !self.is_importing {
+                        let mut is_dup = false;
+                        if let Some(prev_decls) = self.defined_types_in_file.get(name) {
+                            for (prev_kind, prev_plat) in prev_decls {
+                                let duplicate = match (prev_plat.as_deref(), platform.as_deref()) {
+                                    (Some(p1), Some(p2)) => p1 == p2,
+                                    _ => true,
+                                };
+                                if duplicate {
+                                    let msg = if prev_kind == "struct" {
+                                        format!("Duplicate struct definition: '{}' is already defined", name)
+                                    } else {
+                                        format!("Duplicate type definition: '{}' is already defined as an enum", name)
+                                    };
+                                    self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                                        msg,
+                                        self.filepath.clone(),
+                                        name_span.clone(),
+                                        None,
+                                        None,
+                                    ));
+                                    is_dup = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if !is_dup && !is_builtin_file {
+                            if self.structs.contains_key(name) && !self.defined_types_in_file.contains_key(name) {
+                                self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                                    format!("Duplicate struct definition: '{}' is already defined as a built-in type", name),
+                                    self.filepath.clone(),
+                                    name_span.clone(),
+                                    None,
+                                    None,
+                                ));
+                            } else if self.enums.contains_key(name) && !self.defined_types_in_file.contains_key(name) {
+                                self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                                    format!("Duplicate type definition: '{}' is already defined as a built-in enum", name),
+                                    self.filepath.clone(),
+                                    name_span.clone(),
+                                    None,
+                                    None,
+                                ));
+                            }
+                        }
+
+                        self.defined_types_in_file
+                            .entry(name.clone())
+                            .or_default()
+                            .push(("struct".to_string(), platform.clone()));
+                    }
+
+                    let parsed_fields = fields
                         .iter()
                         .map(|(field_name, type_name)| {
                             (field_name.clone(), self.parse_type_name(type_name))
                         })
                         .collect();
-                    self.structs
-                        .insert(name.clone(), StructInfo { fields, hover_doc });
+
+                    let active_os = std::env::consts::OS.to_lowercase();
+                    let matches_active_os = platform
+                        .as_ref()
+                        .map(|p| active_os.contains(p) || p.contains(&active_os))
+                        .unwrap_or(true);
+                    if matches_active_os || !self.structs.contains_key(name) {
+                        self.structs
+                            .insert(name.clone(), StructInfo { fields: parsed_fields, hover_doc });
+                    }
                 }
                 Stmt::EnumDecl {
                     name,
@@ -558,6 +647,63 @@ impl TypeChecker {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
                     self.insert_hover_info(name_span.clone(), hover_str);
+
+                    let is_builtin_file = self.filepath.ends_with("builtins.fm");
+                    let platform = get_platform_annotation(annotations);
+
+                    if !self.is_importing {
+                        let mut is_dup = false;
+                        if let Some(prev_decls) = self.defined_types_in_file.get(name) {
+                            for (prev_kind, prev_plat) in prev_decls {
+                                let duplicate = match (prev_plat.as_deref(), platform.as_deref()) {
+                                    (Some(p1), Some(p2)) => p1 == p2,
+                                    _ => true,
+                                };
+                                if duplicate {
+                                    let msg = if prev_kind == "enum" {
+                                        format!("Duplicate enum definition: '{}' is already defined", name)
+                                    } else {
+                                        format!("Duplicate type definition: '{}' is already defined as a struct", name)
+                                    };
+                                    self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                                        msg,
+                                        self.filepath.clone(),
+                                        name_span.clone(),
+                                        None,
+                                        None,
+                                    ));
+                                    is_dup = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if !is_dup && !is_builtin_file {
+                            if self.enums.contains_key(name) && !self.defined_types_in_file.contains_key(name) {
+                                self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                                    format!("Duplicate enum definition: '{}' is already defined as a built-in type", name),
+                                    self.filepath.clone(),
+                                    name_span.clone(),
+                                    None,
+                                    None,
+                                ));
+                            } else if self.structs.contains_key(name) && !self.defined_types_in_file.contains_key(name) {
+                                self.diagnostics.push(crate::diagnostics::Diagnostic::new_error(
+                                    format!("Duplicate type definition: '{}' is already defined as a built-in struct", name),
+                                    self.filepath.clone(),
+                                    name_span.clone(),
+                                    None,
+                                    None,
+                                ));
+                            }
+                        }
+
+                        self.defined_types_in_file
+                            .entry(name.clone())
+                            .or_default()
+                            .push(("enum".to_string(), platform.clone()));
+                    }
+
                     let mut map = HashMap::new();
                     for variant in variants {
                         match variant {
@@ -604,13 +750,21 @@ impl TypeChecker {
                             }
                         }
                     }
-                    self.enums.insert(
-                        name.clone(),
-                        EnumInfo {
-                            variants: map,
-                            hover_doc,
-                        },
-                    );
+
+                    let active_os = std::env::consts::OS.to_lowercase();
+                    let matches_active_os = platform
+                        .as_ref()
+                        .map(|p| active_os.contains(p) || p.contains(&active_os))
+                        .unwrap_or(true);
+                    if matches_active_os || !self.enums.contains_key(name) {
+                        self.enums.insert(
+                            name.clone(),
+                            EnumInfo {
+                                variants: map,
+                                hover_doc,
+                            },
+                        );
+                    }
                 }
                 Stmt::FuncDecl {
                     name,
@@ -655,43 +809,80 @@ impl TypeChecker {
                     {
                         self.commands.insert(cmd_info.name.clone(), cmd_info);
                     }
+
                     let is_builtin_file = self.filepath.ends_with("builtins.fm");
-                    if self.defined_functions_in_file.contains(name)
-                        || (self.functions.contains_key(name) && !is_builtin_file)
-                    {
-                        self.diagnostics
-                            .push(crate::diagnostics::Diagnostic::new_error(
-                                format!(
-                                    "Duplicate function definition: '{}' is already defined",
-                                    name
-                                ),
-                                self.filepath.clone(),
-                                span.clone(),
-                                None,
-                                None,
-                            ));
+                    let platform = get_platform_annotation(annotations);
+                    if !self.is_importing {
+                        let mut is_dup = false;
+                        if let Some(prev_plats) = self.defined_functions_in_file.get(name) {
+                            for prev_plat in prev_plats {
+                                let duplicate = match (prev_plat.as_deref(), platform.as_deref()) {
+                                    (Some(p1), Some(p2)) => p1 == p2,
+                                    _ => true,
+                                };
+                                if duplicate {
+                                    self.diagnostics
+                                        .push(crate::diagnostics::Diagnostic::new_error(
+                                            format!(
+                                                "Duplicate function definition: '{}' is already defined",
+                                                name
+                                            ),
+                                            self.filepath.clone(),
+                                            span.clone(),
+                                            None,
+                                            None,
+                                        ));
+                                    is_dup = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !is_dup && !is_builtin_file && self.functions.contains_key(name) && !self.defined_functions_in_file.contains_key(name) {
+                            self.diagnostics
+                                .push(crate::diagnostics::Diagnostic::new_error(
+                                    format!(
+                                        "Duplicate function definition: '{}' is already defined",
+                                        name
+                                    ),
+                                    self.filepath.clone(),
+                                    span.clone(),
+                                    None,
+                                    None,
+                                ));
+                        }
+                        self.defined_functions_in_file
+                            .entry(name.clone())
+                            .or_default()
+                            .push(platform.clone());
                     }
-                    self.defined_functions_in_file.insert(name.clone());
-                    self.functions.insert(
-                        name.clone(),
-                        FunctionSig {
-                            is_static: false,
-                            params: params
-                                .iter()
-                                .map(|param| ParamInfo {
-                                    name: param.name.clone(),
-                                    ty: self.parse_type_name(&param.type_name),
-                                    is_ref: param.is_ref,
-                                    is_mut: param.is_mut,
-                                })
-                                .collect(),
-                            hover_doc: hover_doc,
-                            return_type: return_type
-                                .as_ref()
-                                .map(|ret| self.parse_type_name(ret))
-                                .unwrap_or(Type::Nil),
-                        },
-                    );
+
+                    let active_os = std::env::consts::OS.to_lowercase();
+                    let matches_active_os = platform
+                        .as_ref()
+                        .map(|p| active_os.contains(p) || p.contains(&active_os))
+                        .unwrap_or(true);
+                    if matches_active_os || !self.functions.contains_key(name) {
+                        self.functions.insert(
+                            name.clone(),
+                            FunctionSig {
+                                is_static: false,
+                                params: params
+                                    .iter()
+                                    .map(|param| ParamInfo {
+                                        name: param.name.clone(),
+                                        ty: self.parse_type_name(&param.type_name),
+                                        is_ref: param.is_ref,
+                                        is_mut: param.is_mut,
+                                    })
+                                    .collect(),
+                                hover_doc: hover_doc,
+                                return_type: return_type
+                                    .as_ref()
+                                    .map(|ret| self.parse_type_name(ret))
+                                    .unwrap_or(Type::Nil),
+                            },
+                        );
+                    }
                 }
                 Stmt::PackageDecl { .. } => {}
                 Stmt::AnnotationDecl {
@@ -806,9 +997,12 @@ impl TypeChecker {
                         }
                     }
                 }
-                Stmt::ImportDecl { path, .. } => {
+                Stmt::ImportDecl { path, alias, .. } => {
                     if let Some(mod_name) = path.last() {
+                        let registered_name = alias.as_ref().unwrap_or(mod_name);
                         if path.first().map_or(false, |p| p == "native" || p == "std") {
+                            self.plugins.insert(registered_name.clone());
+                            self.modules.insert(registered_name.clone());
                             self.plugins.insert(mod_name.clone());
                             self.modules.insert(mod_name.clone());
                             if path.first().map_or(false, |p| p == "native") {
@@ -1241,14 +1435,113 @@ impl TypeChecker {
                 }
                 Type::Formula(map, docs)
             }
+            "json" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+                map.insert(
+                    "parse".to_string(),
+                    Type::Function(vec![Type::String], Box::new(Type::Unknown)),
+                );
+                map.insert(
+                    "stringify".to_string(),
+                    Type::Function(vec![Type::Unknown], Box::new(Type::String)),
+                );
+                map.insert(
+                    "fromJson".to_string(),
+                    Type::Function(vec![Type::Unknown], Box::new(Type::Unknown)),
+                );
+                map.insert(
+                    "fromByte".to_string(),
+                    Type::Function(vec![Type::Unknown], Box::new(Type::Unknown)),
+                );
+                map.insert(
+                    "fromBytes".to_string(),
+                    Type::Function(vec![Type::Unknown], Box::new(Type::Unknown)),
+                );
+                for name in ["parse", "stringify", "fromJson", "fromByte", "fromBytes"] {
+                    if let Some(doc) = crate::std_docs::get_std_function_doc("std.json", name) {
+                        docs.insert(name.to_string(), doc.to_string());
+                    }
+                }
+                Type::Formula(map, docs)
+            }
+            "thread" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+
+                map.insert("sleep".to_string(), Type::Function(vec![Type::Int], Box::new(Type::Nil)));
+                map.insert("yield".to_string(), Type::Function(vec![], Box::new(Type::Nil)));
+                map.insert("yieldNow".to_string(), Type::Function(vec![], Box::new(Type::Nil)));
+                map.insert("yield_now".to_string(), Type::Function(vec![], Box::new(Type::Nil)));
+                map.insert("id".to_string(), Type::Function(vec![], Box::new(Type::String)));
+                map.insert("spawn".to_string(), Type::Function(vec![Type::Unknown], Box::new(Type::Named("ThreadHandler".to_string()))));
+                map.insert("channel".to_string(), Type::Function(vec![], Box::new(Type::Tuple(vec![Type::Named("Sender".to_string()), Type::Named("Receiver".to_string())]))));
+
+                for name in ["sleep", "yield", "yieldNow", "yield_now", "id", "spawn", "channel"] {
+                    if let Some(doc) = crate::std_docs::get_std_function_doc("std.thread", name) {
+                        docs.insert(name.to_string(), doc.to_string());
+                    }
+                }
+
+                Type::Formula(map, docs)
+            }
+            "fs" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+
+                map.insert("read".to_string(), Type::Function(vec![Type::String], Box::new(Type::String)));
+                map.insert("write".to_string(), Type::Function(vec![Type::String, Type::String], Box::new(Type::Nil)));
+                map.insert("append".to_string(), Type::Function(vec![Type::String, Type::String], Box::new(Type::Nil)));
+                map.insert("readBytes".to_string(), Type::Function(vec![Type::String], Box::new(Type::Named("Bytes".to_string()))));
+                map.insert("writeBytes".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(Type::Nil)));
+                map.insert("appendBytes".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(Type::Nil)));
+                map.insert("exists".to_string(), Type::Function(vec![Type::String], Box::new(Type::Bool)));
+                map.insert("remove".to_string(), Type::Function(vec![Type::String], Box::new(Type::Nil)));
+                map.insert("readDir".to_string(), Type::Function(vec![Type::String], Box::new(Type::Vector(Box::new(Type::String)))));
+
+                for name in ["read", "write", "append", "readBytes", "writeBytes", "appendBytes", "exists", "remove", "readDir"] {
+                    if let Some(doc) = crate::std_docs::get_std_function_doc("std.fs", name) {
+                        docs.insert(name.to_string(), doc.to_string());
+                    }
+                }
+
+                Type::Formula(map, docs)
+            }
+            "byte" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+
+                map.insert("fromByte".to_string(), Type::Function(vec![Type::Unknown], Box::new(Type::Byte)));
+                map.insert("fromBytes".to_string(), Type::Function(vec![Type::Unknown], Box::new(Type::Named("Bytes".to_string()))));
+                map.insert("toString".to_string(), Type::Function(vec![Type::Unknown], Box::new(Type::String)));
+                map.insert("toHex".to_string(), Type::Function(vec![Type::Unknown], Box::new(Type::String)));
+                map.insert("toInt".to_string(), Type::Function(vec![Type::Unknown], Box::new(Type::Int)));
+                map.insert("readBytes".to_string(), Type::Function(vec![Type::String], Box::new(Type::Named("Bytes".to_string()))));
+                map.insert("writeBytes".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(Type::Nil)));
+                map.insert("appendBytes".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(Type::Nil)));
+                map.insert("readByte".to_string(), Type::Function(vec![Type::String], Box::new(Type::Byte)));
+                map.insert("writeByte".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(Type::Nil)));
+                map.insert("appendByte".to_string(), Type::Function(vec![Type::String, Type::Unknown], Box::new(Type::Nil)));
+                map.insert("readByteAt".to_string(), Type::Function(vec![Type::String, Type::Int], Box::new(Type::Byte)));
+                map.insert("writeByteAt".to_string(), Type::Function(vec![Type::String, Type::Int, Type::Unknown], Box::new(Type::Nil)));
+
+                for name in ["fromByte", "fromBytes", "toString", "toHex", "toInt", "readBytes", "writeBytes", "appendBytes", "readByte", "writeByte", "appendByte", "readByteAt", "writeByteAt"] {
+                    if let Some(doc) = crate::std_docs::get_std_function_doc("std.byte", name) {
+                        docs.insert(name.to_string(), doc.to_string());
+                    }
+                }
+
+                Type::Formula(map, docs)
+            }
             _ => Type::Named(format!("module:{}", mod_name)),
         }
     }
 
     fn check_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::ImportDecl { path, span, .. } => {
+            Stmt::ImportDecl { path, alias, span, .. } => {
                 if let Some(last) = path.last() {
+                    let bind_name = alias.as_ref().unwrap_or(last);
                     let is_native = path.first().map_or(false, |p| p == "native");
                     let kind_str = if is_native {
                         format!("plugin:{}", last)
@@ -1384,7 +1677,7 @@ impl TypeChecker {
                     }
 
                     self.define_var(
-                        last.clone(),
+                        bind_name.clone(),
                         VarInfo {
                             ty: final_ty,
                             is_mut: false,
@@ -1722,6 +2015,16 @@ impl TypeChecker {
                 }
 
                 if !name.starts_with('{') && !name.starts_with('(') {
+                    if let Some(scope) = self.scopes.last() {
+                        if scope.contains_key(name) {
+                            self.error(
+                                format!("cannot redeclare variable '{}' in the same scope", name),
+                                name_span.clone(),
+                                Some(format!("'{}' already declared in this scope", name)),
+                                Some(format!("reassign to '{}' without 'let' or rename the variable", name)),
+                            );
+                        }
+                    }
                     let stored_ty = match (&declared_ty, &value_ty) {
                         (Some(Type::Formula(_, _)), Type::Formula(map, _)) => {
                             Type::Formula(map.clone(), HashMap::new())
@@ -1787,6 +2090,16 @@ impl TypeChecker {
                             }
                             // Handle "(b: 1)" style destructuring
                             let actual_name = inner_name.split(':').next().unwrap().trim();
+                            if let Some(scope) = self.scopes.last() {
+                                if scope.contains_key(actual_name) {
+                                    self.error(
+                                        format!("cannot redeclare variable '{}' in the same scope", actual_name),
+                                        name_span.clone(),
+                                        Some(format!("'{}' already declared in this scope", actual_name)),
+                                        None,
+                                    );
+                                }
+                            }
                             let v_ty = types.get(i).cloned().unwrap_or(Type::Unknown);
                             self.define_var(
                                 actual_name.to_string(),
@@ -1824,9 +2137,19 @@ impl TypeChecker {
                         .collect::<Vec<_>>();
 
                     if let Type::Formula(map, _) = &value_ty {
-                        for v_name in inner_names {
+                        for v_name in &inner_names {
                             if v_name != "_" {
-                                let v_ty = map.get(&v_name).cloned().unwrap_or(Type::Unknown);
+                                if let Some(scope) = self.scopes.last() {
+                                    if scope.contains_key(v_name) {
+                                        self.error(
+                                            format!("cannot redeclare variable '{}' in the same scope", v_name),
+                                            name_span.clone(),
+                                            Some(format!("'{}' already declared in this scope", v_name)),
+                                            None,
+                                        );
+                                    }
+                                }
+                                let v_ty = map.get(v_name).cloned().unwrap_or(Type::Unknown);
                                 self.define_var(
                                     v_name.clone(),
                                     VarInfo {
@@ -1838,12 +2161,22 @@ impl TypeChecker {
                             }
                         }
                     } else if let Type::Struct(struct_name) = &value_ty {
-                        for v_name in inner_names {
+                        for v_name in &inner_names {
                             if v_name != "_" {
+                                if let Some(scope) = self.scopes.last() {
+                                    if scope.contains_key(v_name) {
+                                        self.error(
+                                            format!("cannot redeclare variable '{}' in the same scope", v_name),
+                                            name_span.clone(),
+                                            Some(format!("'{}' already declared in this scope", v_name)),
+                                            None,
+                                        );
+                                    }
+                                }
                                 let mut field_ty = Type::Unknown;
                                 if let Some(info) = self.structs.get(struct_name) {
                                     if let Some((_, ty)) =
-                                        info.fields.iter().find(|(n, _)| n == &v_name)
+                                        info.fields.iter().find(|(n, _)| n == v_name)
                                     {
                                         field_ty = ty.clone();
                                     }
@@ -1945,6 +2278,7 @@ impl TypeChecker {
                                 self.check_stmt(&Stmt::ImportDecl {
                                     path: parts,
                                     glob: false,
+                                    alias: None,
                                     span: anno.span.clone(),
                                 });
                             }
@@ -2670,6 +3004,10 @@ impl TypeChecker {
                 self.infer_struct_init_type(inner, fields, span)
             }
             Expr::Index(inner, idx, span) => self.infer_index_type(inner, idx, span),
+            Expr::Cast(inner, target_type_str, _span) => {
+                let _inner_ty = self.infer_expr_type(inner);
+                self.parse_type_name(target_type_str)
+            }
             Expr::Closure {
                 params,
                 return_type,
@@ -2853,7 +3191,9 @@ impl TypeChecker {
                     } else {
                         Type::Int
                     }
-                } else if matches!(left_ty, Type::String) && matches!(right_ty, Type::String) {
+                } else if (matches!(left_ty, Type::String) || matches!(left_ty, Type::Union(ref u) if u.iter().any(|t| matches!(t, Type::String))))
+                    && (matches!(right_ty, Type::String) || matches!(right_ty, Type::Union(ref u) if u.iter().any(|t| matches!(t, Type::String))))
+                {
                     Type::String
                 } else if let (Type::Quantity(m1), Type::Quantity(m2)) = (&left_ty, &right_ty) {
                     if m1 == m2 {
@@ -3026,11 +3366,14 @@ impl TypeChecker {
                 }
             }
             BinaryOp::Eq | BinaryOp::Ne => {
+                let is_nil_or_nullable = |t: &Type| matches!(t, Type::Nil | Type::Nullable(_));
                 if !matches!(left_ty, Type::Nil)
                     && !matches!(right_ty, Type::Nil)
                     && !matches!(left_ty, Type::Unknown)
                     && !matches!(right_ty, Type::Unknown)
+                    && !(is_nil_or_nullable(&left_ty) && is_nil_or_nullable(&right_ty))
                     && !self.is_compatible(&left_ty, &right_ty)
+                    && !self.is_compatible(&right_ty, &left_ty)
                 {
                     self.error_binary_mismatch(op, &left_ty, &right_ty, span);
                 }
@@ -3304,6 +3647,8 @@ impl TypeChecker {
                         ("fs", "readBytes") => Type::Byte,
                         ("fs", "open") => Type::Unknown,
                         ("thread", "sleep") => Type::Nil,
+                        ("thread", "yield") | ("thread", "yield_now") => Type::Nil,
+                        ("thread", "id") => Type::String,
                         ("thread", "channel") => Type::Tuple(vec![Type::Unknown, Type::Unknown]),
                         ("byte", "readBytes") => Type::Byte,
                         ("byte", "readByte") => Type::Byte,
@@ -3463,7 +3808,9 @@ impl TypeChecker {
             | Type::Float
             | Type::Bool
             | Type::Tuple(_)
-            | Type::Byte => Type::Named("Function".into()),
+            | Type::Byte
+            | Type::Union(_)
+            | Type::Nullable(_) => Type::Named("Function".into()),
             Type::Unknown | Type::Named(_) => Type::Unknown,
             other => {
                 self.error(
@@ -3744,13 +4091,21 @@ impl TypeChecker {
             }
 
             match member.as_str() {
+                "type" => return Type::String,
                 "toString" => return Type::String,
+                "toHex" => return Type::String,
                 "toInt" | "tryInt" => return Type::Int,
                 "toFloat" | "toDouble" | "tryFloat" => return Type::Float,
                 "toBool" | "tryBool" => return Type::Bool,
                 "toChar" => return Type::String,
                 "toByte" => return Type::Byte,
                 "assertEq" => return Type::Nil,
+                "toJson" => return Type::String,
+                "fromJson" | "fromByte" | "fromBytes" => return inner_ty.clone(),
+                "tryRecv" | "try_recv" => return Type::Unknown,
+                "recvTimeout" | "recv_timeout" => return Type::Unknown,
+                "isEmpty" | "is_empty" => return Type::Bool,
+                "clone" => return inner_ty.clone(),
                 _ => {}
             }
 
@@ -3835,6 +4190,8 @@ impl TypeChecker {
                             ("fs", "readBytes") => Type::Byte,
                             ("fs", "open") => Type::Unknown,
                             ("thread", "sleep") => Type::Nil,
+                            ("thread", "yield") | ("thread", "yield_now") => Type::Nil,
+                            ("thread", "id") => Type::String,
                             ("thread", "channel") => {
                                 Type::Tuple(vec![Type::Unknown, Type::Unknown])
                             }
@@ -4226,6 +4583,32 @@ impl TypeChecker {
     }
 
     fn is_compatible(&self, expected: &Type, actual: &Type) -> bool {
+        if let Type::Union(expected_types) = expected {
+            if let Type::Union(actual_types) = actual {
+                return actual_types.iter().all(|act| expected_types.iter().any(|exp| self.is_compatible(exp, act)));
+            }
+            return expected_types.iter().any(|t| self.is_compatible(t, actual));
+        }
+        if let Type::Union(actual_types) = actual {
+            return actual_types.iter().all(|act| self.is_compatible(expected, act));
+        }
+
+        if let Type::Nullable(inner) = expected {
+            if matches!(actual, Type::Nil) {
+                return true;
+            }
+            if let Type::Nullable(actual_inner) = actual {
+                return self.is_compatible(inner, actual_inner);
+            }
+            return self.is_compatible(inner, actual);
+        }
+        if let Type::Nullable(actual_inner) = actual {
+            if let Type::Nullable(expected_inner) = expected {
+                return self.is_compatible(expected_inner, actual_inner);
+            }
+            return false;
+        }
+
         if matches!(expected, Type::Unknown) || matches!(actual, Type::Unknown) {
             return true;
         }
@@ -4330,11 +4713,42 @@ impl TypeChecker {
     }
 
     fn is_numeric(&self, ty: &Type) -> bool {
-        matches!(ty, Type::Int | Type::Float)
+        match ty {
+            Type::Int | Type::Float | Type::Byte => true,
+            Type::Union(types) => types.iter().any(|t| self.is_numeric(t)),
+            _ => false,
+        }
     }
 
     fn parse_type_name(&self, type_name: &str) -> Type {
         let trimmed = type_name.trim();
+
+        // Check for top-level union type: A | B | C
+        let mut union_parts = Vec::new();
+        let mut u_curr = String::new();
+        let mut u_depth = 0;
+        for c in trimmed.chars() {
+            if c == '(' || c == '[' || c == '<' {
+                u_depth += 1;
+                u_curr.push(c);
+            } else if c == ')' || c == ']' || c == '>' {
+                u_depth -= 1;
+                u_curr.push(c);
+            } else if c == '|' && u_depth == 0 {
+                union_parts.push(u_curr.trim().to_string());
+                u_curr.clear();
+            } else {
+                u_curr.push(c);
+            }
+        }
+        if !u_curr.trim().is_empty() {
+            union_parts.push(u_curr.trim().to_string());
+        }
+        if union_parts.len() > 1 {
+            let types: Vec<Type> = union_parts.into_iter().map(|p| self.parse_type_name(&p)).collect();
+            return Type::Union(types);
+        }
+
         if trimmed == "Object" || trimmed == "Formula" {
             return Type::Formula(HashMap::new(), HashMap::new());
         }
@@ -4360,7 +4774,7 @@ impl TypeChecker {
             };
         }
         if let Some(rest) = trimmed.strip_suffix('?') {
-            return self.parse_type_name(rest);
+            return Type::Nullable(Box::new(self.parse_type_name(rest)));
         }
         match trimmed {
             "Int" | "I32" | "I64" | "U32" | "U64" | "i32" | "i64" | "u32" | "u64" => Type::Int,
@@ -4390,9 +4804,8 @@ impl TypeChecker {
                 let inner = &trimmed[1..trimmed.len() - 1];
                 Type::Vector(Box::new(self.parse_type_name(inner)))
             }
-            _ if trimmed.starts_with("Vec<") && trimmed.ends_with('>') => {
-                let inner = &trimmed[4..trimmed.len() - 1];
-                Type::Vector(Box::new(self.parse_type_name(inner)))
+            _ if trimmed.starts_with("Vec<") => {
+                Type::Unknown
             }
             _ if trimmed.starts_with('(') && trimmed.ends_with(')') => {
                 let inner = &trimmed[1..trimmed.len() - 1];
@@ -4441,6 +4854,12 @@ impl TypeChecker {
             Type::Bool => "Bool".to_string(),
             Type::Nil => "Nil".to_string(),
             Type::Byte => "Byte".to_string(),
+            Type::Union(types) => types
+                .iter()
+                .map(|item| self.format_type(item))
+                .collect::<Vec<_>>()
+                .join(" | "),
+            Type::Nullable(item) => format!("{}?", self.format_type(item)),
             Type::Tuple(items) => format!(
                 "({})",
                 items
@@ -4544,7 +4963,7 @@ impl TypeChecker {
         }
     }
 
-    fn lookup_var(&self, name: &str) -> Option<&VarInfo> {
+    pub fn lookup_var(&self, name: &str) -> Option<&VarInfo> {
         self.scopes.iter().rev().find_map(|scope| scope.get(name))
     }
 
@@ -4693,3 +5112,152 @@ fn format_expr_simple(expr: &Expr) -> String {
         _ => "...".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+
+    fn check_source(src: &str) -> Result<(), Vec<crate::diagnostics::Diagnostic>> {
+        let mut lexer = Lexer::new(src);
+        let mut tokens = Vec::new();
+        loop {
+            let tok = lexer.next_token();
+            let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+            tokens.push(tok);
+            if is_eof {
+                break;
+            }
+        }
+        let mut parser = Parser::new(tokens, "test.fm".to_string());
+        let stmts = parser.parse().expect("Failed to parse");
+        TypeChecker::new("test.fm".to_string()).check_program(&stmts).0
+    }
+
+    #[test]
+    fn test_duplicate_enum_no_platform_fails() {
+        let src = r#"
+        enum Status {
+            Active,
+            Inactive,
+        }
+
+        enum Status {
+            Pending,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_err(), "Duplicate enum without @Platform should fail");
+        let diags = res.unwrap_err();
+        assert!(diags.iter().any(|d| d.message.contains("Duplicate enum definition: 'Status'")));
+    }
+
+    #[test]
+    fn test_duplicate_struct_no_platform_fails() {
+        let src = r#"
+        struct User {
+            name: String,
+        }
+
+        struct User {
+            age: Int,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_err(), "Duplicate struct without @Platform should fail");
+        let diags = res.unwrap_err();
+        assert!(diags.iter().any(|d| d.message.contains("Duplicate struct definition: 'User'")));
+    }
+
+    #[test]
+    fn test_duplicate_enum_same_platform_fails() {
+        let src = r#"
+        @Platform("windows")
+        enum Status {
+            Active,
+        }
+
+        @Platform("windows")
+        enum Status {
+            Pending,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_err(), "Duplicate enum with same @Platform should fail");
+        let diags = res.unwrap_err();
+        assert!(diags.iter().any(|d| d.message.contains("Duplicate enum definition: 'Status'")));
+    }
+
+    #[test]
+    fn test_duplicate_struct_same_platform_fails() {
+        let src = r#"
+        @Platform("linux")
+        struct Config {
+            path: String,
+        }
+
+        @Platform("linux")
+        struct Config {
+            retries: Int,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_err(), "Duplicate struct with same @Platform should fail");
+        let diags = res.unwrap_err();
+        assert!(diags.iter().any(|d| d.message.contains("Duplicate struct definition: 'Config'")));
+    }
+
+    #[test]
+    fn test_duplicate_enum_different_platform_allowed() {
+        let src = r#"
+        @Platform("windows")
+        enum Status {
+            WinActive,
+        }
+
+        @Platform("linux")
+        enum Status {
+            LinActive,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_ok(), "Duplicate enum with different @Platform should be allowed: {:?}", res.err());
+    }
+
+    #[test]
+    fn test_duplicate_struct_different_platform_allowed() {
+        let src = r#"
+        @Platform("windows")
+        struct Config {
+            win_path: String,
+        }
+
+        @Platform("linux")
+        struct Config {
+            lin_path: String,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_ok(), "Duplicate struct with different @Platform should be allowed: {:?}", res.err());
+    }
+
+    #[test]
+    fn test_struct_enum_name_collision_fails() {
+        let src = r#"
+        struct Entry {
+            id: Int,
+        }
+
+        enum Entry {
+            File,
+            Dir,
+        }
+        "#;
+        let res = check_source(src);
+        assert!(res.is_err(), "Struct and enum with same name should collide");
+        let diags = res.unwrap_err();
+        assert!(diags.iter().any(|d| d.message.contains("Duplicate type definition: 'Entry'")));
+    }
+}
+

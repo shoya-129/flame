@@ -85,10 +85,136 @@ println($"Received: {received}")
 - **Automatic Resource Cleanup**: RAII ensures all memory allocated within a worker thread is reclaimed immediately upon completion.
 - **Graceful Shutdown**: The runtime monitors all active worker threads and waits for clean resolution before process exit.
 
+## Thread Block Syntax & Aliases
+
+You can spawn threads using the keyword `thread { ... }` or through an imported alias:
+
+```flame
+import std.thread as th
+
+// Using the aliased block syntax
+th {
+    println("Running inside aliased thread block!")
+    th.yield()
+}
+```
+
+---
+
+## Channels & Message Passing
+
+Thread channels provide safe, multi-producer, single-consumer (MPSC) lock-free communication between concurrent threads.
+
+```flame
+import std.thread as th
+
+let (tx, rx) = th.channel()
+let tx2 = tx.clone()
+
+// Spawn Worker 1
+th {
+    th.yield()
+    tx.send("Result from Worker 1")
+}
+
+// Spawn Worker 2
+th {
+    th.yieldNow()
+    tx2.send("Result from Worker 2")
+}
+
+// Main thread collects both results
+let msg1 = rx.recv()
+let msg2 = rx.recv()
+
+println($"Collected: {msg1}")
+println($"Collected: {msg2}")
+```
+
+### Non-blocking Polling (`tryRecv` & `isEmpty`)
+
+When running real-time services, game loops, or event-driven servers, blocking indefinitely with `rx.recv()` is undesirable. Use `rx.tryRecv()` or `rx.isEmpty()` to inspect the channel without pausing execution:
+
+```flame
+import std.thread as th
+
+let (tx, rx) = th.channel()
+
+// Attempt non-blocking receive
+let maybe_msg = rx.tryRecv()
+if maybe_msg != nil {
+    println($"Processed immediate message: {maybe_msg}")
+} else {
+    println("No messages pending; proceeding with frame update...")
+}
+```
+
+---
+
+## Real-World Applications
+
+### 1. Parallel Map-Reduce Worker Pool
+Distribute compute chunks across multiple worker threads and aggregate the results back on the main thread:
+
+```flame
+import std.thread as th
+
+fn process_chunk(chunk_id: Int, tx: Any) {
+    th {
+        // Simulate heavy work
+        th.sleep(50)
+        let processed_value = chunk_id * 100
+        tx.send(processed_value)
+    }
+}
+
+let (tx, rx) = th.channel()
+let total_workers = 4
+
+// Launch workers
+for id in 0..total_workers {
+    let worker_tx = tx.clone()
+    process_chunk(id, worker_tx)
+}
+
+// Aggregate responses from all workers
+let mut total_sum = 0
+for _ in 0..total_workers {
+    let result = rx.recv()
+    total_sum = total_sum + result
+}
+
+println($"All workers completed! Total sum: {total_sum}")
+```
+
+### 2. Producer-Consumer Pipeline with Non-Blocking Drain
+A producer thread continuously pushes telemetry or events, while the main consumer drains and batches items periodically:
+
+```flame
+import std.thread as th
+
+let (event_tx, event_rx) = th.channel()
+
+// Producer: Background metric collector
+th {
+    for i in 1..=5 {
+        th.sleep(20)
+        event_tx.send($"Telemetry event #{i}")
+    }
+}
+
+// Consumer: Non-blocking drain loop
+th.sleep(150) // Allow events to arrive
+
+while !event_rx.isEmpty() {
+    let event = event_rx.recv()
+    println($"Flushing to analytics: {event}")
+}
+```
+
 ---
 
 ## API Reference
-
 
 ### Threading (`std.thread`)
 
@@ -96,6 +222,22 @@ println($"Received: {received}")
 | :--- | :--- | :--- | :--- |
 | `thread.sleep` | `ms: Int` | `Nil` | Suspends thread execution for the specified number of milliseconds. |
 | `thread.id` | *None* | `String` | Returns a formatted string representation of the active thread ID. |
-| `thread.yield` | *None* | `Nil` | Yields the processor, allowing other threads on the OS to run. |
-| `thread.channel` | *None* | `Tuple<Sender, Receiver>` | Creates a multi-producer, single-consumer communication channel. |
+| `thread.yield` | *None* | `Nil` | Yields the processor, allowing other threads on the OS scheduler to run. |
+| `thread.yieldNow` | *None* | `Nil` | Immediately yields execution time slice to allow other threads to progress. |
+| `thread.channel` | *None* | `(Sender, Receiver)` | Creates a multi-producer, single-consumer communication channel. |
 | `thread.spawn` | `callback: Function` | `ThreadHandler` | Spawns a background concurrent execution thread. |
+
+### Sender Methods (`Sender`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `tx.send(value)` | `value: Any` | `Nil` | Sends a message value across the channel to the connected `Receiver`. Thread-safe. |
+| `tx.clone()` | *None* | `Sender` | Creates a new `Sender` handle connected to the same `Receiver` for multi-thread dispatching. |
+
+### Receiver Methods (`Receiver`)
+
+| Method | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `rx.recv()` | *None* | `Any` | Blocks execution until a message is received from the channel. |
+| `rx.tryRecv()` | *None* | `Any \| Nil` | Returns the next message if available, otherwise returns `nil` immediately without blocking. |
+| `rx.isEmpty()` | *None* | `Bool` | Returns `true` if no messages are currently queued in the channel. |

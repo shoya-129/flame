@@ -1,6 +1,6 @@
 package std
 @Docs("Marks this function as the application's entry point.\n\nConfiguration options such as `features` enable optional standard library modules.\n\n**Example:**\n```flame\n@Application(features: [\"http\", \"json\"])\nfn main() {\n    println(\"Running...\")\n}\n```")
-export annotation Application(features: Vec<String> = []) {
+export annotation Application(features: [String]) {
 }
 
 @Docs("Marks this function as a test case executed by `flame test`.\n\n**Parameters:**\n- `timeout: Int`: Timeout in milliseconds.\n- `skip: Bool`: If true, skips executing this test.")
@@ -36,7 +36,7 @@ export annotation Permission(permissions: String) {
 }
 
 @Docs("Provides custom suggestions for IDE autocompletion when typing the package name.")
-export annotation Suggestions(suggestions: Vec<Unknown>) {
+export annotation Suggestions(suggestions: [...Unknown]) {
 }
 
 @Docs("Runs before every test in the module (equivalent to `beforeEach()`).")
@@ -64,7 +64,7 @@ export annotation Only() {
 }
 
 @Docs("Expands a test into multiple independent test cases, passing each tuple element as parameters.")
-export annotation Parameterized(arguments: Vec<Unknown>) {
+export annotation Parameterized(args: [...Unknown]) {
 }
 
 @Docs("Executes the function as a high-precision performance benchmark during `flame test`.")

@@ -1,28 +1,49 @@
 package byte
+
+@Docs("Converts an Int (0-255), Byte, or ASCII string into a single Byte value.\n\n**Example:**\n```flame\nlet b = byte.fromByte(65)\n```")
+export fn fromByte(val: Any) -> Byte {
+}
+
+@Docs("Converts a list of integers/bytes, string, or byte slice into a Bytes buffer.\n\n**Example:**\n```flame\nlet buf = byte.fromBytes([0x46, 0x4D, 0x50])\n```")
+export fn fromBytes(val: Any) -> Bytes {
+}
+
+@Docs("Decodes a Bytes buffer or Byte into a UTF-8 String.\n\n**Example:**\n```flame\nlet text = byte.toString(buf)\n```")
+export fn toString(val: Any) -> String {
+}
+
+@Docs("Formats a Bytes buffer or Byte as a hexadecimal string.\n\n**Example:**\n```flame\nlet hex = byte.toHex(buf)\n```")
+export fn toHex(val: Any) -> String {
+}
+
+@Docs("Converts a Byte value into its numeric Int representation (0-255).\n\n**Example:**\n```flame\nlet num = byte.toInt(b)\n```")
+export fn toInt(val: Any) -> Int {
+}
+
 @Docs("Reads all bytes from a file.\n\n**Example:**\n```flame\nlet b = byte.readBytes(\"data.bin\")\n```")
-export fn readBytes(path: String) -> Byte {
+export fn readBytes(path: String) -> Bytes {
 }
 
-@Docs("Writes a byte array to a file, overwriting existing contents.")
-export fn writeBytes(path: String, bytes: Byte) {
+@Docs("Writes a byte array to a file, overwriting existing contents.\n\n**Example:**\n```flame\nbyte.writeBytes(\"data.bin\", bytes)\n```")
+export fn writeBytes(path: String, bytes: Any) {
 }
 
-@Docs("Appends bytes to the end of a file.")
-export fn appendBytes(path: String, bytes: Byte) {
+@Docs("Appends bytes to the end of a file.\n\n**Example:**\n```flame\nbyte.appendBytes(\"archive.fmp\", payload)\n```")
+export fn appendBytes(path: String, bytes: Any) {
 }
 
-@Docs("Reads a single byte from a file at offset 0.")
+@Docs("Reads a single byte from a file at offset 0.\n\n**Example:**\n```flame\nlet b = byte.readByte(\"data.bin\")\n```")
 export fn readByte(path: String) -> Int {
 }
 
-@Docs("Writes a single byte (0-255) to a file.")
+@Docs("Writes a single byte (0-255) to a file.\n\n**Example:**\n```flame\nbyte.writeByte(\"data.bin\", 65)\n```")
 export fn writeByte(path: String, byte: Int) {
 }
 
-@Docs("Reads a single byte at a specific offset.")
+@Docs("Reads a single byte at a specific offset.\n\n**Example:**\n```flame\nlet magic = byte.readByteAt(\"archive.fmp\", 3)\n```")
 export fn readByteAt(path: String, offset: Int) -> Int {
 }
 
-@Docs("Writes a single byte at a specific offset.")
+@Docs("Writes a single byte at a specific offset.\n\n**Example:**\n```flame\nbyte.writeByteAt(\"archive.fmp\", 0, 70)\n```")
 export fn writeByteAt(path: String, offset: Int, byte: Int) {
 }

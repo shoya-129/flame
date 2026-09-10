@@ -111,6 +111,7 @@ pub enum Expr {
     Borrow(Box<Expr>, bool, Span),
     StructInit(Box<Expr>, Vec<(String, Expr)>, Span),
     Index(Box<Expr>, Box<Expr>, Span),
+    Cast(Box<Expr>, String, Span),
 }
 
 #[derive(Debug, Clone)]
@@ -141,6 +142,7 @@ impl Expr {
             Expr::Borrow(_, _, s) => s.clone(),
             Expr::StructInit(_, _, s) => s.clone(),
             Expr::Index(_, _, s) => s.clone(),
+            Expr::Cast(_, _, s) => s.clone(),
         }
     }
 }
@@ -220,6 +222,7 @@ pub enum Stmt {
     ImportDecl {
         path: Vec<String>,
         glob: bool,
+        alias: Option<String>,
         span: Span,
     },
     ExportDecl(Box<Stmt>, Span),
@@ -269,14 +272,18 @@ pub struct Parser {
     tokens: Vec<Token>,
     index: usize,
     filepath: String,
+    thread_aliases: std::collections::HashSet<String>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>, filepath: String) -> Self {
+        let mut thread_aliases = std::collections::HashSet::new();
+        thread_aliases.insert("thread".to_string());
         Self {
             tokens,
             index: 0,
             filepath,
+            thread_aliases,
         }
     }
 
@@ -511,10 +518,25 @@ impl Parser {
             path.push(next.lexeme.clone());
         }
 
+        let mut alias = None;
+        if self.match_token(TokenKind::As) {
+            let alias_tok = self.consume(TokenKind::Identifier, "expected identifier after 'as'")?;
+            alias = Some(alias_tok.lexeme.clone());
+        }
+
+        if path.iter().any(|p| p == "thread") {
+            if let Some(ref a) = alias {
+                self.thread_aliases.insert(a.clone());
+            } else if let Some(last) = path.last() {
+                self.thread_aliases.insert(last.clone());
+            }
+        }
+
         let end_span = self.peek().span.clone();
         Ok(Stmt::ImportDecl {
             path,
             glob,
+            alias,
             span: Span {
                 start: start_tok.span.start,
                 end: end_span.start,
@@ -594,7 +616,7 @@ impl Parser {
         ))
     }
 
-    fn parse_type(&mut self) -> Result<String, Diagnostic> {
+    fn parse_single_type(&mut self) -> Result<String, Diagnostic> {
         let mut t = String::new();
         if self.match_token(TokenKind::Ampersand) {
             t.push('&');
@@ -620,6 +642,15 @@ impl Parser {
             t.push(']');
         } else {
             let tok = self.advance();
+            if tok.lexeme == "Vec" && self.check(TokenKind::Lt) {
+                return Err(Diagnostic::new_error(
+                    "Vec<T> syntax is removed; use '[T]' for vector array types instead".to_string(),
+                    self.filepath.clone(),
+                    tok.span.clone(),
+                    None,
+                    Some("replace with '[T]'".to_string()),
+                ));
+            }
             t.push_str(&tok.lexeme);
             while self.match_token(TokenKind::Dot) {
                 t.push('.');
@@ -650,6 +681,15 @@ impl Parser {
         if self.match_token(TokenKind::Arrow) {
             t.push_str(" -> ");
             t.push_str(&self.parse_type()?);
+        }
+        Ok(t)
+    }
+
+    fn parse_type(&mut self) -> Result<String, Diagnostic> {
+        let mut t = self.parse_single_type()?;
+        while self.match_token(TokenKind::Pipe) {
+            t.push_str(" | ");
+            t.push_str(&self.parse_single_type()?);
         }
         Ok(t)
     }
@@ -767,7 +807,22 @@ impl Parser {
 
     fn parse_func_decl(&mut self, annotations: Vec<Annotation>) -> Result<Stmt, Diagnostic> {
         let start_tok = self.consume(TokenKind::Fn, "expected 'fn' function definition")?;
-        let name_tok = self.consume(TokenKind::Identifier, "expected function name")?;
+        let name_tok = if matches!(
+            self.peek().kind,
+            TokenKind::Identifier
+                | TokenKind::Yield
+                | TokenKind::Type
+                | TokenKind::Formula
+                | TokenKind::Async
+                | TokenKind::Await
+                | TokenKind::Thread
+                | TokenKind::Match
+                | TokenKind::As
+        ) {
+            self.advance()
+        } else {
+            self.consume(TokenKind::Identifier, "expected function name")?
+        };
         let name = name_tok.lexeme.clone();
 
         if self.match_token(TokenKind::Lt) {
@@ -1725,6 +1780,29 @@ impl Parser {
                 self.parse_accessors(expr)
             }
             TokenKind::Identifier | TokenKind::SelfLower => {
+                let peek_tok = self.peek();
+                if self.thread_aliases.contains(&peek_tok.lexeme) && self.check_next(TokenKind::OpenBrace) {
+                    let start_tok = self.advance();
+                    let start_brace = self.peek().span.clone();
+                    let block_stmts = self.parse_block()?;
+                    let end_brace = self.peek().span.clone();
+                    let block_expr = Expr::Block(
+                        block_stmts,
+                        Span {
+                            start: start_brace.start,
+                            end: end_brace.start,
+                            line: start_brace.line,
+                            col: start_brace.col,
+                        },
+                    );
+                    let span = Span {
+                        start: start_tok.span.start,
+                        end: block_expr.span().end,
+                        line: start_tok.span.line,
+                        col: start_tok.span.col,
+                    };
+                    return Ok(Expr::ThreadSpawn(Box::new(block_expr), span));
+                }
                 let tok = self.advance();
                 let expr = Expr::Identifier(tok.lexeme.clone(), tok.span.clone());
                 self.parse_accessors(expr)
@@ -2126,7 +2204,18 @@ impl Parser {
     fn parse_accessors(&mut self, mut expr: Expr) -> Result<Expr, Diagnostic> {
         loop {
             if self.match_token(TokenKind::Dot) {
-                let name = if self.check(TokenKind::Type) || self.check(TokenKind::Formula) {
+                let name = if matches!(
+                    self.peek().kind,
+                    TokenKind::Identifier
+                        | TokenKind::Yield
+                        | TokenKind::Type
+                        | TokenKind::Formula
+                        | TokenKind::Async
+                        | TokenKind::Await
+                        | TokenKind::Thread
+                        | TokenKind::Match
+                        | TokenKind::As
+                ) {
                     self.advance()
                 } else {
                     self.consume(TokenKind::Identifier, "expected member identifier after '.'")?
@@ -2139,7 +2228,18 @@ impl Parser {
                 };
                 expr = Expr::Dot(Box::new(expr), name.lexeme.clone(), span);
             } else if self.match_token(TokenKind::QuestionDot) {
-                let name = if self.check(TokenKind::Type) || self.check(TokenKind::Formula) {
+                let name = if matches!(
+                    self.peek().kind,
+                    TokenKind::Identifier
+                        | TokenKind::Yield
+                        | TokenKind::Type
+                        | TokenKind::Formula
+                        | TokenKind::Async
+                        | TokenKind::Await
+                        | TokenKind::Thread
+                        | TokenKind::Match
+                        | TokenKind::As
+                ) {
                     self.advance()
                 } else {
                     self.consume(TokenKind::Identifier, "expected member identifier after '?.'")?
@@ -2247,31 +2347,15 @@ impl Parser {
                 };
                 expr = Expr::Index(Box::new(expr), Box::new(index_expr), span);
             } else if self.match_token(TokenKind::As) {
-                let type_tok = self.advance();
-                let type_name = match &type_tok.kind {
-                    TokenKind::Identifier => type_tok.lexeme.clone(),
-                    _ => {
-                        return Err(Diagnostic::new_error(
-                            "expected type identifier after 'as'".to_string(),
-                            self.filepath.clone(),
-                            type_tok.span.clone(),
-                            None,
-                            None,
-                        ))
-                    }
-                };
-                let method_name = format!("to{}", type_name);
+                let type_str = self.parse_type()?;
+                let end_pos = self.tokens[self.index - 1].span.end;
                 let span = Span {
                     start: expr.span().start,
-                    end: type_tok.span.end,
+                    end: end_pos,
                     line: expr.span().line,
                     col: expr.span().col,
                 };
-                expr = Expr::Call(
-                    Box::new(Expr::Dot(Box::new(expr), method_name, span.clone())),
-                    vec![],
-                    span,
-                );
+                expr = Expr::Cast(Box::new(expr), type_str, span);
             } else {
                 break;
             }

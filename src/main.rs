@@ -20,6 +20,7 @@ use lexer::Lexer;
 use parser::{Parser, Stmt};
 use regex::Regex;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,6 +28,20 @@ use std::process::Command;
 use typechecker::TypeChecker;
 
 fn main() {
+    let builder = std::thread::Builder::new()
+        .name("flame-main".into())
+        .stack_size(32 * 1024 * 1024);
+    let handler = builder
+        .spawn(move || {
+            real_main();
+        })
+        .unwrap();
+    if let Err(e) = handler.join() {
+        std::panic::resume_unwind(e);
+    }
+}
+
+fn real_main() {
     ctrlc::set_handler(move || {
         std::process::exit(0);
     })
@@ -60,12 +75,24 @@ fn main() {
         }
         "new" => {
             if args.len() < 3 {
-                println!("\x1b[1;31merror:\x1b[0m please specify the project name");
-                println!("usage: flame new <project_name>");
+                println!("\x1b[1;31merror:\x1b[0m please specify the project or plugin name");
+                println!("usage: flame new <project_name> | flame new --plugin <plugin_name>");
                 return;
             }
-            let project_name = &args[2];
-            create_new_project(project_name);
+            if args.contains(&"--plugin".to_string()) || args.contains(&"-p".to_string()) {
+                let p_idx = args.iter().position(|r| r == "--plugin" || r == "-p").unwrap();
+                let plugin_name = if let Some(n) = args.get(p_idx + 1).filter(|a| !a.starts_with('-')) {
+                    n.as_str()
+                } else if p_idx > 2 && !args[2].starts_with('-') {
+                    args[2].as_str()
+                } else {
+                    "bridge"
+                };
+                init_native_bridge(plugin_name);
+            } else {
+                let project_name = &args[2];
+                create_new_project(project_name);
+            }
         }
         "doctor" => {
             run_doctor_command();
@@ -88,7 +115,7 @@ fn main() {
         "uninstall" => {
             run_uninstall_command(&args);
         }
-        "format" => {
+        "format" | "fmt" => {
             if args.len() < 3 {
                 println!("\x1b[1;31merror:\x1b[0m please specify a Flame file to format");
                 println!("usage: flame format <file_path.fm> [--stdout]");
@@ -141,17 +168,21 @@ fn main() {
                 return;
             }
             let force_local = args.contains(&"--local".to_string());
+            let is_watch = args.contains(&"--watch".to_string()) || args.contains(&"-w".to_string());
 
             let (filepath, script_args_start) = if args.len() > 2 {
-                let potential_file_idx = if args[2] == "--local" { 3 } else { 2 };
+                let mut idx = 2;
+                while idx < args.len() && (args[idx] == "--local" || args[idx] == "--watch" || args[idx] == "-w") {
+                    idx += 1;
+                }
 
-                if args.len() > potential_file_idx
-                    && (Path::new(&args[potential_file_idx]).exists()
-                        || args[potential_file_idx].ends_with(".fm"))
+                if args.len() > idx
+                    && (Path::new(&args[idx]).exists()
+                        || args[idx].ends_with(".fm"))
                 {
-                    (args[potential_file_idx].clone(), potential_file_idx + 1)
+                    (args[idx].clone(), idx + 1)
                 } else if Path::new("src/main.fm").exists() {
-                    ("src/main.fm".to_string(), potential_file_idx)
+                    ("src/main.fm".to_string(), idx)
                 } else {
                     println!(
                         "\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm"
@@ -164,18 +195,22 @@ fn main() {
                 println!(
                     "\x1b[1;31merror:\x1b[0m please specify a Flame file to run or create src/main.fm"
                 );
-                println!("usage: flame run [file_path.fm]");
+                println!("usage: flame run [file_path.fm] [--watch]");
                 return;
             };
 
             let mut filtered_script_args = Vec::new();
             for arg in args.iter().skip(script_args_start) {
-                if arg != "--local" {
+                if arg != "--local" && arg != "--watch" && arg != "-w" {
                     filtered_script_args.push(arg.clone());
                 }
             }
 
-            run_file(&filepath, force_local, &filtered_script_args);
+            if is_watch {
+                run_file_watch(&filepath, force_local, &filtered_script_args);
+            } else {
+                run_file(&filepath, force_local, &filtered_script_args);
+            }
         }
         "test" => {
             run_tests(&args);
@@ -507,61 +542,145 @@ fn run_uninstall_command(_args: &[String]) {
 }
 
 fn run_doctor_command() {
-    println!("\nFlame 0.3.0 LTS\n");
+    println!("\nFlame {} LTS\n", env!("CARGO_PKG_VERSION"));
 
     fn check_cmd(cmd: &str, args: &[&str]) -> bool {
         std::process::Command::new(cmd).args(args).output().is_ok()
     }
 
-    println!("{} Blaze compiler", if true { "✓" } else { "✗" });
+    let has_rustc = check_cmd("rustc", &["--version"]);
+    let has_cargo = check_cmd("cargo", &["--version"]);
+    let has_git = check_cmd("git", &["--version"]);
+    let blaze_opt = crate::ide::locate_blaze_dir();
+
+    println!(
+        "{} Blaze compiler & toolchain",
+        if blaze_opt.is_some() {
+            "\x1b[1;32m✓\x1b[0m"
+        } else {
+            "\x1b[1;31m✗\x1b[0m"
+        }
+    );
+
+    // Check Blaze std files
+    let (blaze_status, blaze_msg) = if let Some(ref bdir) = blaze_opt {
+        let std_dir = bdir.join("std");
+        if std_dir.exists() {
+            let mut count = 0;
+            if let Ok(entries) = fs::read_dir(&std_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().extension().and_then(|s| s.to_str()) == Some("fm") {
+                        count += 1;
+                    }
+                }
+            }
+            (
+                "\x1b[1;32m✓\x1b[0m",
+                format!("Blaze standard library ({} modules found at {})", count, std_dir.display()),
+            )
+        } else {
+            (
+                "\x1b[1;31m✗\x1b[0m",
+                format!("Blaze standard library (std/ missing at {})", bdir.display()),
+            )
+        }
+    } else {
+        (
+            "\x1b[1;31m✗\x1b[0m",
+            "Blaze standard library (not found; set FLAME_BLAZE_DIR or run in Flame workspace)".to_string(),
+        )
+    };
+    println!("{} {}", blaze_status, blaze_msg);
+
+    // Smoke test: create a temporary Flame project in temp folder, execute, and cleanly delete
+    let (smoke_status, smoke_msg) = {
+        let temp_root = std::env::temp_dir();
+        let smoke_dir = temp_root.join(format!("flame_doctor_smoke_{}", std::process::id()));
+        let _ = fs::create_dir_all(smoke_dir.join("src"));
+        let main_fm = smoke_dir.join("src").join("main.fm");
+        let toml = smoke_dir.join("flame.toml");
+        let _ = fs::write(&main_fm, "fn main() {\n    println(\"doctor ok\");\n}\n");
+        let _ = fs::write(
+            &toml,
+            "[package]\nname = \"smoke_app\"\nversion = \"0.1.0\"\n",
+        );
+
+        let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("flame"));
+        let res = std::process::Command::new(&current_exe)
+            .args(["run", "src/main.fm", "--local"])
+            .current_dir(&smoke_dir)
+            .output();
+
+        let _ = fs::remove_dir_all(&smoke_dir);
+
+        match res {
+            Ok(out) if out.status.success() => (
+                "\x1b[1;32m✓\x1b[0m",
+                "Flame runtime smoke test (temp app created, executed & cleaned)".to_string(),
+            ),
+            Ok(out) => {
+                let err_detail = String::from_utf8_lossy(&out.stderr);
+                let out_detail = String::from_utf8_lossy(&out.stdout);
+                (
+                    "\x1b[1;31m✗\x1b[0m",
+                    format!("Flame runtime smoke test exited with code {:?}: {} {}", out.status.code(), err_detail.trim(), out_detail.trim()),
+                )
+            }
+            Err(e) => (
+                "\x1b[1;31m✗\x1b[0m",
+                format!("Flame runtime smoke test failed to start: {}", e),
+            ),
+        }
+    };
+    println!("{} {}", smoke_status, smoke_msg);
+
     println!(
         "{} Rust toolchain",
-        if check_cmd("rustc", &["--version"]) {
-            "✓"
+        if has_rustc {
+            "\x1b[1;32m✓\x1b[0m"
         } else {
-            "✗"
+            "\x1b[1;31m✗\x1b[0m"
         }
     );
     println!(
-        "{} Cargo",
-        if check_cmd("cargo", &["--version"]) {
-            "✓"
+        "{} Cargo package manager",
+        if has_cargo {
+            "\x1b[1;32m✓\x1b[0m"
         } else {
-            "✗"
+            "\x1b[1;31m✗\x1b[0m"
         }
     );
-    println!("{} Native plugin support", "✓");
-    println!("{} Standard library", "✓");
-    println!("{} Package manager", "✓");
-    println!("{} FMI generation", "✓");
-    println!("{} Test runner", "✓");
-    println!("{} Formatter", "✓");
+    println!(
+        "{} Git VCS",
+        if has_git {
+            "\x1b[1;32m✓\x1b[0m"
+        } else {
+            "\x1b[1;31m✗\x1b[0m"
+        }
+    );
+    println!(
+        "{} Native plugin support",
+        if has_rustc && has_cargo {
+            "\x1b[1;32m✓\x1b[0m"
+        } else {
+            "\x1b[1;31m✗\x1b[0m"
+        }
+    );
+    println!("\x1b[1;32m✓\x1b[0m Package manager (fmp)");
+    println!("\x1b[1;32m✓\x1b[0m FMI interface generator");
+    println!("\x1b[1;32m✓\x1b[0m Test runner");
+    println!("\x1b[1;32m✓\x1b[0m Code formatter");
 
     println!("\nPlatform");
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
-    // capitalize first letter of OS
     let mut os_chars = os.chars();
     let os_cap = match os_chars.next() {
         None => String::new(),
         Some(f) => f.to_uppercase().collect::<String>() + os_chars.as_str(),
     };
-    println!("✓ {} {}", os_cap, arch);
+    println!("\x1b[1;32m✓\x1b[0m {} {}", os_cap, arch);
 
-    println!("\nOptional");
-    println!("{} Camera", "✓");
-    println!("{} Bluetooth", "✓");
-    println!("{} Serial", "✓");
-    println!(
-        "{} QEMU",
-        if check_cmd("qemu-system-x86_64", &["--version"])
-            || check_cmd("qemu-system-aarch64", &["--version"])
-        {
-            "✓"
-        } else {
-            "✗"
-        }
-    );
     println!();
 }
 
@@ -586,7 +705,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}add{} <pkg> [--native] Add a dependency (Flame module or native Rust crate)",
+        "  {}add{} <pkg> | add --plugin <path> (-p) | add --native <crate> (-n) Add dependency, plugin, or crate",
         cyan, reset
     );
     println!(
@@ -594,7 +713,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}new{} <name>          Create a new Flame package template",
+        "  {}new{} <name> | new --plugin <name> (-p) Create a new Flame package or native Rust plugin",
         cyan, reset
     );
     println!(
@@ -614,7 +733,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}run{} <file> [--device] Compile and run a Flame source file (or device hardware)",
+        "  {}run{} [file] [--watch] [--device] Run Flame script with instant execution or watch mode (-w)",
         cyan, reset
     );
     println!(
@@ -630,7 +749,7 @@ fn print_help() {
         cyan, reset
     );
     println!(
-        "  {}native init{}         Scaffold native Rust FFI bridges & Cargo configuration",
+        "  {}new --plugin{} <name> Scaffold native Rust FFI bridges & Cargo configuration (alias: native init)",
         cyan, reset
     );
     println!(
@@ -1211,6 +1330,231 @@ fn monitor_project(args: &[String]) {
     embedded::flasher::open_serial_monitor(port, baud);
 }
 
+fn get_manifest_pkg_name() -> String {
+    let mut pkg_name = "app".to_string();
+    if let Ok(toml_str) = fs::read_to_string("flame.toml") {
+        for line in toml_str.lines() {
+            let t = line.trim();
+            if t.starts_with("name =") {
+                if let Some(val) = t.split('=').nth(1) {
+                    pkg_name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                }
+            }
+        }
+    }
+    pkg_name
+}
+
+fn check_runtime_needs_rebuild(exe_path: &Path, _profile: &str) -> bool {
+    if !exe_path.exists() {
+        return true;
+    }
+    let exe_meta = match fs::metadata(exe_path) {
+        Ok(m) => m,
+        Err(_) => return true,
+    };
+    let exe_time = match exe_meta.modified() {
+        Ok(t) => t,
+        Err(_) => return true,
+    };
+
+    // 1. Check flame.toml modification time
+    if let Ok(toml_meta) = fs::metadata("flame.toml") {
+        if let Ok(toml_time) = toml_meta.modified() {
+            if toml_time > exe_time {
+                return true;
+            }
+        }
+    }
+
+    // 2. Check native/ directory if it exists
+    fn check_dir_newer(dir: &Path, cutoff: std::time::SystemTime) -> bool {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    if p.file_name().map_or(false, |n| n == "target") {
+                        continue;
+                    }
+                    if check_dir_newer(&p, cutoff) {
+                        return true;
+                    }
+                } else if let Ok(m) = entry.metadata() {
+                    if let Ok(time) = m.modified() {
+                        if time > cutoff {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    if Path::new("native").exists() && check_dir_newer(Path::new("native"), exe_time) {
+        return true;
+    }
+
+    // 3. Check .flame/pkg plugins or .fmi
+    if Path::new(".flame").join("pkg").exists()
+        && check_dir_newer(&Path::new(".flame").join("pkg"), exe_time)
+    {
+        return true;
+    }
+
+    // 4. Check Cargo features required by imports vs what's in .flame/build-cache/Cargo.toml
+    let build_cache_toml = Path::new(".flame").join("build-cache").join("Cargo.toml");
+    if !build_cache_toml.exists() {
+        return true;
+    }
+    let cached_toml_content = fs::read_to_string(&build_cache_toml).unwrap_or_default();
+
+    let mut required_features = std::collections::HashSet::new();
+    fn scan_features_in_dir(dir: &Path, features: &mut std::collections::HashSet<String>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    scan_features_in_dir(&p, features);
+                } else if p.extension().map_or(false, |ext| ext == "fm") {
+                    if let Ok(content) = fs::read_to_string(&p) {
+                        for line in content.lines() {
+                            let t = line.trim();
+                            if t.starts_with("import ") {
+                                let after = t[7..].trim();
+                                let mod_name = after
+                                    .split(|c: char| c.is_whitespace() || c == ';' || c == '{')
+                                    .next()
+                                    .unwrap_or("");
+                                let search = if mod_name.starts_with("std.") {
+                                    mod_name.to_string()
+                                } else {
+                                    format!("std.{}", mod_name)
+                                };
+                                let module_features = match search.as_str() {
+                                    "std.time" => vec!["utils"],
+                                    "std.os" => vec!["os"],
+                                    "std.regex" => vec!["regex"],
+                                    "std.json" => vec!["utils"],
+                                    "std.desktop" => vec!["os"],
+                                    "std.hardware" => vec!["hardware"],
+                                    "std.camera" => vec!["camera"],
+                                    "std.bluetooth" => vec!["bluetooth"],
+                                    "std.base64" => vec!["base64"],
+                                    "std.hid" => vec!["hardware"],
+                                    "std.serial" => vec!["hardware"],
+                                    "std.net.tcp" | "std.net.udp" | "std.net.dns" | "std.net.url"
+                                    | "std.net.interface" | "std.net" => vec!["net"],
+                                    "std.net.http" => vec!["net", "http"],
+                                    "std.net.ws" => vec!["net", "ws"],
+                                    "std.net.mqtt" => vec!["net", "mqtt"],
+                                    _ => vec![],
+                                };
+                                for feat in module_features {
+                                    features.insert(feat.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if Path::new("src").exists() {
+        scan_features_in_dir(Path::new("src"), &mut required_features);
+    }
+
+    // Extract exact compiled features from flamelang entry in .flame/build-cache/Cargo.toml
+    let mut compiled_features = std::collections::HashSet::new();
+    for line in cached_toml_content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("flamelang") && trimmed.contains('{') {
+            if let Some(start_idx) = trimmed.find("features") {
+                if let Some(bracket_start) = trimmed[start_idx..].find('[') {
+                    let from_bracket = &trimmed[start_idx + bracket_start + 1..];
+                    if let Some(bracket_end) = from_bracket.find(']') {
+                        let feats_slice = &from_bracket[..bracket_end];
+                        for f in feats_slice.split(',') {
+                            let clean = f.trim().trim_matches('"').trim_matches('\'').trim();
+                            if !clean.is_empty() {
+                                compiled_features.insert(clean.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    // Check if @Application has features in src/main.fm
+    let main_fm = Path::new("src").join("main.fm");
+    if let Ok(content) = fs::read_to_string(&main_fm) {
+        if let Some(idx) = content.find("@Application") {
+            let after = &content[idx..];
+            if let Some(paren_end) = after.find(')') {
+                let annot = &after[..paren_end];
+                if annot.contains("features") {
+                    if let Some(b_start) = annot.find('[') {
+                        if let Some(b_end) = annot.find(']') {
+                            let list = &annot[b_start + 1..b_end];
+                            for f in list.split(',') {
+                                let clean = f.trim().trim_matches('"').trim_matches('\'').trim();
+                                if !clean.is_empty() {
+                                    required_features.insert(clean.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If the required feature set changed in any way (added or removed), rebuild!
+    if compiled_features != required_features {
+        return true;
+    }
+
+    false
+}
+
+fn get_project_mtime_snapshot() -> HashMap<PathBuf, std::time::SystemTime> {
+    let mut map = HashMap::new();
+    if let Ok(m) = fs::metadata("flame.toml") {
+        if let Ok(time) = m.modified() {
+            map.insert(PathBuf::from("flame.toml"), time);
+        }
+    }
+    fn scan(dir: &Path, map: &mut HashMap<PathBuf, std::time::SystemTime>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    if p.file_name().map_or(false, |n| n == "target" || n == "build-cache") {
+                        continue;
+                    }
+                    scan(&p, map);
+                } else if let Ok(m) = entry.metadata() {
+                    if let Ok(time) = m.modified() {
+                        map.insert(p, time);
+                    }
+                }
+            }
+        }
+    }
+    if Path::new("src").exists() {
+        scan(Path::new("src"), &mut map);
+    }
+    if Path::new("native").exists() {
+        scan(Path::new("native"), &mut map);
+    }
+    if Path::new(".flame").join("pkg").exists() {
+        scan(&Path::new(".flame").join("pkg"), &mut map);
+    }
+    map
+}
+
 fn run_file(path_str: &str, force_local: bool, script_args: &[String]) {
     let start_time = std::time::Instant::now();
     let path = Path::new(path_str);
@@ -1222,37 +1566,129 @@ fn run_file(path_str: &str, force_local: bool, script_args: &[String]) {
         return;
     }
 
-    let build_args = if force_local {
-        vec!["--local".to_string()]
+    let pkg_name = get_manifest_pkg_name();
+    let profile = "dev";
+    let ext = std::env::consts::EXE_SUFFIX;
+    let exe_name = format!("{}{}", pkg_name, ext);
+    let dev_exe = Path::new("target").join(profile).join(&exe_name);
+
+    let exe_path = if !force_local
+        && Path::new("flame.toml").exists()
+        && dev_exe.exists()
+        && !check_runtime_needs_rebuild(&dev_exe, profile)
+    {
+        dev_exe
     } else {
-        vec![]
+        let build_args = if force_local {
+            vec!["--local".to_string()]
+        } else {
+            vec![]
+        };
+        match build_project(&build_args) {
+            Some(p) => p,
+            None => return,
+        }
     };
-    if let Some(exe_path) = build_project(&build_args) {
-        let mut child = Command::new(exe_path)
+
+    let mut child = Command::new(&exe_path)
+        .env("FLAME_ENTRY_FILE", path_str)
+        .args(script_args)
+        .spawn()
+        .expect("Failed to execute generated binary");
+
+    let status = child.wait().expect("Failed to wait on child");
+    let elapsed = start_time.elapsed();
+
+    if !status.success() {
+        println!(
+            "\x1b[1;31mruntime error:\x1b[0m process exited with code {:?}",
+            status.code()
+        );
+    }
+
+    if elapsed.as_secs_f64() < 0.1 {
+        println!(
+            "\x1b[1;32m    Finished\x1b[0m execution in {:.2}ms",
+            elapsed.as_secs_f64() * 1000.0
+        );
+    } else {
+        println!(
+            "\x1b[1;32m    Finished\x1b[0m execution in {:.2}s",
+            elapsed.as_secs_f64()
+        );
+    }
+}
+
+fn run_file_watch(path_str: &str, force_local: bool, script_args: &[String]) {
+    println!("\x1b[1;36m    Watching\x1b[0m for changes in src/ and flame.toml (Ctrl+C to exit)...");
+
+    let pkg_name = get_manifest_pkg_name();
+    let profile = "dev";
+    let ext = std::env::consts::EXE_SUFFIX;
+    let exe_name = format!("{}{}", pkg_name, ext);
+    let dev_exe = Path::new("target").join(profile).join(&exe_name);
+
+    let mut current_exe = if !force_local
+        && Path::new("flame.toml").exists()
+        && dev_exe.exists()
+        && !check_runtime_needs_rebuild(&dev_exe, profile)
+    {
+        Some(dev_exe.clone())
+    } else {
+        let build_args = if force_local {
+            vec!["--local".to_string()]
+        } else {
+            vec![]
+        };
+        build_project(&build_args)
+    };
+
+    let spawn_process = |exe: &Path| -> Option<std::process::Child> {
+        Command::new(exe)
+            .env("FLAME_ENTRY_FILE", path_str)
             .args(script_args)
             .spawn()
-            .expect("Failed to execute generated binary");
+            .ok()
+    };
 
-        let status = child.wait().expect("Failed to wait on child");
-        let elapsed = start_time.elapsed();
+    let mut running_child: Option<std::process::Child> = current_exe.as_ref().and_then(|p| spawn_process(p));
+    let mut snapshot = get_project_mtime_snapshot();
 
-        if !status.success() {
-            println!(
-                "\x1b[1;31mruntime error:\x1b[0m process exited with code {:?}",
-                status.code()
-            );
-        }
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(250));
 
-        if elapsed.as_secs_f64() < 0.1 {
-            println!(
-                "\x1b[1;32m    Finished\x1b[0m execution in {:.2}ms",
-                elapsed.as_secs_f64() * 1000.0
-            );
-        } else {
-            println!(
-                "\x1b[1;32m    Finished\x1b[0m execution in {:.2}s",
-                elapsed.as_secs_f64()
-            );
+        let new_snapshot = get_project_mtime_snapshot();
+        if new_snapshot != snapshot {
+            snapshot = new_snapshot;
+
+            // Kill running child if still active
+            if let Some(mut child) = running_child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+
+            println!("\n\x1b[1;36m    [watch]\x1b[0m Change detected...");
+
+            let needs_rebuild = force_local
+                || current_exe.is_none()
+                || !dev_exe.exists()
+                || check_runtime_needs_rebuild(&dev_exe, profile);
+
+            if needs_rebuild {
+                println!("\x1b[1;36m    [watch]\x1b[0m Rebuilding host runner...");
+                let build_args = if force_local {
+                    vec!["--local".to_string()]
+                } else {
+                    vec![]
+                };
+                current_exe = build_project(&build_args);
+            } else {
+                current_exe = Some(dev_exe.clone());
+            }
+
+            if let Some(ref exe) = current_exe {
+                running_child = spawn_process(exe);
+            }
         }
     }
 }
@@ -1621,6 +2057,34 @@ fn init_native_bridge(plugin_name: &str) {
             "\x1b[1;31merror:\x1b[0m no flame.toml manifest file found in the current directory."
         );
         println!("help: run this command inside a valid Flame project folder.");
+        return;
+    }
+
+    // Check package name in flame.toml - plugin name MUST be different from package name!
+    let pkg_name = if let Ok(content) = fs::read_to_string(toml_path) {
+        let mut name = String::new();
+        for line in content.lines() {
+            let t = line.trim();
+            if t.starts_with("name =") || t.starts_with("name=") {
+                if let Some(val) = t.split('=').nth(1) {
+                    name = val.trim().trim_matches('"').trim_matches('\'').to_string();
+                    break;
+                }
+            }
+        }
+        name
+    } else {
+        String::new()
+    };
+
+    if !pkg_name.is_empty() && plugin_name == pkg_name {
+        println!(
+            "\x1b[1;31merror:\x1b[0m plugin name '{}' cannot be the same as the Flame package name '{}'.",
+            plugin_name, pkg_name
+        );
+        println!(
+            "help: choose a distinct plugin name (e.g. 'server', 'native_core', or 'bridge') to avoid Cargo workspace and linkage naming collisions."
+        );
         return;
     }
 
@@ -2513,7 +2977,13 @@ fn analyze_file_for_json(
             if let Some(t) = &var.typ {
                 if t != "Unknown" {
                     let (code_block, source_msg) =
-                        if t.starts_with("fn ") || t.starts_with("annotation ") {
+                        if t.starts_with("import:") {
+                            let imported = &t["import:".len()..];
+                            (
+                                format!("import {} as {}", imported, word_under_cursor),
+                                format!("Imported module `{}`", imported),
+                            )
+                        } else if t.starts_with("fn ") || t.starts_with("annotation ") {
                             (t.clone(), "Defined in project".to_string())
                         } else if let Some(mod_name) = native_modules.iter().find(|m| {
                             load_meta_from_project(&manifest_dir, m)
@@ -2544,10 +3014,71 @@ fn analyze_file_for_json(
     if let Some(namespace) = namespace {
         let mut resolved_as_var = false;
 
+        let mut alias_map: HashMap<String, String> = HashMap::new();
+        let import_as_re = Regex::new(
+            r"import\s+([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)*)(?:\s+as\s+([a-zA-Z_]\w*))?",
+        )
+        .unwrap();
+        for cap in import_as_re.captures_iter(&content) {
+            let full_path = cap[1].to_string();
+            let alias = cap.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| {
+                full_path.rsplit('.').next().unwrap_or(&full_path).to_string()
+            });
+            alias_map.insert(alias, full_path);
+        }
+
+        let target_path = alias_map.get(&namespace).cloned();
+        let effective_mod = target_path.as_ref().map(|t| {
+            t.rsplit('.').next().unwrap_or(t.as_str()).to_string()
+        });
+
+        let mut lookup_namespaces = vec![namespace.clone()];
+        if let Some(ref em) = effective_mod {
+            if !lookup_namespaces.contains(em) {
+                lookup_namespaces.push(em.clone());
+            }
+        }
+        if let Some(ref tp) = target_path {
+            if !lookup_namespaces.contains(tp) {
+                lookup_namespaces.push(tp.clone());
+            }
+        }
+
+        if let Some(tc) = &tc_opt {
+            if let Some(var_info) = tc.lookup_var(&namespace) {
+                if let crate::typechecker::Type::Formula(members, docs) = &var_info.ty {
+                    for (member_name, _) in members {
+                        if member_prefix
+                            .as_deref()
+                            .map_or(true, |p| member_name.starts_with(p))
+                        {
+                            let doc = docs.get(member_name).cloned();
+                            completions.push(JsonCompletion {
+                                sort_text: None,
+                                label: member_name.clone(),
+                                kind: "function".to_string(),
+                                detail: format!("{}.{}", namespace, member_name),
+                                documentation: doc,
+                            });
+                        }
+                    }
+                    if !word_under_cursor.is_empty() && members.contains_key(&word_under_cursor) {
+                        let doc = docs.get(&word_under_cursor).cloned();
+                        hover_found = Some(JsonHover {
+                            label: format!("{namespace}.{word_under_cursor}()"),
+                            documentation: doc.or_else(|| Some(format!("Function {namespace}.{word_under_cursor}"))),
+                        });
+                    }
+                    resolved_as_var = true;
+                }
+            }
+        }
+
         // First check if it's a known variable! If so, it might be a struct or native type (e.g. FlameServer)
-        if let Some(var) = scanned_vars.iter().find(|v| v.name == namespace) {
-            if let Some(typ) = &var.typ {
-                if typ != "Unknown" {
+        if !resolved_as_var {
+            if let Some(var) = scanned_vars.iter().find(|v| v.name == namespace) {
+                if let Some(typ) = &var.typ {
+                    if typ != "Unknown" && !typ.starts_with("import:") {
                     let mut provided = false;
                     for s in &scanned_structs {
                         if s.name == *typ {
@@ -2674,9 +3205,13 @@ fn analyze_file_for_json(
                 }
             }
         }
+    }
 
         if !resolved_as_var {
-            if let Some(meta) = load_meta_from_project(&manifest_dir, &namespace) {
+            let meta_match = lookup_namespaces.iter().find_map(|ns| {
+                load_meta_from_project(&manifest_dir, ns).map(|m| (ns.clone(), m))
+            });
+            if let Some((meta_ns, meta)) = meta_match {
                 for function in &meta.functions {
                     if member_prefix
                         .as_deref()
@@ -2689,7 +3224,7 @@ fn analyze_file_for_json(
                             kind: "function".to_string(),
                             detail: format!("native.{}", namespace),
                             documentation: function.docs.clone().or_else(|| {
-                                load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
+                                load_local_rust_doc(&manifest_dir, &meta_ns, &function.flame_name)
                             }),
                         });
                     }
@@ -2709,7 +3244,9 @@ fn analyze_file_for_json(
                         });
                     }
 
-                    if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
+                    if struct_meta.name.to_lowercase() == meta_ns.to_lowercase()
+                        || struct_meta.name.to_lowercase() == namespace.to_lowercase()
+                    {
                         for function in &struct_meta.methods {
                             if member_prefix
                                 .as_deref()
@@ -2724,7 +3261,7 @@ fn analyze_file_for_json(
                                     documentation: function.docs.clone().or_else(|| {
                                         load_local_rust_doc(
                                             &manifest_dir,
-                                            &namespace,
+                                            &meta_ns,
                                             &function.flame_name,
                                         )
                                     }),
@@ -2750,7 +3287,7 @@ fn analyze_file_for_json(
                                 function.flame_name, params_str, function.return_type
                             );
                             let doc = function.docs.clone().unwrap_or_else(|| {
-                                load_local_rust_doc(&manifest_dir, &namespace, &function.flame_name)
+                                load_local_rust_doc(&manifest_dir, &meta_ns, &function.flame_name)
                                     .unwrap_or_default()
                             });
                             JsonHover {
@@ -2764,7 +3301,9 @@ fn analyze_file_for_json(
 
                     if hover_found.is_none() {
                         for struct_meta in &meta.structs {
-                            if struct_meta.name.to_lowercase() == namespace.to_lowercase() {
+                            if struct_meta.name.to_lowercase() == meta_ns.to_lowercase()
+                                || struct_meta.name.to_lowercase() == namespace.to_lowercase()
+                            {
                                 if let Some(function) = struct_meta
                                     .methods
                                     .iter()
@@ -2783,7 +3322,7 @@ fn analyze_file_for_json(
                                     let doc = function.docs.clone().unwrap_or_else(|| {
                                         load_local_rust_doc(
                                             &manifest_dir,
-                                            &namespace,
+                                            &meta_ns,
                                             &function.flame_name,
                                         )
                                         .unwrap_or_default()
@@ -2816,7 +3355,7 @@ fn analyze_file_for_json(
                         }
                     }
                 }
-            } else if let Some(def) = ide::get_native_module_def(&namespace) {
+            } else if let Some((_def_ns, def)) = lookup_namespaces.iter().find_map(|ns| ide::get_native_module_def(ns).map(|d| (ns.clone(), d))) {
                 for func in &def.functions {
                     if member_prefix
                         .as_deref()
@@ -2879,7 +3418,7 @@ fn analyze_file_for_json(
                 if !word_under_cursor.is_empty() {
                     if let Some(func) = def.functions.iter().find(|f| f.name == word_under_cursor) {
                         hover_found = Some(JsonHover {
-                            label: format!("{}.{}()", def.name, func.name),
+                            label: format!("{}.{}()", namespace, func.name),
                             documentation: Some(format!(
                                 "```flame\nfn {}({}) -> {}\n```\n{}",
                                 func.name,
@@ -2895,7 +3434,7 @@ fn analyze_file_for_json(
                     } else if let Some(typ) = def.types.iter().find(|t| t.name == word_under_cursor)
                     {
                         hover_found = Some(JsonHover {
-                            label: format!("{}.{}", def.name, typ.name),
+                            label: format!("{}.{}", namespace, typ.name),
                             documentation: Some(format!(
                                 "```flame\ntype {}\n```\n{}",
                                 typ.name, typ.description
@@ -2904,65 +3443,108 @@ fn analyze_file_for_json(
                     }
                 }
             } else if let Some(tc) = &tc_opt {
-                if let Some(enum_info) = tc.enums.get(&namespace) {
-                    if !word_under_cursor.is_empty() {
-                        if let Some((variant_name, variant_info)) = enum_info.variants.iter().find(|(n, _)| *n == &word_under_cursor) {
-                            hover_found = Some(JsonHover {
-                                label: format!("{}::{}", namespace, variant_name),
-                                documentation: variant_info.hover_doc.clone().or_else(|| Some(format!("```flame\n{}::{} variant\n```", namespace, variant_name)))
-                            });
-                        }
-                    }
-                }
-                
-                if let Some(methods) = tc.methods.iter().find(|(k, _)| k == &&namespace || k.ends_with(&format!(".{}", namespace))).map(|(_, v)| v) {
-                    for (method_name, sig) in methods {
-                        if sig.is_static {
-                            if member_prefix.as_deref().map_or(true, |p| method_name.starts_with(p)) {
-                                completions.push(JsonCompletion {
-                                    sort_text: None,
-                                    label: method_name.clone(),
-                                    kind: "function".to_string(),
-                                    detail: format!("{} method", namespace),
-                                    documentation: sig.hover_doc.clone()
+                let found_enum = lookup_namespaces.iter().find_map(|ns| tc.enums.get(ns).map(|e| (ns.clone(), e)));
+                let found_methods = lookup_namespaces.iter().find_map(|ns| {
+                    tc.methods.iter().find(|(k, _)| *k == ns || k.ends_with(&format!(".{}", ns))).map(|(_, v)| v)
+                });
+                if found_enum.is_some() || found_methods.is_some() {
+                    if let Some((_, enum_info)) = found_enum {
+                        if !word_under_cursor.is_empty() {
+                            if let Some((variant_name, variant_info)) = enum_info.variants.iter().find(|(n, _)| *n == &word_under_cursor) {
+                                hover_found = Some(JsonHover {
+                                    label: format!("{}::{}", namespace, variant_name),
+                                    documentation: variant_info.hover_doc.clone().or_else(|| Some(format!("```flame\n{}::{} variant\n```", namespace, variant_name)))
                                 });
                             }
                         }
-                        if !word_under_cursor.is_empty() && method_name == &word_under_cursor {
-                            let params_str = sig.params.iter().map(|p| format!("{}: {:?}", p.name, p.ty)).collect::<Vec<_>>().join(", ");
-                            let return_str = if sig.return_type == crate::typechecker::Type::Nil { "".to_string() } else { format!(" -> {:?}", sig.return_type) };
-                            let fallback_doc = format!("```flame\nfn {}({}){}\n```", method_name, params_str, return_str);
-                            let final_doc = if let Some(doc) = &sig.hover_doc { format!("{}\n\n{}", fallback_doc, doc) } else { fallback_doc };
+                    }
+                    if let Some(methods) = found_methods {
+                        for (method_name, sig) in methods {
+                            if sig.is_static {
+                                if member_prefix.as_deref().map_or(true, |p| method_name.starts_with(p)) {
+                                    completions.push(JsonCompletion {
+                                        sort_text: None,
+                                        label: method_name.clone(),
+                                        kind: "function".to_string(),
+                                        detail: format!("{} method", namespace),
+                                        documentation: sig.hover_doc.clone()
+                                    });
+                                }
+                            }
+                            if !word_under_cursor.is_empty() && method_name == &word_under_cursor {
+                                let params_str = sig.params.iter().map(|p| format!("{}: {:?}", p.name, p.ty)).collect::<Vec<_>>().join(", ");
+                                let return_str = if sig.return_type == crate::typechecker::Type::Nil { "".to_string() } else { format!(" -> {:?}", sig.return_type) };
+                                let fallback_doc = format!("```flame\nfn {}({}){}\n```", method_name, params_str, return_str);
+                                let final_doc = if let Some(doc) = &sig.hover_doc { format!("{}\n\n{}", fallback_doc, doc) } else { fallback_doc };
+                                hover_found = Some(JsonHover {
+                                    label: format!("{}::{}()", namespace, method_name),
+                                    documentation: Some(final_doc)
+                                });
+                            }
+                        }
+                    }
+                } else if let Some((std_ns, std_methods)) = lookup_namespaces.iter().find_map(|ns| ide::get_std_module_methods(ns).map(|m| (ns.clone(), m))) {
+                    for method in &std_methods {
+                        if member_prefix
+                            .as_deref()
+                            .map_or(true, |prefix| method.starts_with(prefix))
+                        {
+                            let doc = crate::std_docs::get_std_function_doc(&std_ns, method)
+                                .or_else(|| effective_mod.as_ref().and_then(|em| crate::std_docs::get_std_function_doc(em, method)))
+                                .or_else(|| crate::std_docs::get_std_function_doc(&namespace, method));
+                            completions.push(JsonCompletion {
+                                sort_text: None,
+                                label: method.clone(),
+                                kind: "function".to_string(),
+                                detail: format!("std.{}", namespace),
+                                documentation: doc.map(|d| d.to_string()),
+                            });
+                        }
+                    }
+
+                    if !word_under_cursor.is_empty() && std_methods.contains(&word_under_cursor) {
+                        let doc = crate::std_docs::get_std_function_doc(&std_ns, &word_under_cursor)
+                            .or_else(|| effective_mod.as_ref().and_then(|em| crate::std_docs::get_std_function_doc(em, &word_under_cursor)))
+                            .or_else(|| crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor));
+                        if let Some(doc) = doc {
                             hover_found = Some(JsonHover {
-                                label: format!("{}::{}()", namespace, method_name),
-                                documentation: Some(final_doc)
+                                label: format!("{namespace}.{word_under_cursor}()"),
+                                documentation: Some(doc.to_string()),
+                            });
+                        } else {
+                            hover_found = Some(JsonHover {
+                                label: format!("{namespace}.{word_under_cursor}()"),
+                                documentation: Some(format!(
+                                    "Standard library function: {namespace}.{word_under_cursor}"
+                                )),
                             });
                         }
                     }
                 }
-            } else if let Some(std_methods) = ide::get_std_module_methods(&namespace) {
+            } else if let Some((std_ns, std_methods)) = lookup_namespaces.iter().find_map(|ns| ide::get_std_module_methods(ns).map(|m| (ns.clone(), m))) {
                 for method in &std_methods {
                     if member_prefix
                         .as_deref()
                         .map_or(true, |prefix| method.starts_with(prefix))
                     {
+                        let doc = crate::std_docs::get_std_function_doc(&std_ns, method)
+                            .or_else(|| effective_mod.as_ref().and_then(|em| crate::std_docs::get_std_function_doc(em, method)))
+                            .or_else(|| crate::std_docs::get_std_function_doc(&namespace, method));
                         completions.push(JsonCompletion {
                             sort_text: None,
                             label: method.clone(),
                             kind: "function".to_string(),
                             detail: format!("std.{}", namespace),
-                            documentation: crate::std_docs::get_std_function_doc(
-                                &namespace, method,
-                            )
-                            .map(|d| d.to_string()),
+                            documentation: doc.map(|d| d.to_string()),
                         });
                     }
                 }
 
                 if !word_under_cursor.is_empty() && std_methods.contains(&word_under_cursor) {
-                    if let Some(doc) =
-                        crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor)
-                    {
+                    let doc = crate::std_docs::get_std_function_doc(&std_ns, &word_under_cursor)
+                        .or_else(|| effective_mod.as_ref().and_then(|em| crate::std_docs::get_std_function_doc(em, &word_under_cursor)))
+                        .or_else(|| crate::std_docs::get_std_function_doc(&namespace, &word_under_cursor));
+                    if let Some(doc) = doc {
                         hover_found = Some(JsonHover {
                             label: format!("{namespace}.{word_under_cursor}()"),
                             documentation: Some(doc.to_string()),
@@ -2976,9 +3558,7 @@ fn analyze_file_for_json(
                         });
                     }
                 }
-            } else if let Some(local_stmts) =
-                load_local_module_declarations(&manifest_dir, file, &namespace)
-            {
+            } else if let Some((_loc_ns, local_stmts)) = lookup_namespaces.iter().find_map(|ns| load_local_module_declarations(&manifest_dir, file, ns).map(|s| (ns.clone(), s))) {
                 let mut provided_completions = false;
 
                 for stmt in &local_stmts {
@@ -3713,6 +4293,65 @@ fn analyze_file_for_json(
                     }
 
                     if !provided_completions {
+                        if t == "Sender" {
+                            let sender_methods = [
+                                (
+                                    "send",
+                                    "fn send(value: Any) -> Nil",
+                                    "```flame\nfn send(value: Any) -> Nil\n```\nSends a message value through the channel to the connected Receiver.\n\n**Example**:\n```flame\ntx.send(\"hello\")\n```",
+                                ),
+                                (
+                                    "clone",
+                                    "fn clone() -> Sender",
+                                    "```flame\nfn clone() -> Sender\n```\nClones the channel sender handle so multiple threads can send messages to the same receiver.\n\n**Example**:\n```flame\nlet tx2 = tx.clone()\n```",
+                                ),
+                            ];
+                            for (name, detail, doc) in sender_methods {
+                                if member_prefix.as_deref().map_or(true, |p| name.starts_with(p)) {
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("0_".to_string()),
+                                        label: name.to_string(),
+                                        kind: "method".to_string(),
+                                        detail: detail.to_string(),
+                                        documentation: Some(doc.to_string()),
+                                    });
+                                    provided_completions = true;
+                                }
+                            }
+                        } else if t == "Receiver" {
+                            let receiver_methods = [
+                                (
+                                    "recv",
+                                    "fn recv() -> Any",
+                                    "```flame\nfn recv() -> Any\n```\nBlocks the current thread until a message is received from the channel.\n\n**Example**:\n```flame\nlet msg = rx.recv()\n```",
+                                ),
+                                (
+                                    "tryRecv",
+                                    "fn tryRecv() -> Any | Nil",
+                                    "```flame\nfn tryRecv() -> Any | Nil\n```\nAttempts to receive a message without blocking. Returns nil immediately if the channel is currently empty.\n\n**Example**:\n```flame\nlet msg = rx.tryRecv()\nif msg != nil {\n    println($\"Received: {msg}\")\n}\n```",
+                                ),
+                                (
+                                    "isEmpty",
+                                    "fn isEmpty() -> Bool",
+                                    "```flame\nfn isEmpty() -> Bool\n```\nReturns true if there are no pending messages in the channel receiver.\n\n**Example**:\n```flame\nif !rx.isEmpty() {\n    let msg = rx.recv()\n}\n```",
+                                ),
+                            ];
+                            for (name, detail, doc) in receiver_methods {
+                                if member_prefix.as_deref().map_or(true, |p| name.starts_with(p)) {
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("0_".to_string()),
+                                        label: name.to_string(),
+                                        kind: "method".to_string(),
+                                        detail: detail.to_string(),
+                                        documentation: Some(doc.to_string()),
+                                    });
+                                    provided_completions = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if !provided_completions {
                         let native_module_lookup = match t.as_str() {
                             "ThreadHandler" => Some("thread"),
                             "ProcessHandler" => Some("process"),
@@ -3804,6 +4443,18 @@ fn analyze_file_for_json(
                         ("insert", "Inserts a key-value pair (HashMap)"),
                         ("get", "Gets a value by key (HashMap)"),
                         ("remove", "Removes a key (HashMap)"),
+                        (
+                            "send",
+                            "Sends a message value through a channel sender (Sender).\n\nExample:\n```flame\ntx.send(\"hello\")\n```",
+                        ),
+                        (
+                            "recv",
+                            "Blocks until a message is received from a channel receiver (Receiver).\n\nExample:\n```flame\nlet msg = rx.recv()\n```",
+                        ),
+                        (
+                            "tryRecv",
+                            "Non-blocking attempt to receive a message from a channel receiver (Receiver). Returns nil if empty.\n\nExample:\n```flame\nlet msg = rx.tryRecv()\n```",
+                        ),
                         (
                             "map",
                             "Transforms each element of the collection using the provided closure and returns a new collection.\n\nExample:\n```flame\narr.map((x) { return x * 2 })\n```",

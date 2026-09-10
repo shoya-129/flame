@@ -5,4 +5,3 @@ edition = "2026"
 type = "executable"
 
 [dependencies]
-std = "0.1.0"

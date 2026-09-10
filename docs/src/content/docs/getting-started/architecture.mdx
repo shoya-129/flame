@@ -463,7 +463,71 @@ Flame **does not have a garbage collector (GC)**. There are no stop-the-world pa
 
 ---
 
-## 15. Performance Highlights
+## 15. Smart Runtime Reuse & Rapid Rebuild System (`fmp run` & `fmp run --watch`)
+
+One of the historical trade-offs in systems programming languages is the tension between **native compilation performance** and **rapid development iteration speed**. Compiling through Cargo and LLVM on every single line edit introduces multi-second compilation and linking pauses that disrupt developer flow. Conversely, dynamic interpreted languages offer fast reloads but sacrifice raw execution throughput and typed native safety.
+
+Flame eliminates this trade-off through an intelligent **Host Runtime Reuse and Dependency-Driven Rebuild Architecture**.
+
+```text
+               fmp run / fmp run --watch
+                         │
+                         ▼
+             Has dependencies or imports changed?
+               (Exact Cargo feature set & mtimes)
+                         │
+           ┌─────────────┴─────────────┐
+           │ YES                       │ NO
+           ▼                           ▼
+   Targeted Host Rebuild       Reuse Cached Dev Binary
+(Compile tailored features     (Direct execution with
+ to target/dev/<pkg_name>)     FLAME_ENTRY_FILE in <5ms)
+           │                           │
+           └─────────────┬─────────────┘
+                         ▼
+             Run Application Instantaneously
+```
+
+### 1. Reusable Host Dev Binary (`target/dev/<pkg_name>`)
+
+When you run `fmp run` for the first time in a project, Blaze analyzes your dependencies and compiles a tailored development host runtime into `target/dev/<pkg_name>` (e.g. `target/dev/my_app.exe` on Windows or `target/dev/my_app` on Linux/macOS).
+
+This binary embeds the exact native plugins, C/Rust crates, and standard library modules required by your project. Crucially:
+
+- **Subsequent `fmp run` calls bypass Cargo and LLVM**: When executing `fmp run src/main.fm`, Flame detects that the host binary is already up to date. It launches the cached dev binary directly, passing `FLAME_ENTRY_FILE`.
+- **Zero Linking Delay**: Pure code modifications—such as tweaking business logic, writing functions, adjusting formulas, or altering control flow—execute instantaneously in **sub-milliseconds** because the host binary already contains the execution engine and compiled native libraries.
+
+### 2. Exact Feature-Set Matching on Import Changes
+
+A common failure mode in naive caching systems is running stale dependencies or failing to link newly imported native modules. Flame prevents this using **exact feature set reconciliation**:
+
+1. **Required Features Scan**: During every run, Flame scans `src/` (and `@Application(features = [...])` declarations) to compute the exact set of required Cargo features (e.g. `["http", "net", "thread", "fs"]`).
+2. **Compiled Features Inspection**: Flame reads the active dependencies recorded in `.flame/build-cache/Cargo.toml` to extract `compiled_features`.
+3. **Rebuild Trigger Condition**:
+   - **Import Added**: If you add `import std.net.http`, Flame detects that `http` is missing from `compiled_features`. It automatically invalidates the cached binary and rebuilds the host runtime with HTTP support linked.
+   - **Import Removed**: If you delete an unused module import, Flame detects the reduced feature set and updates the runtime cleanly.
+   - **Manifest / Native Edits**: File modification timestamps across `flame.toml`, `native/`, and `.flame/pkg/` are continuously tracked. Editing a Rust plugin in `native/src/lib.rs` or adding a crate to `[native-dependencies]` immediately triggers a rebuild.
+
+### 3. Development Speed in Watch Mode (`fmp run --watch` / `-w`)
+
+For maximum productivity, Flame provides a built-in file watcher:
+
+```bash
+# Watch mode with instant reloading
+fmp run --watch
+
+# Shorthand alias
+fmp run -w
+```
+
+Watch mode maintains an active event loop over your project directory:
+
+- **Instant Hot Rerun (< 5ms)**: Whenever you save an edit to any `.fm` file that does not alter dependencies or imports, the watcher executes the existing host runtime immediately. You experience the responsiveness of an interpreted scripting environment combined with the type safety and memory model of a compiled language.
+- **Seamless Background Rebuilds**: If you add an import (such as `import std.thread`), register a native plugin, or edit `flame.toml`, watch mode detects the dependency change, recompiles the host runtime in the background, and resumes watching without requiring you to restart the terminal process.
+
+---
+
+## 16. Performance Highlights
 
 <CardGrid>
   <LucideCard title="Application-Specific">
@@ -483,3 +547,4 @@ Flame **does not have a garbage collector (GC)**. There are no stop-the-world pa
     Leverages Rust Cargo and LLVM pipelines with fat LTO, symbol stripping, and single-unit codegen for maximum throughput.
   </LucideCard>
 </CardGrid>
+

@@ -371,15 +371,7 @@ let path = env.get(\"PATH\")
 ```
 - **`set()`**: Sets the value of an environment variable.
 "),
-        "hid" | "std.hid" => Some("# Module `hid`
-
-The `hid` module allows you to connect to and interact with Human Interface Devices (e.g. custom controllers, stream decks).
-
-## Functions
-- **`devices()`**: Lists available HID devices.
-- **`open()`**: Opens a connection to a specific HID device by VID and PID.
-"),
-        "camera" | "std.camera" => Some("# Module `camera`
+"camera" | "std.camera" => Some("# Module `camera`
 
 The `camera` module provides access to connected webcams and cameras.
 
@@ -387,28 +379,7 @@ The `camera` module provides access to connected webcams and cameras.
 - **`capture()`**: Captures a single frame from the camera as an image.
 - **`list()`**: Lists available camera devices.
 "),
-        "bluetooth" | "std.bluetooth" => Some("# Module `bluetooth`
-
-The `bluetooth` module provides access to Bluetooth devices.
-
-## Functions
-- **`scan()`**: Scans for nearby Bluetooth devices.
-- **`connect()`**: Connects to a Bluetooth device.
-"),
-        "serial" | "std.serial" => Some("# Module `serial`
-
-The `serial` module provides RS-232 serial port communication (useful for Arduino, Raspberry Pi, etc).
-
-## Functions
-- **`ports()`**: Lists available serial ports.
-- **`open()`**: Opens a serial port connection at a specific baud rate.
-
-**Example**:
-```flame
-let port = serial.open(\"COM3\", 9600)
-```
-"),
-        "embedded" | "std.embedded" => Some("# Module `embedded`
+ "embedded" | "std.embedded" => Some("# Module `embedded`
 
 The `std.embedded` ecosystem provides modern capability-based objects for GPIO hardware, buses, actuators, sensors, and robotics.
 
@@ -433,115 +404,141 @@ led.high()
 
 pub fn get_std_function_doc(module: &str, function: &str) -> Option<&'static str> {
     match (module, function) {
+        ("thread" | "std.thread", "yield") => Some(
+            "```flame\nfn yield() -> Nil\n```\nYields the current thread's remaining execution time slice back to the OS scheduler.\n\n**Example**:\n```flame\nimport std.thread as th\nth.yield()\n```",
+        ),
+        ("thread" | "std.thread", "yieldNow") => Some(
+            "```flame\nfn yieldNow() -> Nil\n```\nYields execution immediately to allow other threads or tasks to run.\n\n**Example**:\n```flame\nimport std.thread as th\nth.yieldNow()\n```",
+        ),
+        ("thread" | "std.thread", "spawn") => Some(
+            "```flame\nfn spawn(func: () -> Any) -> Unknown\n```\nSpawns a new operating system thread executing the given closure or function concurrently.\n\n**Example**:\n```flame\nimport std.thread as th\nlet t = th.spawn(|| {\n    println(\"running in background thread\")\n})\n```",
+        ),
         ("thread" | "std.thread", "sleep") => Some(
-            "Suspends the current thread for the specified number of milliseconds.
-
-**Example**:
-```flame
-import std.thread
-
-thread.sleep(1000) // Sleep for 1 second
-```",
+            "```flame\nfn sleep(ms: Int) -> Nil\n```\nSuspends current thread execution for the specified number of milliseconds.\n\n**Example**:\n```flame\nimport std.thread as th\nth.sleep(50)\n```",
+        ),
+        ("thread" | "std.thread", "id") => Some(
+            "```flame\nfn id() -> String\n```\nReturns the unique identifier string of the current OS thread.\n\n**Example**:\n```flame\nimport std.thread as th\nlet tid = th.id()\n```",
         ),
         ("thread" | "std.thread", "channel") => Some(
-            "Creates a message channel and returns `(Sender, Receiver)`.
-
-**Example**:
-```flame
-let (tx, rx) = thread.channel()
-tx.send(\"hello\")
-rx.recv().assertEq(\"hello\")
-```",
+            "```flame\nfn channel() -> (Sender, Receiver)\n```\nCreates a thread-safe message channel and returns a `(Sender, Receiver)` tuple. Senders can be cloned (`tx.clone()`) and moved into background threads to transmit messages back to the receiver.\n\n**Example**:\n```flame\nimport std.thread as th\nlet (tx, rx) = th.channel()\nlet tx2 = tx.clone()\nth {\n    th.yield()\n    tx.send(\"hello from spawned thread\")\n}\nth {\n    th.yieldNow()\n    tx2.send(\"hello from second thread\")\n}\nlet msg1 = rx.recv()\nlet msg2 = rx.recv()\n```",
+        ),
+        ("thread" | "std.thread", "send") => Some(
+            "```flame\nfn send(value: Any) -> Nil\n```\nSends a message value through the channel to the connected `Receiver`. Can be called across multiple spawned threads.\n\n**Example**:\n```flame\ntx.send(\"task complete\")\n```",
+        ),
+        ("thread" | "std.thread", "recv") => Some(
+            "```flame\nfn recv() -> Any\n```\nBlocks the current thread until a message is received from the channel.\n\n**Example**:\n```flame\nlet msg = rx.recv()\n```",
+        ),
+        ("thread" | "std.thread", "tryRecv") => Some(
+            "```flame\nfn tryRecv() -> Any | Nil\n```\nAttempts to receive a message without blocking. Returns `nil` immediately if the channel is currently empty.\n\n**Example**:\n```flame\nlet msg = rx.tryRecv()\nif msg != nil {\n    println($\"Received: {msg}\")\n}\n```",
+        ),
+        ("thread" | "std.thread", "isEmpty") => Some(
+            "```flame\nfn isEmpty() -> Bool\n```\nReturns `true` if there are no pending messages queued in the channel receiver.\n\n**Example**:\n```flame\nif !rx.isEmpty() {\n    let msg = rx.recv()\n}\n```",
         ),
         ("process" | "std.process", "exec") => Some(
-            "Executes a system command and waits for it to finish.
-
-**Example**:
-```flame
-import std.process
-let out = process.exec(\"echo\", [\"Hello\"])
-out.status.code.assertEq(0)
-```",
+            "```flame\nfn exec(cmd: String, args: [String]) -> ProcessResult\n```\nExecutes a system command and waits for it to finish.\n\n**Example**:\n```flame\nimport std.process\nlet out = process.exec(\"echo\", [\"Hello\"])\nout.status.code.assertEq(0)\n```",
         ),
         ("process" | "std.process", "spawn") => Some(
-            "Spawns a background process asynchronously.
-
-**Example**:
-```flame
-let p = process.spawn(\"git\", [\"--version\"])
-let result = p.wait_with_output()
-```",
+            "```flame\nfn spawn(cmd: String, args: [String]) -> ChildProcess\n```\nSpawns a background process asynchronously.\n\n**Example**:\n```flame\nimport std.process\nlet p = process.spawn(\"git\", [\"--version\"])\nlet result = p.wait_with_output()\n```",
         ),
         ("process" | "std.process", "cmd") => Some(
-            "Creates a `CommandBuilder` for chained process configuration.
-
-**Example**:
-```flame
-let child = process.cmd(\"git\")
-    .args([\"--version\"])
-    .spawn()
-let result = child.wait_with_output()
-```",
+            "```flame\nfn cmd(program: String) -> CommandBuilder\n```\nCreates a `CommandBuilder` for chained process configuration.\n\n**Example**:\n```flame\nlet child = process.cmd(\"git\")\n    .args([\"--version\"])\n    .spawn()\nlet result = child.wait_with_output()\n```",
         ),
         ("fs" | "std.fs", "read") => Some(
-            "Reads the entire contents of a file as a string.
-
-**Example**:
-```flame
-let content = fs.read(\"data.txt\")
-```",
+            "```flame\nfn read(path: String) -> String\n```\nReads the entire contents of a file as a UTF-8 String. Throws a runtime error if the file cannot be opened.\n\n**Example**:\n```flame\nlet content = fs.read(\"config.toml\")\n```",
         ),
         ("fs" | "std.fs", "write") => Some(
-            "Writes string data to a file.
-
-**Example**:
-```flame
-fs.write(\"data.txt\", \"Hello World\")
-```",
+            "```flame\nfn write(path: String, content: String) -> Nil\n```\nWrites string content to a file, replacing its contents if it already exists.\n\n**Example**:\n```flame\nfs.write(\"output.txt\", \"Hello World\")\n```",
         ),
-        ("fs" | "std.fs", "append") => Some("Appends string data to the end of a file."),
-        ("fs" | "std.fs", "open") => {
-            Some("Opens a file and returns a File object with read/write/delete methods.")
-        }
-        ("fs" | "std.fs", "mkdir") => Some("Creates a new directory."),
-        ("fs" | "std.fs", "mkdir_all") => {
-            Some("Creates a new directory and all its parent directories.")
-        }
-        ("fs" | "std.fs", "copy") => Some("Copies a file or directory from source to destination."),
-        ("fs" | "std.fs", "delete") => Some("Deletes a file or directory."),
-        ("fs" | "std.fs", "remove") => Some("Deletes a file or empty directory."),
-        ("fs" | "std.fs", "exists") => Some("Returns true if the file or directory exists."),
-        ("fs" | "std.fs", "is_file") => Some("Returns true if the path points to a regular file."),
-        ("fs" | "std.fs", "is_dir") => Some("Returns true if the path points to a directory."),
-        ("fs" | "std.fs", "readDir") => Some("Returns a list of files in a directory."),
-        ("fs" | "std.fs", "readBytes") => Some("Reads an entire file into a binary byte array."),
-        ("fs" | "std.fs", "writeBytes") => Some("Writes raw binary bytes to a file."),
-        ("fs" | "std.fs", "appendBytes") => Some("Appends raw binary bytes to the end of a file."),
-        ("byte" | "std.byte", "readBytes") => {
-            Some("Reads the entire contents of a file as a byte array.")
-        }
-        ("byte" | "std.byte", "writeBytes") => {
-            Some("Writes a byte array to a file, overwriting if it exists.")
-        }
-        ("byte" | "std.byte", "appendBytes") => Some("Appends a byte array to the end of a file."),
-        ("byte" | "std.byte", "writeByte") => Some("Writes a single byte (0-255) to a file."),
-        ("byte" | "std.byte", "readByte") => Some("Reads a single byte from a file."),
-        ("byte" | "std.byte", "appendByte") => Some("Appends a single byte (0-255) to a file."),
-        ("byte" | "std.byte", "writeByteAt") => {
-            Some("Writes a single byte to a file at a specific offset.")
-        }
-        ("byte" | "std.byte", "readByteAt") => {
-            Some("Reads a single byte from a file at a specific offset.")
-        }
+        ("fs" | "std.fs", "append") => Some(
+            "```flame\nfn append(path: String, content: String) -> Nil\n```\nAppends string content to the end of a file.\n\n**Example**:\n```flame\nfs.append(\"log.txt\", \"New entry\\n\")\n```",
+        ),
+        ("fs" | "std.fs", "open") => Some(
+            "```flame\nfn open(path: String) -> File\n```\nOpens a file and returns a File object with read, write, and seek capabilities.",
+        ),
+        ("fs" | "std.fs", "mkdir") => Some(
+            "```flame\nfn mkdir(path: String) -> Nil\n```\nCreates a new directory on the file system.",
+        ),
+        ("fs" | "std.fs", "mkdir_all") => Some(
+            "```flame\nfn mkdir_all(path: String) -> Nil\n```\nCreates a new directory and all its parent directories recursively.",
+        ),
+        ("fs" | "std.fs", "copy") => Some(
+            "```flame\nfn copy(source: String, destination: String) -> Nil\n```\nCopies a file or directory from source to destination.",
+        ),
+        ("fs" | "std.fs", "delete") => Some(
+            "```flame\nfn delete(path: String) -> Nil\n```\nDeletes a file or directory from the file system. Throws a runtime error if the path does not exist.\n\n**Example**:\n```flame\nfs.delete(\"temp.txt\")\n```",
+        ),
+        ("fs" | "std.fs", "remove") => Some(
+            "```flame\nfn remove(path: String) -> Nil\n```\nDeletes a file or empty directory.\n\n**Example**:\n```flame\nfs.remove(\"temp.txt\")\n```",
+        ),
+        ("fs" | "std.fs", "exists") => Some(
+            "```flame\nfn exists(path: String) -> Bool\n```\nChecks if a file or directory exists at the specified path. Returns `true` if it exists, otherwise `false`.\n\n**Example**:\n```flame\nif fs.exists(\"config.toml\") {\n    let cfg = fs.read(\"config.toml\")\n}\n```",
+        ),
+        ("fs" | "std.fs", "is_file") => Some(
+            "```flame\nfn is_file(path: String) -> Bool\n```\nReturns `true` if the path points to a regular file.",
+        ),
+        ("fs" | "std.fs", "is_dir") => Some(
+            "```flame\nfn is_dir(path: String) -> Bool\n```\nReturns `true` if the path points to a directory.",
+        ),
+        ("fs" | "std.fs", "readDir") => Some(
+            "```flame\nfn readDir(path: String) -> [String]\n```\nReads directory contents and returns an array of child file and folder names.\n\n**Example**:\n```flame\nlet files = fs.readDir(\"./src\")\n```",
+        ),
+        ("fs" | "std.fs", "readBytes") => Some(
+            "```flame\nfn readBytes(path: String) -> Bytes\n```\nReads an entire file into a contiguous binary `Bytes` buffer.\n\n**Example**:\n```flame\nlet data = fs.readBytes(\"archive.fmp\")\n```",
+        ),
+        ("fs" | "std.fs", "writeBytes") => Some(
+            "```flame\nfn writeBytes(path: String, bytes: Bytes | [Int]) -> Nil\n```\nWrites raw binary bytes to a file, overwriting existing contents.\n\n**Example**:\n```flame\nfs.writeBytes(\"image.png\", bytes)\n```",
+        ),
+        ("fs" | "std.fs", "appendBytes") => Some(
+            "```flame\nfn appendBytes(path: String, bytes: Bytes | [Int]) -> Nil\n```\nAppends raw binary bytes to the end of a file.\n\n**Example**:\n```flame\nfs.appendBytes(\"archive.fmp\", payload)\n```",
+        ),
+        ("byte" | "std.byte", "fromByte") => Some(
+            "```flame\nfn fromByte(val: Int | Byte | String) -> Byte\n```\nConverts an Int (0-255), Byte, or ASCII string into a single Byte value.\n\n**Example**:\n```flame\nlet b = byte.fromByte(65)\n```",
+        ),
+        ("byte" | "std.byte", "fromBytes") => Some(
+            "```flame\nfn fromBytes(val: [Int] | String | Bytes) -> Bytes\n```\nConverts a list of integers/bytes, string, or byte slice into a contiguous `Bytes` buffer.\n\n**Example**:\n```flame\nlet buf = byte.fromBytes([0x46, 0x4D, 0x50, 0x01])\n```",
+        ),
+        ("byte" | "std.byte", "toString") => Some(
+            "```flame\nfn toString(val: Bytes | Byte) -> String\n```\nDecodes a `Bytes` buffer or single `Byte` into a UTF-8 String.\n\n**Example**:\n```flame\nlet text = byte.toString(buf)\n```",
+        ),
+        ("byte" | "std.byte", "toHex") => Some(
+            "```flame\nfn toHex(val: Bytes | Byte) -> String\n```\nFormats a `Bytes` buffer or single `Byte` as a lowercase hexadecimal string.\n\n**Example**:\n```flame\nlet hex = byte.toHex(buf)\n```",
+        ),
+        ("byte" | "std.byte", "toInt") => Some(
+            "```flame\nfn toInt(val: Byte | Int) -> Int\n```\nConverts a Byte value into its numeric Int representation (0-255).\n\n**Example**:\n```flame\nlet num = byte.toInt(b)\n```",
+        ),
+        ("byte" | "std.byte", "readBytes") => Some(
+            "```flame\nfn readBytes(path: String) -> Bytes\n```\nReads the entire contents of a file as a binary `Bytes` buffer.\n\n**Example**:\n```flame\nlet buf = byte.readBytes(\"archive.fmp\")\n```",
+        ),
+        ("byte" | "std.byte", "writeBytes") => Some(
+            "```flame\nfn writeBytes(path: String, bytes: Bytes | [Int]) -> Nil\n```\nWrites a `Bytes` buffer or byte array to a file, overwriting existing contents.\n\n**Example**:\n```flame\nbyte.writeBytes(\"archive.fmp\", header)\n```",
+        ),
+        ("byte" | "std.byte", "appendBytes") => Some(
+            "```flame\nfn appendBytes(path: String, bytes: Bytes | [Int]) -> Nil\n```\nAppends a `Bytes` buffer or byte array to the end of a file.\n\n**Example**:\n```flame\nbyte.appendBytes(\"archive.fmp\", payload)\n```",
+        ),
+        ("byte" | "std.byte", "writeByte") => Some(
+            "```flame\nfn writeByte(path: String, byte: Int) -> Nil\n```\nWrites a single byte (0-255) to a file.\n\n**Example**:\n```flame\nbyte.writeByte(\"data.bin\", 65)\n```",
+        ),
+        ("byte" | "std.byte", "readByte") => Some(
+            "```flame\nfn readByte(path: String) -> Int\n```\nReads a single byte from a file at offset 0.\n\n**Example**:\n```flame\nlet b = byte.readByte(\"data.bin\")\n```",
+        ),
+        ("byte" | "std.byte", "appendByte") => Some(
+            "```flame\nfn appendByte(path: String, byte: Int) -> Nil\n```\nAppends a single byte (0-255) to the end of a file.\n\n**Example**:\n```flame\nbyte.appendByte(\"data.bin\", 255)\n```",
+        ),
+        ("byte" | "std.byte", "writeByteAt") => Some(
+            "```flame\nfn writeByteAt(path: String, offset: Int, byte: Int) -> Nil\n```\nWrites a single byte to a file at a specific offset.\n\n**Example**:\n```flame\nbyte.writeByteAt(\"archive.fmp\", 0, 70)\n```",
+        ),
+        ("byte" | "std.byte", "readByteAt") => Some(
+            "```flame\nfn readByteAt(path: String, offset: Int) -> Int\n```\nReads a single byte from a file at a specific offset.\n\n**Example**:\n```flame\nlet magic = byte.readByteAt(\"archive.fmp\", 3)\n```",
+        ),
         ("math" | "std.math", "pi") => Some(
             "```flame\nconst pi: Float = 3.141592653589793\n```\nMathematical constant Archimedes' constant $\\pi$, representing the ratio of a circle's circumference to its diameter.\n\n**Example**:\n```flame\nlet circumference = 2 * math.pi * r\n```",
         ),
         ("math" | "std.math", "e") => Some(
             "```flame\nconst e: Float = 2.718281828459045\n```\nMathematical constant Euler's number $e$, the base of the natural logarithm.\n\n**Example**:\n```flame\nlet growth = math.e\n```",
         ),
-        ("math" | "std.math", "inf") => Some(
-            "```flame\nfn inf() -> Float\n```\nReturns positive floating-point infinity.",
-        ),
+        ("math" | "std.math", "inf") => {
+            Some("```flame\nfn inf() -> Float\n```\nReturns positive floating-point infinity.")
+        }
         ("math" | "std.math", "abs") => Some(
             "```flame\nfn abs(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the absolute magnitude of a number, quantity, or unit while strictly preserving physical unit dimensions.\n\n**Example**:\n```flame\nlet d = math.abs(-10.5 * unit.meter) // 10.5 m\n```",
         ),
@@ -575,9 +572,9 @@ fs.write(\"data.txt\", \"Hello World\")
         ("math" | "std.math", "ceil") => Some(
             "```flame\nfn ceil(x: Float | Int | Quantity | Unit) -> Float | Int | Quantity | Unit\n```\nReturns the smallest integer greater than or equal to a number or quantity.\n\n**Example**:\n```flame\nlet c = math.ceil(2.1 * unit.second) // 3 s\n```",
         ),
-        ("math" | "std.math", "random") => {
-            Some("```flame\nfn random() -> Float\n```\nReturns a pseudo-random floating point number between 0.0 and 1.0.")
-        }
+        ("math" | "std.math", "random") => Some(
+            "```flame\nfn random() -> Float\n```\nReturns a pseudo-random floating point number between 0.0 and 1.0.",
+        ),
         ("time" | "std.time", "now") => Some(
             "Returns the current Unix timestamp in milliseconds.
 
@@ -643,25 +640,10 @@ let path = env.get(\"PATH\")
 ```",
         ),
         ("env" | "std.env", "set") => Some("Sets the value of an environment variable."),
-        ("hid" | "std.hid", "devices") => Some("Lists available HID devices."),
-        ("hid" | "std.hid", "open") => {
-            Some("Opens a connection to a specific HID device by VID and PID.")
-        }
         ("camera" | "std.camera", "capture") => {
             Some("Captures a single frame from the camera as an image.")
         }
         ("camera" | "std.camera", "list") => Some("Lists available camera devices."),
-        ("bluetooth" | "std.bluetooth", "scan") => Some("Scans for nearby Bluetooth devices."),
-        ("bluetooth" | "std.bluetooth", "connect") => Some("Connects to a Bluetooth device."),
-        ("serial" | "std.serial", "ports") => Some("Lists available serial ports."),
-        ("serial" | "std.serial", "open") => Some(
-            "Opens a serial port connection at a specific baud rate.
-
-**Example**:
-```flame
-let port = serial.open(\"COM3\", 9600)
-```",
-        ),
         ("embedded" | "std.embedded", "pin") => Some(
             "Creates an exclusive digital GPIO Pin capability object backed by native `embedded-hal` drivers.\n\n**Methods**:\n- `.mode(dir)`: Set directional mode (`\"Input\"` or `\"Output\"`).\n- `.high()`: Assert voltage HIGH (3.3V / 5V).\n- `.low()`: Clear voltage LOW (0.0V).\n- `.toggle()`: Flip the active digital logic state.\n- `.read()`: Read active logic pin level.",
         ),

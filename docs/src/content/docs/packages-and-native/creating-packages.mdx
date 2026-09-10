@@ -99,9 +99,9 @@ When a user imports your package, only the `export`ed symbols will be available 
 Flame makes it incredibly easy to bundle native Rust plugins inside your package. 
 
 <Steps>
-1. **Create the Rust Plugin**: Run `flame native init <plugin-name>` to create a new Rust plugin in the `native` directory.
-2. **Register it**: Run `flame add --plugin <path_to_plugin_folder(e.g., ./native)>` to add it to your package as a plugin, it will add the plugin in `flame.toml` under `[plugins]`.
-3. **Use it**: Import it in your Flame scripts using `native.` prefix and its registered name (e.g., `import native.core`).
+1. **Create the Rust Plugin**: Run `flame new --plugin <plugin_name>` (or `flame new -p <plugin_name>`) to scaffold a new Rust plugin in the `./native` directory. *(Note: Ensure the plugin name is different from your Flame package name).*
+2. **Register it**: Run `flame add --plugin ./native` (or `flame add -p ./native`) to register the plugin in `flame.toml` under `[plugins]`. The plugin name is automatically read from `native/Cargo.toml`.
+3. **Use it**: Import it in your Flame scripts using the `native.` prefix and its registered name (e.g., `import native.core`).
 </Steps>
 
 <Aside type="tip">

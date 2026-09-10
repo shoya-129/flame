@@ -5,34 +5,64 @@ description: Utilities for reading, writing, and mutating binary data in Flame.
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-The `std.byte` module provides a comprehensive API for handling raw binary data (`Bytes` and `Byte`). It mirrors many filesystem (`std.fs`) operations but is strictly typed for bytes instead of UTF-8 text strings.
+The `std.byte` module provides a comprehensive API for handling raw binary data (`Bytes` and `Byte`). It mirrors many filesystem (`std.fs`) operations but is strictly typed for raw bytes instead of UTF-8 text strings.
 
 ---
 
 ## File I/O with Bytes
 
-You can perform direct binary I/O operations without string encodings. This is essential when dealing with non-text files like images, executables, or compressed data.
+You can perform direct binary I/O operations without string encodings. This is essential when dealing with binary files like images, executables, custom formats (e.g. `.fmp`), or compressed archives.
 
 ```flame
-import std.byte
+import std.byte as byte
 
 // Read an entire file as a byte array (Bytes)
 let raw_data = byte.readBytes("image.png")
 println(raw_data.type()) // "Bytes"
+println($"Length: {raw_data.len()} bytes")
 
 // Write an entire byte array to a file
 byte.writeBytes("copy.png", raw_data)
 
 // Append bytes to an existing file
-let extra = "trailer data".toByte()
+let extra = byte.fromBytes("trailer data")
 byte.appendBytes("copy.png", extra)
+```
+
+---
+
+## Creating & Converting Bytes
+
+Flame supports converting text strings, integer arrays, and individual numbers into byte buffers:
+
+```flame
+import std.byte as byte
+
+// Convert a UTF-8 text string to Bytes
+let text_bytes = byte.fromBytes("Hello Flame!")
+println(text_bytes.len()) // 12
+
+// Convert an array of integer values (0..255) to Bytes
+let header = byte.fromBytes([0x46, 0x4D, 0x50, 0x01])
+
+// Convert to hex string
+println(header.toHex()) // "464d5001"
+
+// Convert back to string
+println(text_bytes.toString()) // "Hello Flame!"
+
+// Individual byte conversions
+let b = byte.fromByte(65)
+println(b.toInt())    // 65
+println(b.toString()) // "A"
+println(b.toHex())    // "41"
 ```
 
 ---
 
 ## Single Byte Level Operations
 
-If you only need to modify or read a single 8-bit `Byte` (which maps internally to `u8`), you can use the byte-level methods:
+If you only need to modify or read a single 8-bit `Byte` (which maps internally to `u8`), you can use byte-level methods:
 
 #### `byte.readByte(path)`
 Reads the first byte of a file.
@@ -44,9 +74,9 @@ Reads a single byte at the specified `offset`.
 Writes a single `byte` at the specified `offset` without truncating the rest of the file.
 
 ```flame
-import std.byte
+import std.byte as byte
 
-// Write the byte '0' at offset 128
+// Write byte 0 at offset 128
 byte.writeByteAt("data.bin", 128, 0.toByte())
 
 // Read the byte located at offset 128
@@ -61,19 +91,48 @@ byte.appendByte("flag.bin", 0)
 
 ---
 
+## `Bytes` Buffer Methods
+
+Values of type `Bytes` have built-in methods:
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `bytes.len()` | `Int` | Returns the total count of bytes in the buffer. |
+| `bytes.isEmpty()` | `Bool` | Returns `true` if the buffer has length 0. |
+| `bytes.get(index)` | `Byte` | Accesses the byte at the specified 0-based index. |
+| `bytes.toHex()` | `String` | Converts the byte buffer into a lowercase hexadecimal string. |
+| `bytes.toString()` | `String` | Decodes the byte buffer as a UTF-8 string. |
+
+---
+
+## `Byte` Value Methods
+
+Values of type `Byte` represent a single 8-bit unsigned integer:
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `byte.toInt()` | `Int` | Returns the numeric value (0..255). |
+| `byte.toHex()` | `String` | Returns a 2-character lowercase hex string (e.g. `"46"`). |
+| `byte.toString()` | `String` | Returns the ASCII character representation. |
+
+---
+
 ## API Reference
 
-`byte.readBytes(path)`
-Reads all bytes from the file at `path` and returns a `Byte` array.
+### Module Functions (`std.byte`)
 
-`byte.writeBytes(path, bytes)`
-Writes the given `Byte` array to `path`, creating or overwriting the file.
-
-`byte.appendBytes(path, bytes)`
-Appends the given `Byte` array to the file at `path`.
-
-`byte.writeByte(path, byte)`
-Writes a single 8-bit `Byte` to `path`.
-
-`byte.appendByte(path, byte)`
-Appends a single 8-bit `Byte` to the file at `path`.
+| Function | Arguments | Returns | Description |
+| :--- | :--- | :--- | :--- |
+| `byte.fromBytes` | `data: Any` | `Bytes` | Converts an array of ints, byte buffer, or string to `Bytes`. |
+| `byte.fromByte` | `data: Any` | `Byte` | Converts an int (0..255), string, or byte to `Byte`. |
+| `byte.toString` | `bytes: Any` | `String` | Converts byte data into a UTF-8 string. |
+| `byte.toHex` | `bytes: Any` | `String` | Converts byte data into a hexadecimal string. |
+| `byte.toInt` | `byte: Any` | `Int` | Converts a `Byte` into an integer value. |
+| `byte.readBytes` | `path: String` | `Bytes` | Reads all bytes from the file at `path`. |
+| `byte.writeBytes` | `path: String, bytes: Any` | `Nil` | Writes byte buffer, array, or string to `path`. |
+| `byte.appendBytes` | `path: String, bytes: Any` | `Nil` | Appends byte buffer, array, or string to `path`. |
+| `byte.readByte` | `path: String` | `Byte` | Reads the first byte of a file. |
+| `byte.writeByte` | `path: String, byte: Any` | `Nil` | Writes a single 8-bit `Byte` to `path`. |
+| `byte.appendByte` | `path: String, byte: Any` | `Nil` | Appends a single 8-bit `Byte` to `path`. |
+| `byte.readByteAt` | `path: String, offset: Int` | `Byte` | Reads a single byte at the specified file offset. |
+| `byte.writeByteAt` | `path: String, offset: Int, byte: Any` | `Nil` | Writes a byte at the specified offset. |

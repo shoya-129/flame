@@ -14,12 +14,6 @@ pub mod os;
 pub mod hardware;
 #[cfg(feature = "os")]
 pub mod desktop;
-#[cfg(feature = "hardware")]
-pub mod hid;
-#[cfg(feature = "hardware")]
-pub mod serial;
-#[cfg(feature = "bluetooth")]
-pub mod bluetooth;
 #[cfg(feature = "camera")]
 pub mod camera;
 pub mod embedded;

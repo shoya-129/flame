@@ -15,10 +15,28 @@ In addition to external crates, you can write **custom native Rust code** inside
 The easiest way to initialize a native plugin in your Flame project is via the Flame CLI:
 
 ```bash
-flame native init --name <plugin_name>
+flame new --plugin <plugin_name>
+# or shorthand:
+flame new -p <plugin_name>
 ```
 
-This command will automatically scaffold a Rust library in your project and register it in your `flame.toml`. If you omit the `--name` flag, the CLI defaults to naming the plugin `bridge`. If you rename it later, ensure you update both `flame.toml` and the `Cargo.toml` of the generated native folder.
+This command will automatically scaffold a Rust library in your `./native` folder and register it in your `flame.toml`. If you omit the plugin name, the CLI defaults to naming the plugin `bridge`.
+
+<Aside type="caution">
+**Important Naming Rule**: Your native plugin name (defined in its `Cargo.toml`) and your Flame package name (defined in `flame.toml`) **must be different**. Giving them the exact same name causes Cargo workspace naming collisions and dynamic linker conflicts.
+</Aside>
+
+### Registering Existing Plugins
+
+If you have an existing plugin or modular Rust crate, register it into your project with:
+
+```bash
+flame add --plugin ./native
+# or shorthand:
+flame add -p ./native
+```
+
+Flame automatically extracts the plugin name directly from the plugin's `Cargo.toml` (`[package] name = "..."`), so passing a separate `--name` flag is not required.
 
 ### Rust Interop Coverage
 

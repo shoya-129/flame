@@ -279,7 +279,10 @@ pub fn format_code(source: &str) -> String {
             | TokenKind::Le
             | TokenKind::Ge
             | TokenKind::Arrow
-            | TokenKind::FatArrow => {
+            | TokenKind::FatArrow
+            | TokenKind::Pipe
+            | TokenKind::Pipe2
+            | TokenKind::Ampersand2 => {
                 if !out.ends_with(' ') && !out.ends_with('\n') {
                     out.push(' ');
                 }
@@ -436,6 +439,9 @@ pub fn format_code(source: &str) -> String {
                         | TokenKind::Ge
                         | TokenKind::Arrow
                         | TokenKind::FatArrow
+                        | TokenKind::Pipe
+                        | TokenKind::Pipe2
+                        | TokenKind::Ampersand2
                 );
 
                 if last_kind == TokenKind::Lt || last_kind == TokenKind::Gt {
@@ -486,9 +492,9 @@ pub fn format_code(source: &str) -> String {
                 if tok.kind != TokenKind::Dot && last_kind != TokenKind::Dot && !out.ends_with('.')
                 {
                     if needs_space {
-                        // Exception: do not add a space before OpenParen if the last token was a keyword that acts like a function (e.g. type())
+                        // Exception: do not add a space before OpenParen if the last token was a keyword that acts like a function (e.g. type(), yield())
                         let skip_space = tok.kind == TokenKind::OpenParen
-                            && matches!(last_kind, TokenKind::Type | TokenKind::Identifier);
+                            && matches!(last_kind, TokenKind::Type | TokenKind::Identifier | TokenKind::Yield);
                         if !skip_space && !out.ends_with(' ') && !out.ends_with('\n') {
                             out.push(' ');
                         }

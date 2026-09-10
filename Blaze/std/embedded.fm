@@ -79,4 +79,4 @@ export fn flash() -> Unknown {}
 export fn eeprom() -> Unknown {}
 
 @Docs("Enumerates physical USB hardware microcontrollers and standard COM serial interfaces attached to the system.")
-export fn detect_ports() -> Vec<String> {}
+export fn detect_ports() -> [String] {}

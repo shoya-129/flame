@@ -215,6 +215,7 @@ impl Runner {
                                     &Stmt::ImportDecl {
                                         path: parts,
                                         glob: false,
+                                        alias: None,
                                         span: anno.span.clone(),
                                     },
                                     child_env.clone(),
@@ -554,6 +555,13 @@ impl Runner {
                                 }
                             }
 
+                            if env.lock().unwrap().variables.contains_key(var_name) {
+                                return Err(format!(
+                                    "cannot redeclare variable '{}' in the same scope",
+                                    var_name
+                                ));
+                            }
+
                             if extract_index < items.len() {
                                 env.lock().unwrap().define(
                                     var_name.to_string(),
@@ -578,6 +586,12 @@ impl Runner {
                         | Value::Object(map)
                         | Value::StructInstance { fields: map, .. } => {
                             for var in vars {
+                                if env.lock().unwrap().variables.contains_key(var) {
+                                    return Err(format!(
+                                        "cannot redeclare variable '{}' in the same scope",
+                                        var
+                                    ));
+                                }
                                 if let Some(field_val) = map.get(var) {
                                     env.lock().unwrap().define(
                                         var.to_string(),
@@ -595,6 +609,12 @@ impl Runner {
                         _ => return Err(format!("cannot destructure a non-object value")),
                     }
                 } else {
+                    if env.lock().unwrap().variables.contains_key(name) {
+                        return Err(format!(
+                            "cannot redeclare variable '{}' in the same scope",
+                            name
+                        ));
+                    }
                     env.lock().unwrap().define(name.clone(), val, *is_mut);
                 }
                 Ok(Value::Nil)
@@ -660,8 +680,9 @@ impl Runner {
                     .insert(format!("impl_{}", target_type), impl_env);
                 Ok(Value::Nil)
             }
-            Stmt::ImportDecl { path, .. } => {
+            Stmt::ImportDecl { path, alias, .. } => {
                 let mod_name = path.join(".");
+                let bind_name = alias.clone().unwrap_or_else(|| path.last().unwrap().clone());
                 if mod_name.starts_with("std.") {
                     let mut stdlib_dir = None;
                     let mut current =
@@ -722,10 +743,13 @@ impl Runner {
                         let mut map = mod_env.lock().unwrap().to_formula_map();
                         map.insert("__module__".to_string(), Value::Bool(true));
                         env.lock().unwrap().define(
-                            path.last().unwrap().clone(),
+                            bind_name.clone(),
                             Value::Formula(map),
                             false,
                         );
+                        if let Some(al) = alias {
+                            self.modules.insert(al.clone(), mod_env.clone());
+                        }
                         self.modules.insert(mod_name, mod_env);
                     } else {
                         let mod_env = Arc::new(Mutex::new(Env::new()));
@@ -733,10 +757,13 @@ impl Runner {
                         let mut map = mod_env.lock().unwrap().to_formula_map();
                         map.insert("__module__".to_string(), Value::Bool(true));
                         env.lock().unwrap().define(
-                            path.last().unwrap().clone(),
+                            bind_name.clone(),
                             Value::Formula(map),
                             false,
                         );
+                        if let Some(al) = alias {
+                            self.modules.insert(al.clone(), mod_env.clone());
+                        }
                         self.modules.insert(mod_name, mod_env);
                     }
                 } else if mod_name.starts_with("native.")
@@ -913,10 +940,13 @@ impl Runner {
                     let mut map = mod_env.lock().unwrap().to_formula_map();
                     map.insert("__module__".to_string(), Value::Bool(true));
                     env.lock().unwrap().define(
-                        path.last().unwrap().clone(),
+                        bind_name.clone(),
                         Value::Formula(map),
                         false,
                     );
+                    if let Some(al) = alias {
+                        self.modules.insert(al.clone(), mod_env.clone());
+                    }
                     self.modules.insert(mod_name, mod_env);
                 } else {
                     let mut files_to_run = Vec::new();
@@ -1112,10 +1142,13 @@ impl Runner {
                         let mut map = mod_env.lock().unwrap().to_formula_map();
                         map.insert("__module__".to_string(), Value::Bool(true));
                         env.lock().unwrap().define(
-                            path.last().unwrap().clone(),
+                            bind_name.clone(),
                             Value::Formula(map),
                             false,
                         );
+                        if let Some(al) = alias {
+                            self.modules.insert(al.clone(), mod_env.clone());
+                        }
                         self.modules.insert(mod_name, mod_env);
                     } else {
                         return Err(error_msg);
@@ -1448,6 +1481,22 @@ impl Runner {
     ) -> Option<Result<Value, String>> {
         match member {
             "toString" => {
+                if let Value::Object(map) | Value::Formula(map) | Value::StructInstance { fields: map, .. } = val {
+                    if let Some(to_string_val) = map.get("toString") {
+                        let mut evaled_args = Vec::new();
+                        for (_, arg_expr) in args {
+                            if let Ok(a) = self.eval_expr(arg_expr, env.clone()) {
+                                evaled_args.push(a);
+                            }
+                        }
+                        return Some(self.invoke_callback_value(to_string_val, evaled_args));
+                    }
+                }
+                if let Value::StructInstance { name, .. } = val {
+                    if self.modules.get(&format!("impl_{}", name)).map_or(false, |m| m.lock().unwrap().variables.contains_key("toString")) {
+                        return None;
+                    }
+                }
                 let mut prec = None;
                 if !args.is_empty() {
                     if let Ok(Value::Int(p)) = self.eval_expr(&args[0].1, env.clone()) {
@@ -1463,6 +1512,8 @@ impl Runner {
                         }
                     }
                     Value::String(s) => Some(Ok(Value::String(s.clone()))),
+                    Value::Bytes(b) => Some(Ok(Value::String(String::from_utf8_lossy(b).into_owned()))),
+                    Value::Byte(b) => Some(Ok(Value::String(format!("{}", *b as char)))),
                     _ => Some(Ok(Value::String(val.to_string()))),
                 }
             }
@@ -1478,6 +1529,7 @@ impl Runner {
                 }
                 match val {
                     Value::Int(i) => Some(Ok(Value::Int(*i))),
+                    Value::Byte(b) => Some(Ok(Value::Int(*b as i64))),
                     Value::Float(f) => Some(Ok(Value::Int(*f as i64))),
                     Value::Bool(b) => Some(Ok(Value::Int(if *b { 1 } else { 0 }))),
                     Value::Quantity(v, _) => Some(Ok(Value::Int(*v as i64))),
@@ -2148,7 +2200,9 @@ impl Runner {
                         BinaryOp::Add => Ok(Value::Float(a + (*b as f64))),
                         BinaryOp::Sub => Ok(Value::Float(a - (*b as f64))),
                         BinaryOp::Mul => Ok(Value::Float(a * (*b as f64))),
-                        BinaryOp::Div => Ok(Value::Float(if *b != 0 { a / (*b as f64) } else { 0.0 })),
+                        BinaryOp::Div => {
+                            Ok(Value::Float(if *b != 0 { a / (*b as f64) } else { 0.0 }))
+                        }
                         BinaryOp::BitXor => Ok(Value::Float(a.powi(*b as i32))),
                         BinaryOp::Eq => Ok(Value::Bool(*a == *b as f64)),
                         BinaryOp::Ne => Ok(Value::Bool(*a != *b as f64)),
@@ -2162,7 +2216,9 @@ impl Runner {
                         BinaryOp::Add => Ok(Value::Float((*a as f64) + b)),
                         BinaryOp::Sub => Ok(Value::Float((*a as f64) - b)),
                         BinaryOp::Mul => Ok(Value::Float((*a as f64) * b)),
-                        BinaryOp::Div => Ok(Value::Float(if *b != 0.0 { (*a as f64) / b } else { 0.0 })),
+                        BinaryOp::Div => {
+                            Ok(Value::Float(if *b != 0.0 { (*a as f64) / b } else { 0.0 }))
+                        }
                         BinaryOp::BitXor => Ok(Value::Float((*a as f64).powf(*b))),
                         BinaryOp::Eq => Ok(Value::Bool(*a as f64 == *b)),
                         BinaryOp::Ne => Ok(Value::Bool(*a as f64 != *b)),
@@ -2178,6 +2234,12 @@ impl Runner {
                         BinaryOp::Ne => Ok(Value::Bool(a != b)),
                         _ => Ok(Value::Nil),
                     },
+                    (Value::String(a), other) if *op == BinaryOp::Add => {
+                        Ok(Value::String(format!("{}{}", a, other.to_string())))
+                    }
+                    (other, Value::String(b)) if *op == BinaryOp::Add => {
+                        Ok(Value::String(format!("{}{}", other.to_string(), b)))
+                    }
                     (Value::Bool(a), Value::Bool(b)) => match op {
                         BinaryOp::Eq => Ok(Value::Bool(a == b)),
                         BinaryOp::Ne => Ok(Value::Bool(a != b)),
@@ -2571,6 +2633,43 @@ impl Runner {
                     },
                 }
             }
+            Expr::Cast(inner, target_type_str, _) => {
+                let val = self.eval_expr(inner, env.clone())?;
+                if target_type_str.ends_with('?') && matches!(val, Value::Nil) {
+                    return Ok(Value::Nil);
+                }
+                let clean_type = target_type_str.trim_end_matches('?').trim();
+                match clean_type {
+                    "String" => Ok(Value::String(val.to_string())),
+                    "Int" => match val {
+                        Value::Int(i) => Ok(Value::Int(i)),
+                        Value::Float(f) => Ok(Value::Int(f as i64)),
+                        Value::Byte(b) => Ok(Value::Int(b as i64)),
+                        Value::Bool(b) => Ok(Value::Int(if b { 1 } else { 0 })),
+                        Value::String(ref s) => s.trim().parse::<i64>().map(Value::Int).map_err(|e| e.to_string()),
+                        _ => Err(format!("cannot cast {:?} to Int", val)),
+                    },
+                    "Float" => match val {
+                        Value::Float(f) => Ok(Value::Float(f)),
+                        Value::Int(i) => Ok(Value::Float(i as f64)),
+                        Value::Byte(b) => Ok(Value::Float(b as f64)),
+                        Value::String(ref s) => s.trim().parse::<f64>().map(Value::Float).map_err(|e| e.to_string()),
+                        _ => Err(format!("cannot cast {:?} to Float", val)),
+                    },
+                    "Bool" => match val {
+                        Value::Bool(b) => Ok(Value::Bool(b)),
+                        Value::Int(i) => Ok(Value::Bool(i != 0)),
+                        Value::Nil => Ok(Value::Bool(false)),
+                        _ => Ok(Value::Bool(true)),
+                    },
+                    "Byte" => match val {
+                        Value::Byte(b) => Ok(Value::Byte(b)),
+                        Value::Int(i) => Ok(Value::Byte(i as u8)),
+                        _ => Err(format!("cannot cast {:?} to Byte", val)),
+                    },
+                    _ => Ok(val),
+                }
+            }
             Expr::StructInit(inner, fields, _) => {
                 let inner_val = self.eval_expr(inner, env.clone())?;
                 match inner_val {
@@ -2758,7 +2857,7 @@ impl Runner {
                         } else {
                             Err(format!("cannot access member '{}' on Unit", member))
                         }
-                    },
+                    }
                     _ => {
                         println!(
                             "DEBUG [runner:2017]: Expr::Dot evaluated directly! left = {:?}, member = {:?}",
@@ -3384,6 +3483,30 @@ impl Runner {
                             }
                             _ => {}
                         },
+                        Value::Bytes(ref bytes) => match member.as_str() {
+                            "len" => return Ok(Value::Int(bytes.len() as i64)),
+                            "isEmpty" | "is_empty" => return Ok(Value::Bool(bytes.is_empty())),
+                            "toString" | "to_string" => return Ok(Value::String(String::from_utf8_lossy(bytes).into_owned())),
+                            "toHex" | "to_hex" => return Ok(Value::String(bytes.iter().map(|b| format!("{:02x}", b)).collect::<String>())),
+                            "get" => {
+                                if !args.is_empty() {
+                                    let idx_val = self.eval_expr(&args[0].1, env.clone())?;
+                                    if let Value::Int(idx) = idx_val {
+                                        if idx >= 0 && (idx as usize) < bytes.len() {
+                                            return Ok(Value::Byte(bytes[idx as usize]));
+                                        }
+                                    }
+                                }
+                                return Ok(Value::Nil);
+                            }
+                            _ => {}
+                        },
+                        Value::Byte(ref b) => match member.as_str() {
+                            "toInt" | "to_int" => return Ok(Value::Int(*b as i64)),
+                            "toString" | "to_string" => return Ok(Value::String(format!("{}", *b as char))),
+                            "toHex" | "to_hex" => return Ok(Value::String(format!("{:02x}", b))),
+                            _ => {}
+                        },
                         Value::ThreadHandler(id) => {
                             if member == "join" {
                                 let mut registry = get_threads().lock().unwrap();
@@ -3404,6 +3527,18 @@ impl Runner {
                                     }
                                 }
                                 return Ok(Value::Nil);
+                            } else if member == "clone" {
+                                let registry = get_channels().lock().unwrap();
+                                if let Some(tx) = registry.get(&id) {
+                                    let tx_cloned = tx.clone();
+                                    drop(registry);
+                                    let mut counter = get_channel_counter().lock().unwrap();
+                                    *counter += 1;
+                                    let new_id = *counter;
+                                    get_channels().lock().unwrap().insert(new_id, tx_cloned);
+                                    return Ok(Value::Sender(new_id));
+                                }
+                                return Ok(Value::Sender(id));
                             }
                         }
                         Value::Receiver(id) => {
@@ -3415,6 +3550,39 @@ impl Runner {
                                 if let Some(rx) = rx_opt {
                                     let val = rx.lock().unwrap().recv().unwrap_or(Value::Nil);
                                     return Ok(val);
+                                }
+                                return Ok(Value::Nil);
+                            } else if member == "tryRecv" || member == "try_recv" {
+                                let rx_opt = {
+                                    let registry = get_receivers().lock().unwrap();
+                                    registry.get(&id).cloned()
+                                };
+                                if let Some(rx) = rx_opt {
+                                    match rx.lock().unwrap().try_recv() {
+                                        Ok(val) => return Ok(val),
+                                        Err(_) => return Ok(Value::Nil),
+                                    }
+                                }
+                                return Ok(Value::Nil);
+                            } else if member == "recvTimeout" || member == "recv_timeout" {
+                                let ms = if !args.is_empty() {
+                                    match self.eval_expr(&args[0].1, env.clone())? {
+                                        Value::Int(i) => i.max(0) as u64,
+                                        Value::Float(f) => f.max(0.0) as u64,
+                                        _ => 0,
+                                    }
+                                } else {
+                                    0
+                                };
+                                let rx_opt = {
+                                    let registry = get_receivers().lock().unwrap();
+                                    registry.get(&id).cloned()
+                                };
+                                if let Some(rx) = rx_opt {
+                                    match rx.lock().unwrap().recv_timeout(std::time::Duration::from_millis(ms)) {
+                                        Ok(val) => return Ok(val),
+                                        Err(_) => return Ok(Value::Nil),
+                                    }
                                 }
                                 return Ok(Value::Nil);
                             }
@@ -3737,6 +3905,11 @@ impl Runner {
                                     Value::Sender(chan_id),
                                     Value::Receiver(chan_id),
                                 ]));
+                            } else if (namespace == "thread" || namespace == "std.thread" || map.contains_key("sleep"))
+                                && (member == "yield" || member == "yield_now")
+                            {
+                                std::thread::yield_now();
+                                return Ok(Value::Nil);
                             } else if namespace == "process_bridge" && member == "cmd" {
                                 let mut prog = String::new();
                                 if !args.is_empty() {
@@ -4097,6 +4270,12 @@ impl Runner {
                         };
                         return Ok(Value::String(type_name));
                     } else if member == "toString" {
+                        if let Value::Bytes(b) = &receiver_val {
+                            return Ok(Value::String(String::from_utf8_lossy(b).into_owned()));
+                        }
+                        if let Value::Byte(b) = &receiver_val {
+                            return Ok(Value::String(format!("{}", *b as char)));
+                        }
                         if let Value::Object(map) | Value::Formula(map) = &receiver_val {
                             if map.contains_key("toString") {
                                 let func_val = self.eval_expr(callee, env.clone())?;
@@ -4114,7 +4293,18 @@ impl Runner {
                             }
                         }
                         return Ok(Value::String(receiver_val.to_string()));
+                    } else if member == "toHex" {
+                        if let Value::Bytes(b) = &receiver_val {
+                            return Ok(Value::String(b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()));
+                        }
+                        if let Value::Byte(b) = &receiver_val {
+                            return Ok(Value::String(format!("{:02x}", b)));
+                        }
+                        return Err(format!("toHex is not supported on {}", receiver_val.type_name()));
                     } else if member == "toInt" {
+                        if let Value::Byte(b) = &receiver_val {
+                            return Ok(Value::Int(*b as i64));
+                        }
                         if let Ok(i) = receiver_val.as_int() {
                             return Ok(Value::Int(i));
                         } else if let Value::String(s) = &receiver_val {
@@ -4584,12 +4774,27 @@ impl Runner {
                             return Ok(obj);
                         }
                         return Err("Invalid JSON string".to_string());
-                    } else if member == "fromBytes" {
+                    } else if member == "fromBytes" || member == "fromByte" {
                         if args.len() < 1 {
-                            return Err("fromBytes requires 1 argument (byte vector)".to_string());
+                            return Err(format!("{} requires 1 argument (byte vector)", member));
                         }
                         let bytes_val = self.eval_expr(&args[0].1, env.clone())?;
-                        if let Value::Bytes(bytes) = bytes_val {
+                        let raw_bytes_opt = match bytes_val {
+                            Value::Bytes(b) => Some(b),
+                            Value::Tuple(items) => {
+                                let mut b = Vec::new();
+                                for it in items {
+                                    if let Value::Int(i) = it {
+                                        b.push(i as u8);
+                                    } else if let Value::Byte(by) = it {
+                                        b.push(by);
+                                    }
+                                }
+                                Some(b)
+                            }
+                            _ => None,
+                        };
+                        if let Some(bytes) = raw_bytes_opt {
                             if let Ok(json_str) = String::from_utf8(bytes.clone()) {
                                 fn from_json(v: &serde_json::Value) -> Value {
                                     match v {
@@ -4816,6 +5021,7 @@ impl Runner {
                                             &Stmt::ImportDecl {
                                                 path: parts,
                                                 glob: false,
+                                                alias: None,
                                                 span: anno.span.clone(),
                                             },
                                             child_env.clone(),

@@ -6,3 +6,4 @@ target/
 *.vsix
 .env
 *.log
+# test-fm/

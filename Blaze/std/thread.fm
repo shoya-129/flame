@@ -1,12 +1,25 @@
 package thread
+
 @Docs("Suspends current thread execution for the specified milliseconds.\n\n**Example:**\n```flame\nthread.sleep(1000)\n```")
 export fn sleep(ms: Int) {
 }
 
-@Docs("Creates a message channel and returns `(Sender, Receiver)`.")
-export fn channel() -> Unknown {
+@Docs("Spawns a new operating system thread executing the given closure or function.\n\n**Example:**\n```flame\nthread.spawn(|| {\n    println(\"running in background\")\n})\n```")
+export fn spawn(func: Any) -> Unknown {
+}
+
+@Docs("Returns the identifier string of the current OS thread.\n\n**Example:**\n```flame\nlet tid = thread.id()\n```")
+export fn id() -> String {
+}
+
+@Docs("Yields execution time slice back to the OS scheduler.")
+export fn yield() {
 }
 
 @Docs("Yields execution to allow other threads to run.")
-export fn yield_now() {
+export fn yieldNow() {
+}
+
+@Docs("Creates a message channel and returns `(Sender, Receiver)`.")
+export fn channel() -> Unknown {
 }

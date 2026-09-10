@@ -2,6 +2,49 @@
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 
+## [0.4.6] - 2026-09-10 (Codename: *Fourth Spark*)
+
+### 🛡️ Strict Duplicate Definition Checking & Scope Isolation
+- **Duplicate Struct & Enum Rejection**:
+  - Structs and enums with identical names now produce compile-time duplicate definition errors (`Duplicate struct definition: '<name>' is already defined` / `Duplicate enum definition: '<name>' is already defined`).
+  - Cross-type name collisions between structs and enums in the same scope are strictly rejected (`Duplicate type definition: '<name>' is already defined as a struct/enum`).
+  - Built-in type shadowing (e.g. attempting to define user types named `Result`, `Option`, or `Error`) is disallowed.
+- **Conditional Multi-Platform Scoping (`@Platform`)**:
+  - Multiple declarations with the same name are **only** permitted if they specify distinct, non-overlapping `@Platform(...)` targets (e.g. `@Platform("windows")` vs `@Platform("linux")`).
+  - Declarations sharing the same platform target or lacking `@Platform` annotations remain strictly non-duplicable.
+  - Active platform matching ensures the compiler and language server resolve the correct platform-specific struct fields and enum variants for the host OS.
+  - Extended `@Platform` scope support to function definitions.
+- **Same-Scope Variable Redeclaration Protection**:
+  - Variable redeclaration within the same lexical scope via `let` and `const` bindings is strictly disallowed (`cannot redeclare variable '<name>' in the same scope`).
+  - Enforced across standard variable bindings, tuple destructuring (`let (tx, rx) = ...`), and object destructuring (`let { x, y } = ...`) with actionable suggestions to reassign or rename.
+
+### ⚡ Smart Runtime Reuse & Targeted Rebuilds (`fmp run` & `fmp run --watch`)
+- **Fast-Path Host Runtime Reuse**:
+  - `fmp run` caches the application's compiled native dev binary in `target/dev/<pkg_name>`. Subsequent runs execute code updates directly against the cached host runtime, bypassing Cargo and LLVM recompilation overhead for script-like instant execution.
+- **Exact Feature Set Matching on Import Changes**:
+  - Analyzes imports in `src/` and `@Application(features = [...])` to compute the required Cargo feature set.
+  - Automatically compares against the compiled features in `.flame/build-cache/Cargo.toml`.
+  - Adding or removing imports requiring native capabilities (e.g. `std.net.http`, `std.thread`, `std.fs`, `std.time`) automatically triggers an exact rebuild of the host runtime.
+  - Manifest (`flame.toml`), native plugin (`native/`), and package (`.flame/pkg/`) timestamp tracking ensures dependencies remain perfectly synchronized.
+- **Sub-Second Iteration in Watch Mode (`fmp run --watch` / `fmp run -w`)**:
+  - Hot watch loop hot-reloads script updates in milliseconds.
+  - Seamlessly performs targeted background rebuilds when imports, plugins, or dependencies change without stopping the watch session.
+
+### 🧩 Native Plugin CLI Workflows & Shorthand Commands
+- **Native Plugin Scaffolding (`fmp new --plugin` / `-p`)**:
+  - Scaffolds a new native Rust plugin in `./native` with starter `Cargo.toml`, `src/lib.rs`, and registers it under `[plugins]` in `flame.toml`.
+  - Added `-p` shorthand flag.
+- **Targeted Plugin Registration (`fmp add --plugin` / `-p`)**:
+  - Automatically discovers plugin names from `Cargo.toml` without requiring the `--name` flag.
+  - Enforces distinct naming between Flame packages and plugins to avoid Cargo workspace collisions.
+- **Native Dependency Registration (`fmp add --native` / `-n`)**:
+  - Shorthand `-n` flag to quickly register native crates under `[native-dependencies]`.
+
+### 🩺 Clean Toolchain Diagnostics (`fmp doctor`)
+- **Streamlined Environment Verification**:
+  - Removed outdated `Optional` items (`Camera`, `Bluetooth`, `Serial`, `QEMU`) from the doctor command output.
+  - Verified clean status reporting across Blaze standard library definitions, platform architecture, native plugin support, and temporary runtime smoke test execution.
+
 ---
 
 ## [0.4.5] - 2026-09-04 (Codename: *Fourth Spark*)

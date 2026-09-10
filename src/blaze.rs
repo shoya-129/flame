@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 pub const EMBEDDED_BLAZE_STD: &[(&str, &str)] = &[
     ("annotations.fm", include_str!("../Blaze/std/annotations.fm")),
-    ("bluetooth.fm", include_str!("../Blaze/std/bluetooth.fm")),
     ("builtins.fm", include_str!("../Blaze/std/builtins.fm")),
     ("byte.fm", include_str!("../Blaze/std/byte.fm")),
     ("camera.fm", include_str!("../Blaze/std/camera.fm")),
@@ -13,13 +12,11 @@ pub const EMBEDDED_BLAZE_STD: &[(&str, &str)] = &[
     ("env.fm", include_str!("../Blaze/std/env.fm")),
     ("fs.fm", include_str!("../Blaze/std/fs.fm")),
     ("hardware.fm", include_str!("../Blaze/std/hardware.fm")),
-    ("hid.fm", include_str!("../Blaze/std/hid.fm")),
     ("json.fm", include_str!("../Blaze/std/json.fm")),
     ("math.fm", include_str!("../Blaze/std/math.fm")),
     ("net.fm", include_str!("../Blaze/std/net.fm")),
     ("os.fm", include_str!("../Blaze/std/os.fm")),
     ("process.fm", include_str!("../Blaze/std/process.fm")),
-    ("serial.fm", include_str!("../Blaze/std/serial.fm")),
     ("thread.fm", include_str!("../Blaze/std/thread.fm")),
     ("time.fm", include_str!("../Blaze/std/time.fm")),
     ("unit.fm", include_str!("../Blaze/std/unit.fm")),

@@ -31,6 +31,25 @@ pub fn init() -> HashMap<String, Value> {
         })
     );
 
+    map.insert(
+        "fromJson".to_string(),
+        Value::NativeCallback(|args| {
+            if let Some(val) = args.get(0) {
+                let json_str = match val {
+                    Value::String(s) => s.clone(),
+                    Value::Bytes(b) => String::from_utf8(b.clone()).map_err(|e| e.to_string())?,
+                    _ => return Err("json.fromJson expects a string or bytes".to_string()),
+                };
+                match serde_json::from_str::<JsonValue>(&json_str) {
+                    Ok(v) => Ok(json_to_value(&v)),
+                    Err(e) => Err(format!("JSON parse error: {}", e)),
+                }
+            } else {
+                Err("json.fromJson expects an argument".to_string())
+            }
+        }),
+    );
+
     map
 }
 

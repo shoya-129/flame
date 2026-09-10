@@ -1,67 +1,168 @@
+import std.json as j
+import std.time
+import std.thread as th
 import std.byte
 import std.fs
 
 
 
-struct User {
-    id: Int,
-    name: String,
-    active: Bool
+fn test_param(a: Int | String | Nil) -> Int | String | Nil {
+    let aType = a.type()
+
+    match aType {
+        Int => {
+            a * 2
+        }
+
+        String => a + "s"
+        _ => nil
+    }
+
 }
 
 @Test
-fn test_byte_operations() {
-    // 1. Primitive byte conversions
-    let b = 65.toByte()
-    let bytes = "Hello".toByte()
-    let hex = bytes.toHex()
-    let b64 = bytes.toBase64()
-    let combined = bytes.concat(" World".toByte())
-    let utf8_str = combined.toUtf8()
+fn test_json_alias() {
+    let raw = "{\"name\": \"Flame\", \"version\": 4}"
+    let parsed = j.parse(raw)
 
-    b.type().assertEq("Byte")
-    bytes.type().assertEq("Byte")
-    hex.assertEq("48656c6c6f")
-    b64.assertEq("SGVsbG8=")
-    utf8_str.assertEq("Hello World")
-    // Test indexing on bytes
-    let first_byte = bytes[0]
+    println("Parsed name: " + parsed.name)
 
-    first_byte.type().assertEq("Byte")
-    // 2. Struct JSON / Bytes deserialization
-    let json_str = '{"id": 42, "name": "Alice", "active": true}'
-    let u1 = User.fromJson(json_str)
+    let s = j.stringify(parsed)
 
-    u1.id.assertEq(42)
-    let raw_bytes = '{"id": 99, "name": "Bob", "active": false}'.toByte()
-    let u2 = User.fromBytes(raw_bytes)
+    println("Stringified: " + s)
 
-    u2.id.assertEq(99)
-    // 3. std.byte file I/O
-    let test_file = "test_data.bin"
+    let from_j = j.fromJson("{\"status\": \"ok\"}")
 
-    byte.writeBytes(test_file, combined)
-    let read_back = byte.readBytes(test_file)
+    println("FromJson status: " + from_j.status)
 
-    read_back.toUtf8().assertEq("Hello World")
-    byte.appendBytes(test_file, "!".toByte())
-    let read_appended = byte.readBytes(test_file)
+}
 
-    read_appended.toUtf8().assertEq("Hello World!")
-    // Single byte ops
-    byte.writeByte("test_single.bin", 66)// 'B'
-    byte.appendByte("test_single.bin", 67.toByte())// 'C'
-    let single1 = byte.readByte("test_single.bin")
+@Test
+fn test_time_to_string() {
+    let t = time.now()
+    let str = t.toString()
 
-    single1.assertEq(66)
-    byte.writeByteAt("test_single.bin", 1, 68)// Change 'C' to 'D' (68)
-    let single2 = byte.readByteAt("test_single.bin", 1)
+    println("Time as string: " + str)
 
-    single2.assertEq(68)
-    let read_all_single = byte.readBytes("test_single.bin")
+    assert(str.contains("T") || str.contains("Z") || str.contains(":"))
+}
 
-    read_all_single.toUtf8().assertEq("BD")
-    // Clean up
-    fs.remove(test_file)
-    fs.remove("test_single.bin")
+@Test
+fn test_nil() {
+    let nulable: Int? = nil
+    let n = nulable as String?
+
+    if n != nil {
+        println("Value is not nil")
+
+    } else {
+        println("Value is nil")
+
+    }
+
+    assert(n == nil)
+}
+
+@Test
+fn test_yield() {
+    let (tx, rx) = th.channel()
+    let tx2 = tx.clone()
+
+    th {
+        th.yield()
+        tx.send("hello from spawned thread")
+    }
+
+    th {
+        th.yieldNow()
+        tx2.send("hello from second thread")
+    }
+
+    let msg1 = rx.recv()
+    let msg2 = rx.recv()
+
+    println("Received: " + msg1)
+    println("Received: " + msg2)
+
+    let none_msg = rx.tryRecv()
+
+    assert(none_msg == nil)
+}
+
+@Test
+fn test_union_parameters() {
+    let res_int = test_param(21)
+
+    println("test_param(21) = " + res_int)
+
+    assert(res_int == 42)
+    let res_str = test_param("test")
+
+    println("test_param(\"test\") = " + res_str)
+
+    assert(res_str == "tests")
+    let res_nil = test_param(nil)
+
+    assert(res_nil == nil)
+}
+
+@Test
+fn test_binary_fmp() {
+    let fmp_path = "archive_data.fmp"
+
+    // Convert lorem ipsum text to raw bytes
+    let lorem_text = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+    let lorem_bytes = lorem_text.toByte()
+
+    println($"Lorem text bytes length: {lorem_bytes.len()}")
+
+    assert(lorem_bytes.len() > 50)
+    // FMP magic header: 0x46, 0x4D, 0x50, 0x01 (FMP\x01)
+    let header_bytes = byte.fromBytes([70, 77, 80, 1])
+
+    // Write binary file using std.fs.writeBytes with header
+    fs.writeBytes(fmp_path, header_bytes)
+    assert(fs.exists(fmp_path))
+    // Append the converted lorem ipsum bytes into the .fmp file using std.byte.appendBytes
+    byte.appendBytes(fmp_path, lorem_bytes)
+    // Read back bytes using std.fs.readBytes
+    let read_fs = fs.readBytes(fmp_path)
+
+    println($"Read back via fs.readBytes length: {read_fs.len()}")
+
+    assert(read_fs.len() == header_bytes.len() + lorem_bytes.len())
+    // Read back bytes using std.byte.readBytes
+    let read_byte = byte.readBytes(fmp_path)
+
+    println($"Read back via byte.readBytes length: {read_byte.len()}")
+
+    assert(read_byte.len() == read_fs.len())
+    // Verify magic header and hex representation
+    let hex = read_fs.toHex()
+
+    println("FMP Hex Header: " + hex)
+
+    assert(hex.startsWith("464d5001"))
+    // Verify individual header byte values
+    let b0 = read_fs.get(0)
+    let b1 = read_fs.get(1)
+    let b2 = read_fs.get(2)
+    let b3 = read_fs.get(3)
+
+    assert(b0.toInt() == 70)
+    assert(b1.toInt() == 77)
+    assert(b2.toInt() == 80)
+    assert(b3.toInt() == 1)
+    // Verify converting bytes back to string contains lorem ipsum
+    let text_content = read_fs.toString()
+
+    println("text_content: " + text_content)
+
+    assert(text_content.contains("Lorem ipsum"))
+    assert(text_content.contains("magna aliqua"))
+    // Clean up created file
+    fs.delete(fmp_path)
+    assert(!fs.exists(fmp_path))
+    println("Binary .fmp file with lorem ipsum verified and cleaned up successfully.")
+
 }

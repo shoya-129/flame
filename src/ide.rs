@@ -448,36 +448,56 @@ const KEYWORDS: &[(&str, &str)] = &[
         "```flame\nfn tryUtf8() -> String?\n```\nAttempts to decode a Byte array into a UTF-8 String. Returns `nil` if the bytes are not valid UTF-8.",
     ),
     (
+        "delete",
+        "```flame\nfn delete(path: String) -> Nil\n```\nDeletes a file or directory from the file system. Throws a runtime error if the path does not exist.\n\n**Example**:\n```flame\nfs.delete(\"temp.txt\")\n```",
+    ),
+    (
+        "exists",
+        "```flame\nfn exists(path: String) -> Bool\n```\nChecks if a file or directory exists at the specified path. Returns `true` if it exists, otherwise `false`.\n\n**Example**:\n```flame\nif fs.exists(\"config.toml\") {\n    let cfg = fs.read(\"config.toml\")\n}\n```",
+    ),
+    (
+        "send",
+        "```flame\nfn send(value: Any) -> Nil\n```\nSends a message value through the channel to the connected `Receiver`.\n\n**Example**:\n```flame\ntx.send(\"hello\")\n```",
+    ),
+    (
+        "recv",
+        "```flame\nfn recv() -> Any\n```\nBlocks the current thread until a message is received from the channel.\n\n**Example**:\n```flame\nlet msg = rx.recv()\n```",
+    ),
+    (
+        "tryRecv",
+        "```flame\nfn tryRecv() -> Any | Nil\n```\nAttempts to receive a message without blocking. Returns `nil` immediately if the channel is currently empty.\n\n**Example**:\n```flame\nlet msg = rx.tryRecv()\nif msg != nil {\n    println($\"Received: {msg}\")\n}\n```",
+    ),
+    (
         "writeBytes",
-        "```flame\nfn writeBytes(path: String, bytes: Byte)\n```\nWrites a byte array to a file, overwriting if it exists.",
+        "```flame\nfn writeBytes(path: String, bytes: Bytes | [Int]) -> Nil\n```\nWrites a Bytes buffer or list of byte integers to a file, replacing its contents if it already exists.\n\n**Example**:\n```flame\nfs.writeBytes(\"data.bin\", bytes)\n```",
     ),
     (
         "readBytes",
-        "```flame\nfn readBytes(path: String) -> Byte\n```\nReads the entire contents of a file as a byte array.",
+        "```flame\nfn readBytes(path: String) -> Bytes\n```\nReads the entire contents of a file as a binary Bytes buffer.\n\n**Example**:\n```flame\nlet data = fs.readBytes(\"archive.fmp\")\n```",
     ),
     (
         "appendBytes",
-        "```flame\nfn appendBytes(path: String, bytes: Byte)\n```\nAppends a byte array to the end of a file.",
+        "```flame\nfn appendBytes(path: String, bytes: Bytes | [Int]) -> Nil\n```\nAppends a Bytes buffer or list of byte integers to the end of a file.\n\n**Example**:\n```flame\nbyte.appendBytes(\"archive.fmp\", payload)\n```",
     ),
     (
         "writeByte",
-        "```flame\nfn writeByte(path: String, byte: Int | Byte)\n```\nWrites a single byte (0-255) to a file.",
+        "```flame\nfn writeByte(path: String, byte: Int | Byte) -> Nil\n```\nWrites a single byte (0-255) to a file.\n\n**Example**:\n```flame\nbyte.writeByte(\"data.bin\", 65)\n```",
     ),
     (
         "readByte",
-        "```flame\nfn readByte(path: String) -> Byte\n```\nReads a single byte from a file.",
+        "```flame\nfn readByte(path: String) -> Int\n```\nReads a single byte from a file at offset 0.\n\n**Example**:\n```flame\nlet b = byte.readByte(\"data.bin\")\n```",
     ),
     (
         "appendByte",
-        "```flame\nfn appendByte(path: String, byte: Int | Byte)\n```\nAppends a single byte (0-255) to a file.",
+        "```flame\nfn appendByte(path: String, byte: Int | Byte) -> Nil\n```\nAppends a single byte (0-255) to the end of a file.\n\n**Example**:\n```flame\nbyte.appendByte(\"data.bin\", 255)\n```",
     ),
     (
         "writeByteAt",
-        "```flame\nfn writeByteAt(path: String, offset: Int, byte: Int | Byte)\n```\nWrites a single byte to a file at a specific offset.",
+        "```flame\nfn writeByteAt(path: String, offset: Int, byte: Int | Byte) -> Nil\n```\nWrites a single byte to a file at a specific offset.\n\n**Example**:\n```flame\nbyte.writeByteAt(\"archive.fmp\", 0, 70)\n```",
     ),
     (
         "readByteAt",
-        "```flame\nfn readByteAt(path: String, offset: Int) -> Byte\n```\nReads a single byte from a file at a specific offset.",
+        "```flame\nfn readByteAt(path: String, offset: Int) -> Int\n```\nReads a single byte from a file at a specific offset.\n\n**Example**:\n```flame\nlet magic = byte.readByteAt(\"archive.fmp\", 3)\n```",
     ),
 ];
 
@@ -918,6 +938,42 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         });
     }
 
+    // Scan for tuple destructuring from channel: `let (tx, rx) = ...channel(...)`
+    let channel_destructure_re = Regex::new(
+        r"(?:let|const)\s*\(\s*([a-zA-Z_]\w*)\s*,\s*([a-zA-Z_]\w*)\s*\)\s*=\s*(?:[a-zA-Z_]\w*\.)*channel\s*\(",
+    )
+    .unwrap();
+    for cap in channel_destructure_re.captures_iter(content) {
+        vars.push(ScannedVar {
+            name: cap[1].to_string(),
+            typ: Some("Sender".to_string()),
+            doc: Some("Thread message channel sender".to_string()),
+        });
+        vars.push(ScannedVar {
+            name: cap[2].to_string(),
+            typ: Some("Receiver".to_string()),
+            doc: Some("Thread message channel receiver".to_string()),
+        });
+    }
+
+    // Scan for cloned senders: `let tx2 = tx.clone()`
+    let clone_sender_re =
+        Regex::new(r"(?:let|const)\s+([a-zA-Z_]\w*)\s*=\s*([a-zA-Z_]\w*)\.clone\s*\(").unwrap();
+    for cap in clone_sender_re.captures_iter(content) {
+        let new_var = cap[1].to_string();
+        let orig_var = &cap[2];
+        if vars
+            .iter()
+            .any(|v| v.name == *orig_var && v.typ.as_deref() == Some("Sender"))
+        {
+            vars.push(ScannedVar {
+                name: new_var,
+                typ: Some("Sender".to_string()),
+                doc: Some("Thread message channel sender (cloned)".to_string()),
+            });
+        }
+    }
+
     // Scan for parameters in functions or closures (naive): `name: Type` where Type starts with uppercase
     let param_re = Regex::new(r"\b([a-z_]\w*)\s*:\s*([A-Z]\w*)").unwrap();
     for cap in param_re.captures_iter(content) {
@@ -1029,6 +1085,24 @@ pub fn scan_document(content: &str) -> (Vec<ScannedVar>, Vec<ScannedStruct>) {
         });
     }
 
+    // Scan for imports: `import path as alias` or `import path`
+    let import_re = Regex::new(
+        r"import\s+([a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w]*)*)(?:\s+as\s+([a-zA-Z_]\w*))?",
+    )
+    .unwrap();
+    for cap in import_re.captures_iter(content) {
+        let path = cap[1].to_string();
+        let alias = cap.get(2).map(|m| m.as_str().to_string()).unwrap_or_else(|| {
+            path.rsplit('.').next().unwrap_or(&path).to_string()
+        });
+        let doc = format!("```flame\nimport {}\n```\nImported module `{}`", path, path);
+        vars.push(ScannedVar {
+            name: alias,
+            typ: Some(format!("import:{}", path)),
+            doc: Some(doc),
+        });
+    }
+
     (vars, structs)
 }
 
@@ -1067,10 +1141,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
                         "hardware",
                         "desktop",
                         "env",
-                        "hid",
                         "camera",
-                        "bluetooth",
-                        "serial",
                         "embedded",
                         "unit",
                     ]
@@ -1098,10 +1169,7 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "hardware" => Some(crate::native_std::hardware::init()),
         "desktop" => Some(crate::native_std::desktop::init()),
         "env" => Some(crate::native_std::env::init()),
-        "hid" => Some(crate::native_std::hid::init()),
         "camera" => Some(crate::native_std::camera::init()),
-        "bluetooth" => Some(crate::native_std::bluetooth::init()),
-        "serial" => Some(crate::native_std::serial::init()),
         "embedded" => Some(crate::native_std::embedded::init()),
         "unit" => Some(crate::native_std::unit::init()),
         _ => None,

@@ -40,7 +40,7 @@ export fn typeof(value: Unknown) -> String {
 }
 
 @Docs("Generates a vector of integers from `start` up to `end`.\n\n**Example:**\n```flame\nfor i in range(0, 5) { print(i) }\n```")
-export fn range(start: Int, end: Int, step: Int = 1) -> Vec<Int> {
+export fn range(start: Int, end: Int, step: Int = 1) -> [Int] {
 }
 
 @Docs("Suspends current thread execution for the specified milliseconds.\n\n**Example:**\n```flame\nsleep(1000)\n```")

@@ -16,6 +16,8 @@ Flame is statically typed with strong type inference. Types can either be explic
 | :--- | :--- | :--- |
 | **`Int`** | 64-bit signed integer | `let age: Int = 28` |
 | **`Float`** | 64-bit IEEE 754 floating-point number | `let pi: Float = 3.14159` |
+| **`Byte`** | 8-bit unsigned integer (0–255) | `let b: Byte = 255` |
+| **`Bytes`** | Contiguous dynamic byte buffer | `let buf: Bytes = byte.fromBytes([70, 77, 80])` |
 | **`String`** | UTF-8 encoded text string | `let name: String = "Flame"` |
 | **`Bool`** | Boolean value (`true` or `false`) | `let is_ready: Bool = true` |
 | **`Unknown`** | A dynamically resolved type when inference is unavailable | `let data: Unknown = fetch()` |
@@ -137,6 +139,34 @@ This is a massive return tuple containing primitive stats, an array of floats, a
 ```flame
 let result = process_events(events)
 let (count, total, minimum, maximum, category_totals, checksum, processed) = result
+```
+
+---
+
+## Union Types (`A | B`)
+
+Flame supports union type annotations using the pipe (`|`) operator. Union types allow a variable, parameter, or return type to hold any one of several specified types.
+
+```flame
+// Accept an Int, a String, or Nil
+fn format_identifier(id: Int | String | Nil) -> String {
+    if id == nil {
+        return "N/A"
+    }
+    return $"ID: {id}"
+}
+
+// Return multiple possible types
+fn parse_number(input: String) -> Int | Float | Nil {
+    // ...
+}
+```
+
+The Flame code formatter preserves readable spacing around `|` in type annotations:
+```flame
+fn test_param(a: Int | String | Nil) -> Int | String {
+    return a
+}
 ```
 
 ---

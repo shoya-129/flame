@@ -59,15 +59,16 @@ fs.remove("data")
 | Method | Arguments | Returns | Description |
 | :--- | :--- | :--- | :--- |
 | `fs.read` | `path: String` | `String` | Reads entire file contents into a UTF-8 string. |
-| `fs.readBytes` | `path: String` | `Byte` | Reads an entire file into a binary byte array. |
+| `fs.readBytes` | `path: String` | `Bytes` | Reads an entire file into a binary byte buffer (`Bytes`). |
 | `fs.write` | `path: String, content: Any` | `Nil` | Writes string data to a file, overwriting existing content. |
-| `fs.writeBytes` | `path: String, bytes: Byte` | `Nil` | Writes raw binary bytes to a file. |
-| `fs.appendBytes` | `path: String, bytes: Byte` | `Nil` | Appends raw binary bytes to the end of a file. |
+| `fs.writeBytes` | `path: String, bytes: Any` | `Nil` | Writes raw binary bytes (`Bytes`, `[Byte]`, or `String`) to a file. |
+| `fs.appendBytes` | `path: String, bytes: Any` | `Nil` | Appends raw binary bytes to the end of a file. |
 | `fs.exists` | `path: String` | `Bool` | Returns `true` if the filesystem path (file or directory) exists. |
 | `fs.copy` | `src: String, dest: String` | `Nil` | Copies a file from `src` to `dest`. |
 | `fs.mkdir` | `path: String` | `Nil` | Creates a single directory at the specified path. |
 | `fs.mkdir_all` | `path: String` | `Nil` | Recursively creates a directory and any missing parent directories. |
 | `fs.remove` | `path: String` | `Nil` | Removes a file, or recursively deletes a directory and all of its contents. |
+| `fs.delete` | `path: String` | `Nil` | Alias for `fs.remove`. Deletes a file or directory from the filesystem. |
 
 ---
 

@@ -4,4 +4,4 @@ package camera
 export fn capture(index: Int = 0) -> Unknown {}
 
 @Docs("Lists available camera devices attached to the system.")
-export fn list() -> Vec<String> {}
+export fn list() -> [String] {}
