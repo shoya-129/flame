@@ -2,6 +2,28 @@
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 
+## [0.4.7] - 2026-09-10 (Codename: *Fourth Spark*)
+
+### ⚡ Canonical `fmp` Toolchain & Legacy Binary Cleanup
+- **Exclusive `fmp` CLI Command**:
+  - Flame's CLI experience is now unified and standardized solely around `fmp` (`fmp.exe` on Windows, `fmp` on Unix).
+  - Deprecated and removed legacy `flame` and `flamelang` command names to eliminate command naming confusion and collisions.
+  - Command shims (`fmp.cmd` / `fmp.bat`) are generated strictly for `fmp`.
+
+- **Automated Removal of Legacy Binaries & Shims**:
+  - `fmp update`, `install.ps1`, and `install.sh` now unconditionally locate and clean up any transitional or lingering `flamelang.exe`, `flamelang`, `flame.exe`, and `flame` binaries.
+  - Automatically sweeps and purges legacy shim scripts (`flamelang.cmd`, `flamelang.bat`, `flame.cmd`, `flame.bat`) from `.cargo/bin` and parent directories.
+
+- **Atomic Windows Self-Replacement on `fmp update`**:
+  - Fixed Windows file lock conflicts (OS Error 5: `Access is denied`) where running `fmp update` failed to overwrite the currently executing `fmp.exe` binary.
+  - Implemented safe rename-then-copy replacement (`safe_replace_binary`): the locked executing binary is renamed to a temporary `.deleteme.<pid>` path (which Windows allows for executing processes), the new binary is installed cleanly as `fmp.exe`, and a detached background worker cleans up `.deleteme` remnants on process exit.
+
+- **Intelligent Local Workspace & Git Fallback**:
+  - `fmp update` now automatically detects when run inside a local Flame repository workspace, compiling the local source directly via `cargo install --path . --force`.
+  - When updating outside a local checkout, automatically attempts registry installation (`cargo install flamelang --force`) and seamlessly falls back to the canonical Git repository (`cargo install --git https://github.com/shoya-129/flame.git --force`) if registry propagation is pending.
+
+---
+
 ## [0.4.6] - 2026-09-10 (Codename: *Fourth Spark*)
 
 ### 🛡️ Strict Duplicate Definition Checking & Scope Isolation

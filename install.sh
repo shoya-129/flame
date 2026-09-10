@@ -263,32 +263,42 @@ else
     fi
 fi
 
-# Ensure fmp command executable exists and is linked
+# Ensure ONLY fmp command executable exists and remove any flamelang or flame
 if [[ "$TARGET_IS_WINDOWS" == true ]]; then
     FLAMELANG_EXE="$CARGO_BIN/flamelang.exe"
     FMP_EXE="$CARGO_BIN/fmp.exe"
+    FLAME_EXE="$CARGO_BIN/flame.exe"
 
     if [[ -f "$FLAMELANG_EXE" ]]; then
         cp "$FLAMELANG_EXE" "$FMP_EXE" 2>/dev/null || true
-    elif [[ -f "$FMP_EXE" ]]; then
-        cp "$FMP_EXE" "$FLAMELANG_EXE" 2>/dev/null || true
+    elif [[ -f "$FLAME_EXE" ]]; then
+        cp "$FLAME_EXE" "$FMP_EXE" 2>/dev/null || true
     fi
 
-    # Create batch and cmd shims for Windows command prompt and powershell
+    # Remove any lingering flamelang and flame binaries
+    rm -f "$FLAMELANG_EXE" "$FLAME_EXE" 2>/dev/null || true
+
+    # Create batch and cmd shims ONLY for fmp
     cat << 'EOF' > "$CARGO_BIN/fmp.cmd"
 @"%~dp0fmp.exe" %*
 EOF
     cat << 'EOF' > "$CARGO_BIN/fmp.bat"
 @"%~dp0fmp.exe" %*
 EOF
+    rm -f "$CARGO_BIN/flamelang.cmd" "$CARGO_BIN/flamelang.bat" "$CARGO_BIN/flame.cmd" "$CARGO_BIN/flame.bat" 2>/dev/null || true
     chmod +x "$CARGO_BIN/fmp.cmd" "$CARGO_BIN/fmp.bat" 2>/dev/null || true
 else
-    # Linux / macOS symlinks
-    if [[ -f "$CARGO_BIN/flamelang" ]]; then
-        ln -sf "$CARGO_BIN/flamelang" "$CARGO_BIN/fmp"
-    elif [[ -f "$CARGO_BIN/fmp" ]]; then
-        ln -sf "$CARGO_BIN/fmp" "$CARGO_BIN/flamelang"
+    # Linux / macOS
+    FLAMELANG_BIN="$CARGO_BIN/flamelang"
+    FMP_BIN="$CARGO_BIN/fmp"
+    FLAME_BIN="$CARGO_BIN/flame"
+
+    if [[ -f "$FLAMELANG_BIN" ]]; then
+        cp "$FLAMELANG_BIN" "$FMP_BIN" 2>/dev/null || true
+    elif [[ -f "$FLAME_BIN" ]]; then
+        cp "$FLAME_BIN" "$FMP_BIN" 2>/dev/null || true
     fi
+    rm -f "$FLAMELANG_BIN" "$FLAME_BIN" 2>/dev/null || true
 fi
 
 # 5. Determine and setup Blaze definition directories

@@ -64,22 +64,33 @@ if ($env:CARGO_HOME) {
     $cargoBin = if ($env:CARGO_HOME.EndsWith("bin")) { $env:CARGO_HOME } else { Join-Path $env:CARGO_HOME "bin" }
 }
 
-# Ensure fmp.exe exists
+# Ensure ONLY fmp.exe exists, and remove any flamelang.exe or flame.exe
 $fmpExe = Join-Path $cargoBin "fmp.exe"
+$flameExe = Join-Path $cargoBin "flame.exe"
 $flamelangExe = Join-Path $cargoBin "flamelang.exe"
 
 if (Test-Path $flamelangExe) {
     Copy-Item $flamelangExe $fmpExe -Force
 }
-elseif (Test-Path $fmpExe) {
-    Copy-Item $fmpExe $flamelangExe -Force
+elseif (Test-Path $flameExe) {
+    Copy-Item $flameExe $fmpExe -Force
 }
 
-# Create command shims
+# Remove any lingering flamelang and flame binaries
+Remove-Item $flamelangExe -Force -ErrorAction SilentlyContinue
+Remove-Item $flameExe -Force -ErrorAction SilentlyContinue
+
+# Create command shims ONLY for fmp
 $fmpCmd = Join-Path $cargoBin "fmp.cmd"
 $fmpBat = Join-Path $cargoBin "fmp.bat"
 Set-Content -Path $fmpCmd -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
 Set-Content -Path $fmpBat -Value '@"%~dp0fmp.exe" %*' -Encoding ASCII
+
+# Remove leftover flamelang and flame shims
+Remove-Item (Join-Path $cargoBin "flamelang.cmd") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flamelang.bat") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flame.cmd") -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $cargoBin "flame.bat") -Force -ErrorAction SilentlyContinue
 
 # 4. Install Blaze standard library definitions
 Write-Host ""

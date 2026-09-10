@@ -295,6 +295,29 @@ fn dirs_fallback_cargo_bin() -> Option<PathBuf> {
     None
 }
 
+fn safe_replace_binary(
+    src: &Path,
+    dst: &Path,
+    pending_cleanup: &mut Vec<PathBuf>,
+) -> Result<(), std::io::Error> {
+    if !src.exists() || src == dst {
+        return Ok(());
+    }
+    if dst.exists() {
+        if fs::copy(src, dst).is_err() {
+            let temp_name = format!("{}.deleteme.{}", dst.display(), std::process::id());
+            let temp_path = PathBuf::from(&temp_name);
+            let _ = fs::remove_file(&temp_path);
+            fs::rename(dst, &temp_path)?;
+            pending_cleanup.push(temp_path);
+            fs::copy(src, dst)?;
+        }
+    } else {
+        fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
 fn run_update_command(args: &[String]) {
     let update_std_only = args.iter().any(|a| a == "std" || a == "--std" || a == "blaze" || a == "--blaze");
     let prefer_remote = args.iter().any(|a| a == "--remote");
@@ -310,34 +333,158 @@ fn run_update_command(args: &[String]) {
             return;
         }
 
-        println!("\x1b[1;34m[2/4]\x1b[0m Fetching and installing the latest published Flame release from Cargo...");
-        let status = std::process::Command::new("cargo")
-            .args(["install", "flamelang", "--force"])
-            .status();
+        let is_local_repo = if Path::new("Cargo.toml").exists() {
+            fs::read_to_string("Cargo.toml")
+                .map(|c| c.contains("name = \"flamelang\"") || c.contains("name = \"flame\""))
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        let status = if is_local_repo && !prefer_remote {
+            println!("\x1b[1;34m[2/4]\x1b[0m Installing Flame release from local workspace...");
+            std::process::Command::new("cargo")
+                .args(["install", "--path", ".", "--force"])
+                .status()
+        } else {
+            println!("\x1b[1;34m[2/4]\x1b[0m Fetching and installing the latest Flame release from Cargo...");
+            let res = std::process::Command::new("cargo")
+                .args(["install", "flamelang", "--force"])
+                .status();
+
+            if res.as_ref().map_or(false, |s| !s.success()) {
+                println!("  \x1b[1;33mnotice:\x1b[0m Registry install did not succeed; fetching latest from GitHub repository...");
+                std::process::Command::new("cargo")
+                    .args(["install", "--git", "https://github.com/shoya-129/flame.git", "--force"])
+                    .status()
+            } else {
+                res
+            }
+        };
 
         match status {
             Ok(s) if s.success() => {
-                println!("\x1b[1;34m[3/4]\x1b[0m Synchronizing 'fmp' binary alias...");
+                println!("\x1b[1;34m[3/4]\x1b[0m Synchronizing 'fmp' binary...");
+                let mut pending_cleanup = Vec::new();
+                let mut target_dirs = Vec::new();
+
                 if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
                     if cargo_bin.exists() {
-                        let flamelang_bin = if cfg!(windows) {
-                            cargo_bin.join("flamelang.exe")
-                        } else {
-                            cargo_bin.join("flamelang")
-                        };
-                        let fmp_bin = if cfg!(windows) {
-                            cargo_bin.join("fmp.exe")
-                        } else {
-                            cargo_bin.join("fmp")
-                        };
-                        if flamelang_bin.exists() {
-                            let _ = fs::copy(&flamelang_bin, &fmp_bin);
-                        }
-                        if cfg!(windows) {
-                            let _ = fs::write(cargo_bin.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
-                            let _ = fs::write(cargo_bin.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
+                        target_dirs.push(cargo_bin);
+                    }
+                }
+                if let Ok(cur) = std::env::current_exe() {
+                    if let Some(parent) = cur.parent() {
+                        let pb = parent.to_path_buf();
+                        if !target_dirs.contains(&pb) && pb.exists() {
+                            target_dirs.push(pb);
                         }
                     }
+                }
+
+                for dir in &target_dirs {
+                    let flamelang_bin = if cfg!(windows) {
+                        dir.join("flamelang.exe")
+                    } else {
+                        dir.join("flamelang")
+                    };
+                    let fmp_bin = if cfg!(windows) {
+                        dir.join("fmp.exe")
+                    } else {
+                        dir.join("fmp")
+                    };
+                    let flame_bin = if cfg!(windows) {
+                        dir.join("flame.exe")
+                    } else {
+                        dir.join("flame")
+                    };
+
+                    let source_bin = if flamelang_bin.exists() {
+                        Some(flamelang_bin.clone())
+                    } else if fmp_bin.exists() {
+                        Some(fmp_bin.clone())
+                    } else if flame_bin.exists() {
+                        Some(flame_bin.clone())
+                    } else {
+                        None
+                    };
+
+                    if let Some(ref src) = source_bin {
+                        // Safely replace fmp binary (renames if locked by current running process)
+                        let _ = safe_replace_binary(src, &fmp_bin, &mut pending_cleanup);
+                    }
+
+                    // Remove transitional flamelang binary completely
+                    if flamelang_bin.exists() && flamelang_bin != fmp_bin {
+                        if fs::remove_file(&flamelang_bin).is_err() {
+                            let temp_name = format!("{}.deleteme.{}", flamelang_bin.display(), std::process::id());
+                            let temp_path = PathBuf::from(&temp_name);
+                            if fs::rename(&flamelang_bin, &temp_path).is_ok() {
+                                pending_cleanup.push(temp_path);
+                            }
+                        } else {
+                            println!("  Removed 'flamelang' binary: {}", flamelang_bin.display());
+                        }
+                    }
+
+                    // Remove flame binary completely (only fmp is supported)
+                    if flame_bin.exists() && flame_bin != fmp_bin {
+                        if fs::remove_file(&flame_bin).is_err() {
+                            let temp_name = format!("{}.deleteme.{}", flame_bin.display(), std::process::id());
+                            let temp_path = PathBuf::from(&temp_name);
+                            if fs::rename(&flame_bin, &temp_path).is_ok() {
+                                pending_cleanup.push(temp_path);
+                            }
+                        } else {
+                            println!("  Removed 'flame' binary: {}", flame_bin.display());
+                        }
+                    }
+
+                    // Remove leftover flamelang and flame shims
+                    let _ = fs::remove_file(dir.join("flamelang.cmd"));
+                    let _ = fs::remove_file(dir.join("flamelang.bat"));
+                    let _ = fs::remove_file(dir.join("flame.cmd"));
+                    let _ = fs::remove_file(dir.join("flame.bat"));
+
+                    // Write fmp command shims on Windows
+                    if cfg!(windows) {
+                        let _ = fs::write(dir.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
+                        let _ = fs::write(dir.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
+                    }
+                }
+
+                #[cfg(windows)]
+                if !pending_cleanup.is_empty() {
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x08000000;
+                    const DETACHED_PROCESS: u32 = 0x00000008;
+
+                    let targets: Vec<String> = pending_cleanup
+                        .iter()
+                        .map(|p| format!("\"{}\"", p.display()))
+                        .collect();
+
+                    let script = format!(
+                        "ping 127.0.0.1 -n 2 >nul & del /f /q {} >nul 2>&1",
+                        targets.join(" ")
+                    );
+
+                    let _ = std::process::Command::new("cmd")
+                        .args(["/C", &script])
+                        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+                        .spawn();
+                }
+
+                #[cfg(not(windows))]
+                if !pending_cleanup.is_empty() {
+                    let targets: Vec<String> = pending_cleanup
+                        .iter()
+                        .map(|p| format!("'{}'", p.display()))
+                        .collect();
+                    let script = format!("sleep 1; rm -f {}", targets.join(" "));
+                    let _ = std::process::Command::new("sh")
+                        .args(["-c", &script])
+                        .spawn();
                 }
             }
             Ok(s) => {
