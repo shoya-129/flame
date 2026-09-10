@@ -427,7 +427,7 @@ else
 fi
 
 echo -e "\n${GREEN}${BOLD}✓ Flame and Blaze toolchain successfully installed!${RESET}\n"
-echo -e "  Primary Command:  ${GREEN}fmp${RESET} (also available as ${BLUE}flamelang${RESET})"
+echo -e "  Primary Command:  ${GREEN}fmp${RESET}"
 echo -e "  Binary Location:  ${BLUE}$CARGO_BIN/fmp${RESET}"
 echo -e "  Blaze Definitions:${BLUE}$PRIMARY_BLAZE_DIR/std${RESET}"
 

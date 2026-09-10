@@ -752,7 +752,7 @@ fn run_doctor_command() {
             "[package]\nname = \"smoke_app\"\nversion = \"0.1.0\"\n",
         );
 
-        let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("flame"));
+        let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("fmp"));
         let res = std::process::Command::new(&current_exe)
             .args(["run", "src/main.fm", "--local"])
             .current_dir(&smoke_dir)

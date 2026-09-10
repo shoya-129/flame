@@ -864,7 +864,7 @@ panic = "abort"
         main_rs.push_str("        if is_eof { break; }\n");
         main_rs.push_str("    }\n");
         main_rs.push_str(
-            "    let mut parser = flamelang::parser::Parser::new(tokens, entry_file);\n",
+            "    let mut parser = flamelang::parser::Parser::new(tokens, entry_file.clone());\n",
         );
         main_rs.push_str("    match parser.parse() {\n");
         main_rs.push_str("        Ok(mut stmts) => {\n");

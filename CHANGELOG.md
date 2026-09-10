@@ -2,6 +2,20 @@
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 
+## [0.4.8] - 2026-09-10 (Codename: *Fourth Spark*)
+
+### 🩺 Doctor Smoke Test & Host Runtime Codegen Fix
+- **Borrow-After-Move Resolution in Generated Host Template**:
+  - Resolved a compiler failure encountered during `fmp doctor` smoke tests (`error[E0382]: borrow of moved value: entry_file`).
+  - In `src/compiler.rs`, `entry_file` was previously moved by value into `flamelang::parser::Parser::new(tokens, entry_file)` before being referenced on line 28 by `TypeChecker::new(entry_file.clone())`.
+  - Updated codegen generation to clone `entry_file` on parser initialization (`Parser::new(tokens, entry_file.clone())`), ensuring clean compilation of temporary host runtimes.
+- **Zero-Warning Library Compilation (`src/blaze.rs`)**:
+  - Eliminated the `unused import: Path` compiler warning occurring when `flamelang` is compiled as a dependency without the `cli` Cargo feature.
+- **Verified Environment Smoke Test (`fmp doctor`)**:
+  - `fmp doctor` now successfully creates a temporary smoke test project, compiles, executes, and cleanly tears it down, verifying runtime integrity and outputting `✓ Flame runtime smoke test (temp app created, executed & cleaned)`.
+
+---
+
 ## [0.4.7] - 2026-09-10 (Codename: *Fourth Spark*)
 
 ### ⚡ Canonical `fmp` Toolchain & Legacy Binary Cleanup

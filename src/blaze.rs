@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub const EMBEDDED_BLAZE_STD: &[(&str, &str)] = &[
     ("annotations.fm", include_str!("../Blaze/std/annotations.fm")),
@@ -219,7 +219,7 @@ pub fn update_blaze_definitions(prefer_remote: bool) -> Result<usize, String> {
                                     if (name.contains("/Blaze/std/") || name.contains("/std/"))
                                         && name.ends_with(".fm")
                                     {
-                                        if let Some(file_name) = Path::new(&name).file_name().and_then(|s| s.to_str()) {
+                                        if let Some(file_name) = std::path::Path::new(&name).file_name().and_then(|s| s.to_str()) {
                                             let mut content = Vec::new();
                                             use std::io::Read;
                                             if file.read_to_end(&mut content).is_ok() && !content.is_empty() {

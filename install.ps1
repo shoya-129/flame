@@ -184,7 +184,7 @@ if ($primaryBlazeDir) {
 Write-Host ""
 Write-Host "[OK] Flame and Blaze toolchain successfully installed!" -ForegroundColor Green
 Write-Host ""
-Write-Host "  Primary Command:  fmp (also available as flamelang)" -ForegroundColor Cyan
+Write-Host "  Primary Command:  fmp" -ForegroundColor Cyan
 Write-Host "  Binary Location:  $fmpExe"
 Write-Host "  Blaze Definitions:$primaryBlazeDir\std"
 
