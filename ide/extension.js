@@ -29,17 +29,9 @@ function findCompilerBinary(startPath) {
         if (curr) {
             const candidates = [
                 join(curr, 'target', 'release', 'flamelang.exe'),
-                join(curr, 'target', 'release', 'flame.exe'),
-                join(curr, 'bin', 'flamelang.exe'),
-                join(curr, 'bin', 'flame.exe'),
                 join(curr, 'target', 'debug', 'flamelang.exe'),
-                join(curr, 'target', 'debug', 'flame.exe'),
                 join(curr, 'target', 'release', 'flamelang'),
-                join(curr, 'target', 'release', 'flame'),
-                join(curr, 'bin', 'flamelang'),
-                join(curr, 'bin', 'flame'),
                 join(curr, 'target', 'debug', 'flamelang'),
-                join(curr, 'target', 'debug', 'flame'),
             ];
             for (const cand of candidates) addIfExist(cand);
 
@@ -55,15 +47,10 @@ function findCompilerBinary(startPath) {
     if (startPath) {
         const parentDir = dirname(startPath);
         const siblingCandidates = [
-            join(parentDir, 'flame', 'bin', 'flamelang.exe'),
-            join(parentDir, 'flame', 'bin', 'flame.exe'),
             join(parentDir, 'flame', 'target', 'release', 'flamelang.exe'),
-            join(parentDir, 'flame', 'target', 'release', 'flame.exe'),
             join(parentDir, 'flame', 'target', 'debug', 'flamelang.exe'),
-            join(parentDir, 'flame', 'bin', 'flamelang'),
-            join(parentDir, 'flame', 'bin', 'flame'),
             join(parentDir, 'flame', 'target', 'release', 'flamelang'),
-            join(parentDir, 'flame', 'target', 'release', 'flame'),
+            join(parentDir, 'flame', 'target', 'debug', 'flamelang'),
         ];
         for (const cand of siblingCandidates) addIfExist(cand);
     }
@@ -71,10 +58,8 @@ function findCompilerBinary(startPath) {
     // 4. Check Cargo global binary directory
     const userHome = homedir();
     const cargoCandidates = [
-        join(userHome, '.cargo', 'bin', 'flamelang.exe'),
-        join(userHome, '.cargo', 'bin', 'flame.exe'),
-        join(userHome, '.cargo', 'bin', 'flamelang'),
-        join(userHome, '.cargo', 'bin', 'flame'),
+        join(userHome, '.cargo', 'bin', 'fmp.exe'),
+        join(userHome, '.cargo', 'bin', 'fmp'),
     ];
     for (const cand of cargoCandidates) addIfExist(cand);
 
@@ -83,25 +68,22 @@ function findCompilerBinary(startPath) {
         const appData = process.env.APPDATA || '';
         const localAppData = process.env.LOCALAPPDATA || '';
         const npmCandidates = [
-            join(appData, 'npm', 'flame.cmd'),
-            join(appData, 'npm', 'flame.exe'),
-            join(appData, 'npm', 'flame'),
-            join(appData, 'npm', 'flamelang.cmd'),
-            join(appData, 'npm', 'flamelang.exe'),
-            join(appData, 'npm', 'flamelang'),
-            join(localAppData, 'npm', 'flame.cmd'),
-            join(localAppData, 'npm', 'flame.exe'),
-            join(localAppData, 'npm', 'flame'),
+            join(appData, 'npm', 'fmp.cmd'),
+            join(appData, 'npm', 'fmp.exe'),
+            join(appData, 'npm', 'fmp'),
+            join(localAppData, 'npm', 'fmp.cmd'),
+            join(localAppData, 'npm', 'fmp.exe'),
+            join(localAppData, 'npm', 'fmp'),
         ];
         for (const cand of npmCandidates) addIfExist(cand);
     } else {
         const unixNpmCandidates = [
-            join(userHome, '.npm-global', 'bin', 'flame'),
-            join(userHome, '.npm-global', 'bin', 'flamelang'),
-            '/usr/local/bin/flame',
-            '/usr/local/bin/flamelang',
-            '/usr/bin/flame',
-            '/usr/bin/flamelang',
+            join(userHome, '.npm-global', 'bin', 'fmp'),
+            join(userHome, '.npm-global', 'bin', 'fmp'),
+            '/usr/local/bin/fmp',
+            '/usr/local/bin/fmp',
+            '/usr/bin/fmp',
+            '/usr/bin/fmp',
         ];
         for (const cand of unixNpmCandidates) addIfExist(cand);
     }
@@ -110,8 +92,8 @@ function findCompilerBinary(startPath) {
     if (process.env.PATH) {
         const pathDirs = process.env.PATH.split(delimiter);
         const cliNames = process.platform === 'win32'
-            ? ['flame.cmd', 'flame.exe', 'flame.bat', 'flame', 'flamelang.cmd', 'flamelang.exe', 'flamelang.bat', 'flamelang']
-            : ['flame', 'flamelang'];
+            ? ['fmp.cmd', 'fmp.exe', 'fmp.bat', 'fmp', 'fmp.cmd', 'fmp.exe', 'fmp.bat', 'fmp']
+            : ['fmp', 'fmp'];
 
         for (const pDir of pathDirs) {
             for (const name of cliNames) {
