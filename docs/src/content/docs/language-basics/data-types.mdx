@@ -229,6 +229,55 @@ You wrap an `Error` inside an `Err` (e.g., `return Err(Error { ... })`) so that 
 
 ---
 
+## Closure Types
+
+Flame supports first-class closure type annotations for function parameters and variable declarations:
+
+```flame
+// Parameter closure types (with optional parameter names)
+fn onEach(callback: (msg: String)) {
+    callback("Hello from Flame!")
+}
+
+// Full closure signature with return type
+fn compute(op: (a: Int, b: Int) -> Int) -> Int {
+    return op(10, 20)
+}
+
+// Variable declaration with closure type
+let logger: (msg: String) = (msg) {
+    println($"[LOG]: {msg}")
+}
+```
+
+### Syntax Variations
+
+| Syntax | Description | Example |
+| :--- | :--- | :--- |
+| `(Type, Type) -> Ret` | Positional parameter types with explicit return type | `(Int, Int) -> Int` |
+| `(name: Type, ...)` | Named parameters with implicit `Nil` return | `(client: ServerClient, bytes: Byte)` |
+| `(name: Type) -> Ret` | Named parameters with explicit return type | `(x: Float, y: Float) -> Float` |
+| `() -> Ret` | Empty parameter list with return type | `() -> String` |
+
+<Aside type="tip" title="Implicit Nil Return">
+Callbacks and event listeners that do not return a value do not need to specify `-> Nil`. Flame automatically assumes a `Nil` return when the arrow return type is omitted (e.g., `(msg: String)` is equivalent to `(msg: String) -> Nil`).
+</Aside>
+
+### Type Safety & Dynamic Flexibility
+
+In the current version of Flame, closure types are designed primarily for **developer experience and IDE ergonomics**:
+
+- **Flexible Type Safety**: At call sites, closure type checking is currently **non-strict** and behaves flexibly (essentially like `Unknown`). This ensures you can pass any closure `(c, b) { ... }` or existing function handler without running into rigid function-pointer type mismatch errors.
+- **Hover Docs & Intelligent Autocomplete**: The declared parameter types are utilized by the Flame Language Server and IDE type engine:
+  - **Hover Cards**: Hovering over a callback or higher-order function displays the expected parameters and return value.
+  - **Parameter Type Inference**: Inside the closure body, parameters automatically infer their declared types without manual annotations. For example, in `s.onBinary((client, bytes) { ... })`, typing `client.` suggests all `ServerClient` methods, and `bytes.` suggests `Byte` methods.
+
+<Aside type="note" title="Future Roadmap: Strict Closure Checking">
+Strict compile-time closure signature verification may be introduced in future Flame releases under an optional compiler flag (such as `--strict-types` or `--strict-closures`). The current dynamic model ensures seamless scripting flexibility while still giving you full IDE intelligence.
+</Aside>
+
+---
+
 ## Object vs Formula Literals
 
 Flame provides two dynamic, map-like data structures: **Objects** and **Formulas**. While they share similar runtime semantics, they have distinct use cases and syntax.
