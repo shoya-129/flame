@@ -4,10 +4,9 @@ pub mod thread;
 pub mod process;
 pub mod env;
 pub mod math;
+pub mod json;
 #[cfg(feature = "utils")]
 pub mod time;
-#[cfg(feature = "utils")]
-pub mod json;
 #[cfg(feature = "os")]
 pub mod os;
 #[cfg(feature = "hardware")]

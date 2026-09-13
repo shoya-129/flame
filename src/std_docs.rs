@@ -130,20 +130,71 @@ println(response.status)
 println(await response.text())
 ```
 "),
-        "net.ws" | "std.net.ws" => Some("# Module `net.ws`
+        "ws" | "net.ws" | "std.net.ws" => Some("# Module `net.ws`
 
-The `ws` module provides a WebSocket client.
+Production-grade, native, high-performance WebSocket subsystem for Flame. Designed for real-time multiplayer games, chat systems, Discord-like gateways, live dashboards, IoT telemetry, and microservices.
 
-## Types
-- **`WebSocket`**: A WebSocket connection to a server.
+## Key Types
+- **`Socket`**: Subsystem entrypoint with static `Socket.connect()` and `Socket.listen()`.
+- **`Server`**: Server listener instance (`let s = ws.Socket.listen(...)`) with `.onConnect()`, `.onMessage()`, `.broadcast()`, `.close()`.
+- **`ClientSocket`**: Client connection with `.send()`, `.sendBytes()`, `.recv()`, `.messages()`, `.onMessage()`.
+- **`ServerClient`**: Accepted client instance passed into server callbacks with `.id`, `.address`, `.send()`.
+- **`Stream`**: Message stream returned by `.messages()` with `.forEach()`, `.onEach()`, and `.toChannel()`.
 
-**Example**:
+## Real-World Examples
+
+### 1. High-Performance Chat Server with Broadcast
 ```flame
 import std.net.ws
 
-let ws = await ws.WebSocket.connect(\"ws://localhost:8080/ws\")
-await ws.send(\"Move Forward\")
-let msg = await ws.recv()
+let s = ws.Socket.listen(\"127.0.0.1:8080\")
+println($\"Server listening on {s.address}\")
+
+s.onConnect((client) {
+    println($\"[+] Client connected: {client.id} from {client.address}\")
+    client.send(\"Welcome to Flame Realtime Gateway!\")
+})
+
+s.onMessage((client, msg) {
+    println($\"[{client.id}] {msg}\")
+    // Broadcast to all connected clients
+    s.broadcast($\"{client.id}: {msg}\")
+})
+
+s.onBinary((client, bytes) {
+    println($\"[{client.id}] Received {bytes.len()} binary bytes\")
+})
+
+s.onClose((client, code, reason) {
+    println($\"[-] Client {client.id} disconnected ({code})\")
+})
+```
+
+### 2. Real-Time Client with Callback Events
+```flame
+import std.net.ws
+
+let socket = ws.Socket.connect(\"ws://127.0.0.1:8080\")
+socket.onMessage((msg) {
+    println($\"Incoming: {msg}\")
+})
+socket.send(\"Hello from Flame Client!\")
+```
+
+### 3. Channel Bridging with `std.thread`
+```flame
+import std.net.ws
+import std.thread as th
+
+let socket = ws.connect(\"ws://127.0.0.1:8080\")
+let (tx, rx) = socket.messages().toChannel()
+
+th.spawn(|| {
+    while true {
+        let msg = rx.recv()
+        println($\"Worker processed: {msg}\")
+    }
+})
 ```
 "),
         "net.mqtt" | "std.net.mqtt" => Some("# Module `net.mqtt`
@@ -718,6 +769,78 @@ let path = env.get(\"PATH\")
         ),
         ("unit" | "std.unit", "Equation") => Some(
             "```flame\nfn Equation(kg: Int, m: Int, s: Int) -> Quantity\n```\nCreates a new custom unit by specifying the exponents for kilograms (`kg`), meters (`m`), and seconds (`s`).\n\n**Example**:\n```flame\nlet speed = unit.Equation(0, 1, -1)\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net" | "Socket" | "WebSocket", "connect") => Some(
+            "```flame\nfn connect(url: String) -> ClientSocket\n```\nEstablishes a high-performance native WebSocket client connection to a remote server.\n\n**Parameters**:\n- `url`: `String` - Full WebSocket URL (e.g. `\"ws://127.0.0.1:8080\"` or `\"wss://...\"`)\n\n**Returns**:\n- `ClientSocket` - Active client socket handle with methods: `.send()`, `.sendBytes()`, `.recv()`, `.recvBytes()`, `.messages()`, `.onMessage()`, `.close()`.\n\n**Example**:\n```flame\nimport std.net.ws\n\nlet socket = ws.connect(\"ws://127.0.0.1:8080\")\nsocket.send(\"Hello!\")\nlet reply = socket.recv()\nprintln($\"Reply: {reply}\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net" | "Socket" | "WebSocket", "listen") => Some(
+            "```flame\nfn listen(addr: String) -> Server\n```\nBinds a high-performance native WebSocket server listener to the specified address. Returns the listener instance variable `s` directly with methods for handling events (`s.onConnect`, `s.onMessage`, `s.onBinary`, `s.onClose`, `s.onError`), broadcasting, and lifecycle control.\n\n**Parameters**:\n- `addr`: `String` - Bind address string (e.g. `\"127.0.0.1:8080\"` or `\"0.0.0.0:3000\"`)\n\n**Returns**:\n- `Server` - Listening server handle with properties (`s.port`, `s.host`, `s.address`) and event registration methods.\n\n**Example**:\n```flame\nimport std.net.ws\n\nlet s = ws.Socket.listen(\"127.0.0.1:8080\")\nprintln($\"WebSocket server active on {s.address}\")\n\ns.onConnect((client) {\n    println($\"Client {client.id} joined from {client.address}!\")\n    client.send(\"Welcome\")\n})\n\ns.onMessage((client, msg) {\n    s.broadcast($\"{client.id}: {msg}\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "send") => Some(
+            "```flame\nfn send(data: String | Bytes) -> Nil\n```\nTransmits a UTF-8 text message or raw binary `Bytes` payload through the WebSocket connection.\n\n**Parameters**:\n- `data`: `String | Bytes` - Payload to transmit across the connection.\n\n**Example**:\n```flame\nsocket.send(\"Chat message\")\nsocket.send(byte.readBytes(\"data.bin\"))\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "sendText") => Some(
+            "```flame\nfn sendText(text: String) -> Nil\n```\nTransmits a UTF-8 text frame through the WebSocket connection.\n\n**Parameters**:\n- `text`: `String` - UTF-8 string payload.\n\n**Example**:\n```flame\nsocket.sendText(\"{\\\"type\\\": \\\"ping\\\"}\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "sendBytes") => Some(
+            "```flame\nfn sendBytes(bytes: Byte)\n```\nTransmits a binary frame containing raw bytes through the WebSocket connection.\n\n**Example**:\n```flame\nlet buffer = byte.readBytes(\"sample.wav\")\nsocket.sendBytes(buffer)\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "recv") => Some(
+            "```flame\nfn recv() -> String\n```\nBlocks synchronously until the next UTF-8 text message arrives from the WebSocket connection.\n\n**Returns**:\n- `String` - Text message payload received.\n\n**Example**:\n```flame\nlet reply = socket.recv()\nprintln($\"Reply: {reply}\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "recvBytes") => Some(
+            "```flame\nfn recvBytes() -> Byte\n```\nBlocks synchronously until the next binary frame arrives and returns its contents as `Byte`.\n\n**Returns**:\n- `Byte` - Binary payload buffer received.\n\n**Example**:\n```flame\nlet chunk = socket.recvBytes()\nprintln($\"Received {chunk.len()} binary bytes\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "ping") => Some(
+            "```flame\nfn ping(data: String | Byte?)\n```\nSends a WebSocket Ping control frame with optional heartbeat payload data.\n\n**Example**:\n```flame\nsocket.ping(\"heartbeat\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "pong") => Some(
+            "```flame\nfn pong(data: String | Byte?)\n```\nSends a WebSocket Pong control frame with optional heartbeat response payload.\n\n**Example**:\n```flame\nsocket.pong(\"heartbeat-ack\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "close") => Some(
+            "```flame\nfn close(code: Int?, reason: String?)\n```\nGracefully closes the WebSocket connection with status code 1000 or shuts down the server listener.\n\n**Example**:\n```flame\nsocket.close()\n// or on server listener:\ns.close()\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "shutdown") => Some(
+            "```flame\nfn shutdown()\n```\nGracefully closes all active client connections and terminates the server listener.",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "messages") => Some(
+            "```flame\nfn messages() -> Stream\n```\nReturns an asynchronous `Stream` over incoming WebSocket messages, supporting `.forEach()`, `.onEach()`, and `.toChannel()`.\n\n**Returns**:\n- `Stream` - Event stream of messages.\n\n**Example**:\n```flame\nlet stream = socket.messages()\nstream.forEach((msg) {\n    println($\"Streamed: {msg}\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onConnect") => Some(
+            "```flame\nfn onConnect(callback: (client: ServerClient)) -> Server\n```\nRegisters a callback closure invoked whenever a new WebSocket client completes the handshake.\n\n**Closure Parameters**:\n- `client`: `ServerClient` - The newly connected client handle. Typing `client.` provides completions for:\n  - `client.send(data)`: Sends UTF-8 text or binary frame\n  - `client.sendText(text)`: Sends UTF-8 text frame\n  - `client.sendBytes(bytes)`: Sends raw binary frame\n  - `client.ping(data)`: Sends Ping control frame\n  - `client.close()`: Disconnects client\n  - `client.id`: Unique integer connection ID\n  - `client.address`: Remote IP/port address string\n\n**Example**:\n```flame\ns.onConnect((client) {\n    println($\"Client {client.id} joined from {client.address}\")\n    client.send(\"Hello from Flame Server!\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onMessage") => Some(
+            "```flame\n// On Server listener:\nfn onMessage(callback: (client: ServerClient, msg: String)) -> Server\n\n// On Client socket:\nfn onMessage(callback: (msg: String)) -> ClientSocket\n```\nRegisters a callback closure invoked whenever an incoming UTF-8 text message arrives.\n\n**Closure Parameters**:\n- `client` (server): `ServerClient` - Connected client handle (`client.send`, `client.sendBytes`, `client.close`, etc.).\n- `msg`: `String` - Received text payload. Typing `msg.` provides standard `String` methods.\n\n**Example**:\n```flame\ns.onMessage((client, msg) {\n    println($\"[{client.id}] {msg}\")\n    s.broadcast($\"{client.id}: {msg}\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onBinary") => Some(
+            "```flame\n// On Server listener:\nfn onBinary(callback: (client: ServerClient, bytes: Byte)) -> Server\n\n// On Client socket:\nfn onBinary(callback: (bytes: Byte)) -> ClientSocket\n```\nRegisters a callback closure invoked whenever an incoming raw binary frame arrives.\n\n**Closure Parameters**:\n- `client` (server): `ServerClient` - Connected client handle. Typing `client.` provides autocomplete for:\n  - `client.send(data)` - Sends UTF-8 text or binary payload\n  - `client.sendBytes(bytes)` - Sends raw binary frame\n  - `client.sendText(text)` - Sends UTF-8 text frame\n  - `client.close()` - Disconnects client\n  - `client.id` - Unique connection ID (`Int`)\n  - `client.address` - Client IP address string (`String`)\n- `bytes`: `Byte` - Raw binary buffer. Typing `bytes.` provides autocomplete for:\n  - `bytes.len()` - Total byte length (`Int`)\n  - `bytes.slice(start, len)` - Buffer sub-slice\n  - `bytes.toString()` - Decode to UTF-8 String\n  - `bytes.toHex()` - Hexadecimal string\n  - `bytes.get(idx)` - Read byte value at index\n\n**Example**:\n```flame\ns.onBinary((client, bytes) {\n    println($\"[Server] Binary frame: {bytes.len()} bytes\")\n    client.sendBytes(bytes)\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onClose") => Some(
+            "```flame\n// On Server listener:\nfn onClose(callback: (client: ServerClient, code: Int, reason: String)) -> Server\n\n// On Client socket:\nfn onClose(callback: (code: Int, reason: String)) -> ClientSocket\n```\nRegisters a callback closure invoked when a connection terminates cleanly or abnormally.\n\n**Closure Parameters**:\n- `client` (server): `ServerClient` - Disconnected client instance.\n- `code`: `Int` - RFC 6455 close status code (e.g. `1000` Normal Closure, `1001` Going Away, `1006` Abnormal Closure).\n- `reason`: `String` - Close reason description phrase.\n\n**Example**:\n```flame\ns.onClose((client, code, reason) {\n    println($\"Client {client.id} disconnected: {code} ({reason})\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onError") => Some(
+            "```flame\n// On Server listener:\nfn onError(callback: (client: ServerClient, error: String)) -> Server\n\n// On Client socket:\nfn onError(callback: (error: String)) -> ClientSocket\n```\nRegisters a callback closure invoked when a protocol, network, or framing error occurs.\n\n**Closure Parameters**:\n- `client` (server): `ServerClient` - Errored client instance.\n- `error`: `String` - Detailed error description.\n\n**Example**:\n```flame\ns.onError((client, err) {\n    println($\"Client {client.id} error: {err}\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onPing") => Some(
+            "```flame\nfn onPing(callback: (client: ServerClient, data: Byte)) -> Server\n```\nRegisters a callback closure invoked when a client sends a Ping control frame.\n\n**Closure Parameters**:\n- `client`: `ServerClient` - Sender client.\n- `data`: `Byte` - Payload data.",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onPong") => Some(
+            "```flame\nfn onPong(callback: (client: ServerClient, data: Byte)) -> Server\n```\nRegisters a callback closure invoked when a client sends a Pong control frame.\n\n**Closure Parameters**:\n- `client`: `ServerClient` - Sender client.\n- `data`: `Byte` - Payload data.",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "broadcast") => Some(
+            "```flame\nfn broadcast(data: String | Bytes)\n```\nBroadcasts a UTF-8 text message or raw binary `Bytes` payload to all currently connected clients simultaneously.\n\n**Example**:\n```flame\ns.broadcast(\"Global announcement: 100 users online!\")\ns.broadcast(byte.readBytes(\"state_sync.bin\"))\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "connections") => Some(
+            "```flame\nfn connections() -> Int\n```\nReturns the current number of active client connections connected to the WebSocket server.\n\n**Example**:\n```flame\nlet online = s.connections()\nprintln($\"Online: {online}\")\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "forEach") => Some(
+            "```flame\nfn forEach(callback: (msg: String))\n```\nAsynchronously subscribes a consumer closure to incoming stream messages.\n\n**Closure Parameters**:\n- `msg`: `String` - Arriving message payload.\n\n**Example**:\n```flame\nsocket.messages().forEach((msg) {\n    println($\"Stream msg: {msg}\")\n})\n```",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "onEach") => Some(
+            "```flame\nfn onEach(callback: (msg: String))\n```\nAlias for `.forEach()`. Asynchronously consumes messages from the stream.",
+        ),
+        ("ws" | "net.ws" | "std.net.ws" | "net", "toChannel") => Some(
+            "```flame\nfn toChannel() -> (Sender, Receiver)\n```\nBridges the WebSocket stream directly into Flame's native thread message channel `(Sender, Receiver)` from `std.thread`.\n\n**Example**:\n```flame\nimport std.net.ws\nimport std.thread as th\n\nlet (tx, rx) = socket.messages().toChannel()\nlet msg = rx.recv()\n```",
         ),
         _ => None,
     }

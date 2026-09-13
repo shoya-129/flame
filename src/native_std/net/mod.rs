@@ -17,6 +17,8 @@ pub fn get_module_defs() -> Vec<NativeModuleDef> {
     vec![
         #[cfg(feature = "http")]
         http::def(),
+        #[cfg(feature = "ws")]
+        ws::def(),
     ]
 }
 

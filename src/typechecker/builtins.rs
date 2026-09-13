@@ -518,6 +518,66 @@ impl TypeChecker {
 
                 Type::Formula(map, docs)
             }
+            "ws" | "net.ws" | "std.net.ws" => {
+                let mut map = HashMap::new();
+                let mut docs = HashMap::new();
+
+                let mut socket_map = HashMap::new();
+                let mut socket_docs = HashMap::new();
+
+                socket_map.insert("connect".to_string(), Type::Function(vec![Type::String], Box::new(Type::Named("ClientSocket".to_string()))));
+                socket_map.insert("listen".to_string(), Type::Function(vec![Type::String], Box::new(Type::Named("Server".to_string()))));
+                if let Some(doc) = crate::std_docs::get_std_function_doc("std.net.ws", "connect") {
+                    socket_docs.insert("connect".to_string(), doc.to_string());
+                }
+                if let Some(doc) = crate::std_docs::get_std_function_doc("std.net.ws", "listen") {
+                    socket_docs.insert("listen".to_string(), doc.to_string());
+                }
+
+                let socket_formula = Type::Formula(socket_map, socket_docs);
+
+                map.insert("connect".to_string(), Type::Function(vec![Type::String], Box::new(Type::Named("ClientSocket".to_string()))));
+                map.insert("listen".to_string(), Type::Function(vec![Type::String], Box::new(Type::Named("Server".to_string()))));
+                map.insert("Socket".to_string(), socket_formula.clone());
+                map.insert("WebSocket".to_string(), socket_formula);
+                map.insert("ClientSocket".to_string(), Type::Named("ClientSocket".to_string()));
+                map.insert("Server".to_string(), Type::Named("Server".to_string()));
+                map.insert("ServerClient".to_string(), Type::Named("ServerClient".to_string()));
+                map.insert("Stream".to_string(), Type::Named("Stream".to_string()));
+
+                docs.insert(
+                    "Socket".to_string(),
+                    "```flame\nstruct Socket\n```\nWebSocket subsystem factory interface exposing client connection and server binding.\n\n**Methods**:\n- `connect(url: String) -> ClientSocket`\n- `listen(addr: String) -> Server`\n\n**Example**:\n```flame\nimport std.net.ws\n\nlet s = ws.Socket.listen(\"127.0.0.1:8080\")\nlet c = ws.Socket.connect(\"ws://127.0.0.1:8080\")\n```".to_string(),
+                );
+                docs.insert(
+                    "WebSocket".to_string(),
+                    "```flame\nstruct WebSocket\n```\nWebSocket subsystem factory interface exposing client connection and server binding.\n\n**Methods**:\n- `connect(url: String) -> ClientSocket`\n- `listen(addr: String) -> Server`".to_string(),
+                );
+                docs.insert(
+                    "Server".to_string(),
+                    "```flame\nstruct Server\n```\nWebSocket server listener instance returned by `ws.Socket.listen()` or `ws.listen()`.\n\nAll event handlers (`onConnect`, `onMessage`, etc.) and controls (`broadcast`, `close`) are accessible directly on this variable `s`.".to_string(),
+                );
+                docs.insert(
+                    "ClientSocket".to_string(),
+                    "```flame\nstruct ClientSocket\n```\nWebSocket client connection handle returned by `ws.connect()` or `ws.Socket.connect()`.".to_string(),
+                );
+                docs.insert(
+                    "ServerClient".to_string(),
+                    "```flame\nstruct ServerClient\n```\nConnected client connection handle passed to server lifecycle callbacks.".to_string(),
+                );
+                docs.insert(
+                    "Stream".to_string(),
+                    "```flame\nstruct Stream\n```\nAsynchronous message stream returned by `socket.messages()`.".to_string(),
+                );
+
+                for name in ["connect", "listen"] {
+                    if let Some(doc) = crate::std_docs::get_std_function_doc("std.net.ws", name) {
+                        docs.insert(name.to_string(), doc.to_string());
+                    }
+                }
+
+                Type::Formula(map, docs)
+            }
             _ => Type::Named(format!("module:{}", mod_name)),
         }
     }

@@ -364,10 +364,18 @@ impl Parser {
             t.push('(');
             let mut sub_types = Vec::new();
             while !self.check(TokenKind::CloseParen) && !self.check(TokenKind::EOF) {
-                sub_types.push(self.parse_type()?);
+                // Support closure parameter types with optional names: `(msg: Unknown)` or `(client: ServerClient, bytes: Bytes)`
+                if self.check(TokenKind::Identifier) && self.check_next(TokenKind::Colon) {
+                    let param_name = self.advance().lexeme;
+                    self.consume(TokenKind::Colon, "expected ':' after parameter name in function type")?;
+                    let param_type = self.parse_type()?;
+                    sub_types.push(format!("{}: {}", param_name, param_type));
+                } else {
+                    sub_types.push(self.parse_type()?);
+                }
                 self.match_token(TokenKind::Comma);
             }
-            self.consume(TokenKind::CloseParen, "expected ')' to close tuple type")?;
+            self.consume(TokenKind::CloseParen, "expected ')' to close type parameter list")?;
             t.push_str(&sub_types.join(", "));
             t.push(')');
         } else if self.match_token(TokenKind::OpenBracket) {

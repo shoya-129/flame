@@ -42,6 +42,8 @@ fn main() {
 
 fn real_main() {
     ctrlc::set_handler(move || {
+        #[cfg(all(feature = "net", feature = "ws"))]
+        crate::native_std::net::ws::shutdown_all_ws();
         std::process::exit(0);
     })
     .unwrap_or_else(|_| ());
@@ -245,7 +247,7 @@ fn real_main() {
             init_native_bridge(plugin_name);
         }
         "version" | "--version" | "-version" | "--v" | "-v" | "-V" => {
-            println!("Flame {} (Fourth Spark)", env!("CARGO_PKG_VERSION"));
+            println!("Flame {} (Fifth Spark)", env!("CARGO_PKG_VERSION"));
         }
         "help" | "--help" | "-h" => {
             print_help();

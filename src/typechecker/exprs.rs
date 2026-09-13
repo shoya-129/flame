@@ -19,6 +19,9 @@ impl TypeChecker {
                 let inferred = if let Some(var) = self.lookup_var(name).cloned() {
                     if let Some(doc) = &var.hover_doc {
                         self.insert_hover_info(span.clone(), doc.clone());
+                    } else if !matches!(var.ty, Type::Unknown) {
+                        let doc = format!("```flame\nlet {}: {}\n```", name, self.format_type(&var.ty));
+                        self.insert_hover_info(span.clone(), doc);
                     }
                     var.ty
                 } else if let Some(struct_info) = self.structs.get(name).cloned() {
@@ -69,6 +72,20 @@ impl TypeChecker {
                         Type::Nil => "Nil".to_string(),
                         t => format!("{:?}", t),
                     };
+                    let mut hover_str = format!(
+                        "```flame\nfn {}({}){}\n```",
+                        name,
+                        params_str.join(", "),
+                        if ret_str.is_empty() || ret_str == "Nil" {
+                            "".to_string()
+                        } else {
+                            format!(" -> {}", ret_str)
+                        }
+                    );
+                    if let Some(doc) = &func.hover_doc {
+                        hover_str.push_str(&format!("\n\n{}", doc));
+                    }
+                    self.insert_hover_info(span.clone(), hover_str);
                     Type::Named(format!("fn({}) -> {}", params_str.join(", "), ret_str))
                 } else if self.plugins.contains(name) {
                     self.insert_hover_info(
@@ -389,51 +406,88 @@ impl TypeChecker {
                 span,
                 ..
             } => {
-                let params_str = params
-                    .iter()
-                    .map(|p| format!("{}: {}", p.name, p.type_name))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let ret_str = if let Some(ret) = &return_type {
-                    format!(" -> {}", ret)
-                } else {
-                    "".to_string()
+                let expected_func = match &self.expected_closure_type {
+                    Some(Type::Function(e_params, e_ret)) => Some((e_params.clone(), (**e_ret).clone())),
+                    Some(Type::Tuple(e_params)) => Some((e_params.clone(), Type::Nil)),
+                    _ => None,
                 };
-                let mut hover_str = format!("```flame\n|{}|{}\n```", params_str, ret_str);
 
-                let hover_doc = self.process_annotations(annotations);
-
-                if let Some(doc) = hover_doc {
-                    hover_str = format!("{}\n\n{}", hover_str, doc);
-                }
-
-                self.insert_hover_info(span.clone(), hover_str);
-
-                let prev_return = self.current_return_type.clone();
                 let ret_ty = return_type
                     .as_ref()
                     .map(|ret| self.parse_type_name(ret))
-                    .unwrap_or(Type::Unknown);
-                self.current_return_type = Some(ret_ty.clone());
+                    .unwrap_or_else(|| {
+                        if let Some((_, e_ret)) = &expected_func {
+                            e_ret.clone()
+                        } else {
+                            Type::Nil
+                        }
+                    });
 
                 self.push_scope();
                 let mut param_types = Vec::new();
-                for param in params {
-                    let p_ty = self.parse_type_name(&param.type_name);
+                for (idx, param) in params.iter().enumerate() {
+                    let mut p_ty = if param.type_name.trim().is_empty() {
+                        Type::Unknown
+                    } else {
+                        self.parse_type_name(&param.type_name)
+                    };
+                    if matches!(p_ty, Type::Unknown) {
+                        if let Some((e_params, _)) = &expected_func {
+                            if let Some(expected_p) = e_params.get(idx) {
+                                p_ty = expected_p.clone();
+                            }
+                        }
+                    }
                     param_types.push(p_ty.clone());
+                    let p_hover_doc = format!("```flame\n(parameter) {}: {}\n```", param.name, self.format_type(&p_ty));
                     self.define_var(
                         param.name.clone(),
                         VarInfo {
                             ty: p_ty.clone(),
                             is_mut: param.is_mut,
-                            hover_doc: None,
+                            hover_doc: Some(p_hover_doc),
                         },
                     );
                 }
+
+                let params_str = params
+                    .iter()
+                    .zip(param_types.iter())
+                    .map(|(p, ty)| {
+                        if !p.type_name.trim().is_empty() {
+                            format!("{}: {}", p.name, p.type_name)
+                        } else if !matches!(ty, Type::Unknown) {
+                            format!("{}: {}", p.name, self.format_type(ty))
+                        } else {
+                            p.name.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let ret_str = if ret_ty != Type::Nil && ret_ty != Type::Unknown {
+                    format!(" -> {}", self.format_type(&ret_ty))
+                } else if let Some(ret) = &return_type {
+                    format!(" -> {}", ret)
+                } else {
+                    "".to_string()
+                };
+                let mut hover_str = format!("```flame\n({}){}\n```", params_str, ret_str);
+
+                let hover_doc = self.process_annotations(annotations);
+                if let Some(doc) = hover_doc {
+                    hover_str = format!("{}\n\n{}", hover_str, doc);
+                }
+                self.insert_hover_info(span.clone(), hover_str);
+
+                let prev_return = self.current_return_type.clone();
+                self.current_return_type = Some(ret_ty.clone());
+                let prev_expected = self.expected_closure_type.take();
+
                 for stmt in body {
                     self.check_stmt(stmt);
                 }
                 self.pop_scope();
+                self.expected_closure_type = prev_expected;
                 self.current_return_type = prev_return;
                 Type::Function(param_types, Box::new(ret_ty))
             }
@@ -457,7 +511,12 @@ impl TypeChecker {
                 | BinaryOp::ShrAssign
         ) {
             if let Expr::Identifier(name, left_span) = left {
+                let prev_expected = self.expected_closure_type.take();
+                if let Some(var) = self.lookup_var(name) {
+                    self.expected_closure_type = Some(var.ty.clone());
+                }
                 let rhs_ty = self.infer_expr_type(right);
+                self.expected_closure_type = prev_expected;
                 if let Some(var) = self.lookup_var(name).cloned() {
                     if !var.is_mut {
                         self.error(
@@ -1093,51 +1152,76 @@ impl TypeChecker {
                 Type::Unknown
             }
 
-            Type::Struct(struct_name) => {
-                if let Some(info) = self.structs.get(&struct_name) {
-                    if let Some((_, ty)) = info.fields.iter().find(|(name, _)| name == member) {
-                        return ty.clone();
-                    }
+            Type::Struct(ref struct_name)
+            | Type::Named(ref struct_name)
+                if self.structs.contains_key(struct_name) || self.methods.contains_key(struct_name) =>
+            {
+                let found_field = self
+                    .structs
+                    .get(struct_name)
+                    .and_then(|info| info.fields.iter().find(|(name, _)| name == member).map(|(_, ty)| ty.clone()));
+                if let Some(ty) = found_field {
+                    let formatted_ty = self.format_type(&ty);
+                    let member_span = Span {
+                        start: span.end.saturating_sub(member.len()),
+                        end: span.end,
+                        line: span.line,
+                        col: span.col + (span.end - span.start).saturating_sub(member.len()),
+                    };
+                    let doc = format!("```flame\n{}.{}: {}\n```\nProperty of `{}`", struct_name, member, formatted_ty, struct_name);
+                    self.insert_hover_info(member_span, doc.clone());
+                    self.insert_hover_info(span.clone(), doc);
+                    return ty;
                 }
 
-                if let Some(methods) = self.methods.get(&struct_name) {
-                    if let Some(sig) = methods.get(member) {
-                        let mut params_str = Vec::new();
-                        for p in &sig.params {
-                            let is_already_ref = matches!(p.ty, Type::Reference { .. });
-                            let mut mods = String::new();
-                            if p.is_ref && !is_already_ref {
-                                mods.push('&');
-                            }
-                            if p.is_mut && !is_already_ref {
-                                mods.push_str("mut ");
-                            }
-                            params_str.push(format!(
-                                "{}{}: {}{}",
-                                if p.is_mut && !p.is_ref { "mut " } else { "" },
-                                p.name,
-                                mods,
-                                self.format_type(&p.ty)
-                            ));
+                let found_sig = self
+                    .methods
+                    .get(struct_name)
+                    .and_then(|methods| methods.get(member))
+                    .cloned();
+                if let Some(sig) = found_sig {
+                    let mut params_str = Vec::new();
+                    for p in &sig.params {
+                        let is_already_ref = matches!(p.ty, Type::Reference { .. });
+                        let mut mods = String::new();
+                        if p.is_ref && !is_already_ref {
+                            mods.push('&');
                         }
-                        let ret_str = if sig.return_type == Type::Nil {
-                            "".to_string()
-                        } else {
-                            format!(" -> {}", self.format_type(&sig.return_type))
-                        };
-                        let mut hover_str = format!(
-                            "```flame\nfn {}({}){}\n```",
-                            member,
-                            params_str.join(", "),
-                            ret_str
-                        );
-                        if let Some(doc) = &sig.hover_doc {
-                            hover_str = format!("{}\n\n{}", hover_str, doc);
+                        if p.is_mut && !is_already_ref {
+                            mods.push_str("mut ");
                         }
-                        self.insert_hover_info(span.clone(), hover_str);
-
-                        return Type::Named("Function".into());
+                        params_str.push(format!(
+                            "{}{}: {}{}",
+                            if p.is_mut && !p.is_ref { "mut " } else { "" },
+                            p.name,
+                            mods,
+                            self.format_type(&p.ty)
+                        ));
                     }
+                    let ret_str = if sig.return_type == Type::Nil {
+                        "".to_string()
+                    } else {
+                        format!(" -> {}", self.format_type(&sig.return_type))
+                    };
+                    let mut hover_str = format!(
+                        "```flame\nfn {}({}){}\n```",
+                        member,
+                        params_str.join(", "),
+                        ret_str
+                    );
+                    if let Some(doc) = &sig.hover_doc {
+                        hover_str = format!("{}\n\n{}", hover_str, doc);
+                    }
+                    let member_span = Span {
+                        start: span.end.saturating_sub(member.len()),
+                        end: span.end,
+                        line: span.line,
+                        col: span.col + (span.end - span.start).saturating_sub(member.len()),
+                    };
+                    self.insert_hover_info(member_span, hover_str.clone());
+                    self.insert_hover_info(span.clone(), hover_str);
+
+                    return Type::Named("Function".into());
                 }
 
                 self.error(
@@ -1482,6 +1566,45 @@ impl TypeChecker {
                 _ => {}
             }
 
+            if let Type::Formula(ref fmap, ref fdocs) = inner_ty {
+                if let Some(member_ty) = fmap.get(member).cloned() {
+                    let doc_opt = fdocs.get(member).cloned();
+                    match member_ty {
+                        Type::Function(ref param_types, ref ret_type) => {
+                            let callee_span = callee.span();
+                            let dot_member_span = Span {
+                                start: callee_span.end.saturating_sub(member.len()),
+                                end: callee_span.end,
+                                line: callee_span.line,
+                                col: callee_span.col + (callee_span.end - callee_span.start).saturating_sub(member.len()),
+                            };
+                            let params_str = param_types
+                                .iter()
+                                .enumerate()
+                                .map(|(i, t)| format!("arg{}: {}", i, self.format_type(t)))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let ret_str = if **ret_type == Type::Nil {
+                                "".to_string()
+                            } else {
+                                format!(" -> {}", self.format_type(ret_type))
+                            };
+                            let mut hover_str = format!("```flame\nfn {}({}){}\n```", member, params_str, ret_str);
+                            if let Some(doc) = doc_opt {
+                                hover_str = format!("{}\n\n{}", hover_str, doc);
+                            }
+                            self.insert_hover_info(dot_member_span, hover_str.clone());
+                            self.insert_hover_info(callee_span, hover_str.clone());
+                            self.insert_hover_info(span.clone(), hover_str);
+                            return *ret_type.clone();
+                        }
+                        _ => {
+                            return member_ty;
+                        }
+                    }
+                }
+            }
+
             if let Type::Named(name) = &inner_ty {
                 if name.starts_with("plugin:") || name.starts_with("module:") {
                     let prefix = if name.starts_with("plugin:") {
@@ -1580,7 +1703,13 @@ impl TypeChecker {
                 }
             }
 
-            if let Type::Struct(struct_name) = &inner_ty {
+            let struct_name_opt = match &inner_ty {
+                Type::Struct(name) => Some(name.clone()),
+                Type::Named(name) if self.methods.contains_key(name) || self.structs.contains_key(name) => Some(name.clone()),
+                _ => None,
+            };
+
+            if let Some(ref struct_name) = struct_name_opt {
                 let sig_opt = self
                     .methods
                     .get(struct_name)
@@ -1629,6 +1758,15 @@ impl TypeChecker {
                     if let Some(doc) = &sig.hover_doc {
                         hover_str = format!("{}\n\n{}", hover_str, doc);
                     }
+                    let callee_span = callee.span();
+                    let dot_member_span = Span {
+                        start: callee_span.end.saturating_sub(member.len()),
+                        end: callee_span.end,
+                        line: callee_span.line,
+                        col: callee_span.col + (callee_span.end - callee_span.start).saturating_sub(member.len()),
+                    };
+                    self.insert_hover_info(dot_member_span, hover_str.clone());
+                    self.insert_hover_info(callee_span, hover_str.clone());
                     self.insert_hover_info(span.clone(), hover_str);
 
                     return sig.return_type;

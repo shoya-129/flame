@@ -96,18 +96,100 @@ async fn app() {
 
 ### WebSockets (`std.net.ws`)
 
-The `ws` module provides a WebSocket client for real-time bi-directional communication.
+The `ws` module provides a production-grade, native, high-performance WebSocket subsystem supporting both client and server roles, binary data frames (`Bytes`), event callbacks, streaming iterators, broadcasting, and direct bridging into `std.thread` channels.
+
+> 📖 **Dedicated Guide**: For the comprehensive WebSockets manual, real-world examples, and complete API reference tables, see the [WebSockets Guide](/std/websocket).
+
+#### 1. Real-Time Server & Broadcasting
+
+To start a WebSocket server, bind a listener with `ws.Socket.listen(addr)` (or `ws.listen(addr)`). The returned variable `s` represents the listening server directly and exposes all lifecycle handlers, connection counters, and broadcasting capabilities:
 
 ```flame
 import std.net.ws
 
-@Application(features=["ws"])
-async fn start() {
-    let ws = await ws.WebSocket.connect("ws://localhost:8080/ws")
-    await ws.send("Move Forward")
-    let msg = await ws.recv()
-}
+let s = ws.Socket.listen("127.0.0.1:8080")
+println($"Server active on {s.address} (port {s.port})")
+
+// Triggered when a new client connects
+s.onConnect((client) {
+    println($"[+] Client connected: {client.id} ({client.address})")
+    client.send("Welcome to Flame Realtime Gateway!")
+})
+
+// Triggered when a client sends a UTF-8 text message
+s.onMessage((client, msg) {
+    println($"[{client.id}] {msg}")
+    // Broadcast message to all connected clients
+    s.broadcast($"[{client.id}]: {msg}")
+})
+
+// Triggered when a client sends binary data
+s.onBinary((client, bytes) {
+    println($"[{client.id}] Sent binary data: {bytes.len()} bytes")
+    client.sendBytes(bytes)
+})
+
+// Triggered when a client disconnects
+s.onClose((client, code, reason) {
+    println($"[-] Client {client.id} disconnected ({code})")
+})
+
+// Check total online clients
+println($"Online clients: {s.connections()}")
 ```
+
+#### 2. WebSocket Client
+
+To connect to any remote WebSocket server (Flame, Node.js, Rust, Go, Python, etc.):
+
+```flame
+import std.net.ws
+
+let socket = ws.Socket.connect("ws://127.0.0.1:8080")
+
+// Event-driven message handling
+socket.onMessage((msg) {
+    println($"Incoming message: {msg}")
+})
+
+// Sending text and binary frames
+socket.send("Hello Server!")
+socket.sendText("Structured JSON payload")
+
+// Synchronous blocking receive (if preferred over callbacks)
+let reply = socket.recv()
+println($"Received: {reply}")
+
+// Clean shutdown
+socket.close()
+```
+
+#### 3. Streaming and Channel Bridging (`std.thread`)
+
+Flame WebSockets integrate natively with `std.thread` message channels via `.toChannel()`:
+
+```flame
+import std.net.ws
+import std.thread as th
+
+let socket = ws.connect("ws://127.0.0.1:8080")
+
+// Option A: Asynchronous stream iteration
+let stream = socket.messages()
+stream.forEach((msg) {
+    println($"Stream: {msg}")
+})
+
+// Option B: Native MPSC channel bridging
+let (tx, rx) = socket.messages().toChannel()
+th.spawn(|| {
+    while true {
+        let msg = rx.recv()
+        println($"Worker processed: {msg}")
+    }
+})
+```
+
 
 ### MQTT Client (`std.net.mqtt`)
 

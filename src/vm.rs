@@ -204,6 +204,11 @@ pub fn enqueue_callback(callback: FlameCallback, args: Vec<CValue>) -> Result<CV
     Ok(res.pack())
 }
 
+pub fn invoke_callback_val(cb_val: &Value, args: Vec<Value>) -> Result<Value, String> {
+    let mut runner = crate::runner::Runner::new(std::path::PathBuf::from("native_callback"));
+    runner.invoke_callback_value(cb_val, args)
+}
+
 #[repr(C)]
 #[derive(Debug, Clone)]
 pub struct CValue {

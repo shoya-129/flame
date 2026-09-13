@@ -138,6 +138,7 @@ export default defineConfig({
                     { label: 'Environment Variables (std.env)', slug: 'std/env' },
                     { label: 'File System (std.fs)', slug: 'std/filesystem' },
                     { label: 'Networking (std.net)', slug: 'std/net' },
+                    { label: 'WebSockets (std.net.ws)', slug: 'std/websocket' },
                     { label: 'Process (std.process)', slug: 'std/process' },
                     { label: 'OS Introspection (std.os)', slug: 'std/os' },
                     { label: 'Byte Manipulation (std.byte)', slug: 'std/byte' },

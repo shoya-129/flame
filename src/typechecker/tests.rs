@@ -142,3 +142,22 @@ fn check_source(src: &str) -> Result<(), Vec<crate::diagnostics::Diagnostic>> {
         let diags = res.unwrap_err();
         assert!(diags.iter().any(|d| d.message.contains("Duplicate type definition: 'Entry'")));
     }
+
+    #[test]
+    fn test_closure_parameter_types_and_calls() {
+        let src = r#"
+        fn onEach(callback: (msg: Unknown) -> Nil) {}
+        fn onBinary(callback: (client: String, bytes: Byte)) {}
+
+        onEach((m) {
+            let x = m
+        })
+
+        onBinary((c, b) {
+            let s = c
+        })
+        "#;
+        let res = check_source(src);
+        assert!(res.is_ok(), "Closure types and call compatibility should succeed: {:?}", res.err());
+    }
+

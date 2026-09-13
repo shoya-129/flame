@@ -30,7 +30,6 @@ Flame is written in Rust (2024 edition). The repository is structured into modul
 
 ### Where Everything Lives
 
-```
 flame/
 ├── Cargo.toml               # Package configuration and feature flags
 ├── src/
@@ -55,19 +54,20 @@ flame/
 ├── macro/                   # Procedural macros for native plugins (#[flame_export], etc.)
 ├── ide/                     # Visual Studio Code extension
 └── examples/                # Example Flame programs, CLI tools, and plugins
-```
 
 ---
 
 ### Detailed Component Breakdown
 
 #### 1. `src/parser/` — Syntax & AST
+
 - **`ast.rs`**: Definitions for all Abstract Syntax Tree (AST) nodes: `Expr`, `Stmt`, `BinaryOp`, `UnaryOp`, `LiteralValue`, `Param`, `Annotation`, `MatchArm`, and span methods.
 - **`parser.rs`**: Recursive-descent parser that consumes a token stream and produces AST statements (`Vec<Stmt>`).
 - **`utils.rs`**: Indentation stripping (`strip_common_indentation`), test annotation detection, and platform conditional filtering (`filter_platform_stmts`).
 - **`mod.rs`**: Re-exports all AST nodes and parser interfaces.
 
 #### 2. `src/typechecker/` — Semantic Analysis & Type System
+
 - **`types.rs`**: Core type definitions (`Type`, `VarInfo`, `ParamInfo`, `FunctionSig`, `StructInfo`, `EnumInfo`, `CommandInfo`).
 - **`checker.rs`**: `TypeChecker` struct, `new()`, `check_program()`, hover information registration.
 - **`builtins.rs`**: Registration of built-in type methods (String, Array, Map, Num, Int, etc.) and `get_std_module_type()`.
@@ -77,6 +77,7 @@ flame/
 - **`tests.rs`**: Unit tests for typechecker rules.
 
 #### 3. `src/runner/` — Execution Engine & Runtime
+
 - **`core.rs`**: `Runner` struct initialization (`new()`), execution entry point (`run()`), and thread cloning.
 - **`callbacks.rs`**: Asynchronous callback queue processing and native callback invocation.
 - **`stmts.rs`**: Statement execution (`execute_statement()` for loops, conditionals, assignments, match).
@@ -86,6 +87,7 @@ flame/
 - **`tests.rs`**: Runtime execution unit tests.
 
 #### 4. `src/package_manager/` — Package Management & FMI
+
 - **`meta.rs`**: Flame metadata structures (`FlameMeta`, `FlameFunctionMeta`, `FlameStructMeta`, `PluginSpec`).
 - **`manifest.rs`**: `flame.toml` plugin entry parser and plugin listing.
 - **`downloader.rs`**: Package archive streaming downloader with terminal progress bar.
@@ -94,6 +96,7 @@ flame/
 - **`rustdoc.rs`**: `syn` AST parser and `rustdoc` JSON inspector to extract exported signatures from Rust crates.
 
 #### 5. `src/ide/` — Language Intelligence
+
 - **`keywords.rs`**: Keyword table with hover documentation, keyword completions, and literal autocompletions.
 - **`scanner.rs`**: Fast document scanning for variables, types, functions, and import aliases.
 - **`modules.rs`**: Standard library method discovery and native module definitions.
@@ -101,6 +104,7 @@ flame/
 - **`definition.rs`**: Symbol definition locator across source files, Blaze modules, and standard libraries.
 
 #### 6. `src/cli/` — Command Line Interface
+
 - **`commands/build.rs`**: `flame build` implementation, snapshot tracking, and runtime rebuild checks.
 - **`commands/run.rs`**: `flame run` and `flame run --watch` file execution.
 - **`commands/test.rs`**: `flame test` test discovery, filtering, and test execution.
@@ -110,6 +114,7 @@ flame/
 - **`ide.rs`**: LSP/JSON backend (`flame check --json`, `flame definition --json`, `analyze_file_for_json`).
 
 #### 7. `src/utils/` — Shared Utilities
+
 - **`manifest.rs`**: `find_manifest_root()`, `parse_manifest_section()`, `parse_manifest_permissions()`.
 - **`format.rs`**: `format_byte_size()`, `format_transfer_speed()`, `clean_table_borders()`.
 - **`fs.rs`**: `copy_dir_all()`.
@@ -120,24 +125,28 @@ flame/
 ## Getting Started as a Contributor
 
 ### Prerequisites
+
 - [Rust](https://rustup.rs/) (version 1.80+ or latest stable)
 - `git`
 
 ### Building and Running Locally
 
 Clone the repository:
+
 ```bash
 git clone https://github.com/shoya-129/flame.git
 cd flame
 ```
 
 Compile the project:
+
 ```bash
 cargo check
 cargo build
 ```
 
 Run the Flame CLI:
+
 ```bash
 cargo run -- --help
 cargo run -- doctor
@@ -147,11 +156,13 @@ cargo run -- run examples/src/main.fm
 ### Running the Test Suite
 
 Always run the full test suite before committing:
+
 ```bash
 cargo test
 ```
 
 You can also run tests for a specific module:
+
 ```bash
 cargo test typechecker
 cargo test runner
@@ -201,6 +212,7 @@ When adding a new keyword or syntax construct (e.g. a `repeat` loop, a `typeof` 
 To add a new standard library module (e.g., `std.crypto` or `std.archive`):
 
 1. **Create the native module in `src/native_std/<module_name>.rs`**:
+
    ```rust
    use crate::vm::Value;
    use std::collections::HashMap;
@@ -228,6 +240,7 @@ To add a new standard library module (e.g., `std.crypto` or `std.archive`):
 
 3. **Register in `src/stdlib.rs`**:
    - Add module mapping in `register_std_module()`:
+
      ```rust
      "std.<module_name>" => Some(crate::native_std::<module_name>::init()),
      ```
@@ -266,6 +279,7 @@ Annotations provide metadata for functions, structs, or CLI commands (e.g., `@Pe
 Flame's CLI dispatcher is in `src/main.rs`, and commands are implemented in `src/cli/commands/`:
 
 1. **Create/Update command file in `src/cli/commands/<command>.rs`**:
+
    ```rust
    pub fn run_my_command(args: &[String]) {
        println!("Executing custom command!");
@@ -273,12 +287,14 @@ Flame's CLI dispatcher is in `src/main.rs`, and commands are implemented in `src
    ```
 
 2. **Export in `src/cli/commands/mod.rs`**:
+
    ```rust
    pub mod my_command;
    pub use my_command::*;
    ```
 
 3. **Add dispatch in `src/main.rs`**:
+
    ```rust
    "my-command" => {
        run_my_command(&args[2..]);
@@ -293,6 +309,7 @@ Flame's CLI dispatcher is in `src/main.rs`, and commands are implemented in `src
 ### Guide 5: Adding Common Utility Functions
 
 To keep the codebase DRY and component-friendly:
+
 - Do **not** duplicate file discovery, TOML parsing, string formatting, or directory copying across modules.
 - Place shared functions in `src/utils/`:
   - `src/utils/manifest.rs` for project root detection and TOML section reading.
@@ -311,6 +328,7 @@ To keep the codebase DRY and component-friendly:
    - Add parser/typechecker test cases in `src/typechecker/tests.rs`.
    - Add execution test cases in `src/runner/tests.rs`.
 4. **Run Regression Tests**:
+
    ```bash
    cargo test
    ```
@@ -321,10 +339,12 @@ To keep the codebase DRY and component-friendly:
 
 1. **Fork & Branch**: Create a feature branch with a descriptive name (`git checkout -b feature/my-feature`).
 2. **Verify Locally**:
+
    ```bash
    cargo check
    cargo test
    ```
+
 3. **Commit Messages**: Use clear, conventional commit messages (e.g., `feat: add repeat loop syntax`, `fix: correct member context extraction in IDE`).
 4. **Open PR**: Submit your pull request to the `main` branch with a description of the problem solved and test coverage added.
 

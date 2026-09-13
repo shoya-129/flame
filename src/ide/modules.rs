@@ -52,7 +52,11 @@ pub fn get_std_module_methods(module: &str) -> Option<Vec<String>> {
         "process" => Some(crate::native_std::process::init()),
         "fs" => Some(crate::native_std::fs::init()),
         "byte" => Some(crate::native_std::byte::init()),
-        "net" => Some(crate::native_std::net::init(&parts.next()?)),
+        "net" => {
+            let sub = parts.next().unwrap_or("ws");
+            Some(crate::native_std::net::init(sub))
+        }
+        "ws" => Some(crate::native_std::net::ws::init()),
         "json" => Some(crate::native_std::json::init()),
         "math" => Some(crate::native_std::math::init()),
         "time" => Some(crate::native_std::time::init()),

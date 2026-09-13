@@ -436,7 +436,9 @@ pub fn analyze_file_for_json(
     }
 
     let imported_module_decls = load_imported_module_declarations(&manifest_dir, file);
-    for stmt in &imported_module_decls {
+    let mut all_decls = imported_module_decls.clone();
+    all_decls.extend(parsed_stmts.clone());
+    for stmt in &all_decls {
         if let Some((name, params, return_type, is_annotation, annotations)) = match stmt {
             crate::parser::Stmt::FuncDecl {
                 name,
@@ -492,15 +494,27 @@ pub fn analyze_file_for_json(
                     annotations,
                     ..
                 } => Some((name, params, return_type.as_deref(), true, annotations)),
-                crate::parser::Stmt::StructDecl { name, fields, .. } => {
+                crate::parser::Stmt::StructDecl { name, fields, annotations, .. } => {
+                    let mut struct_doc = None;
+                    for ann in annotations {
+                        if ann.name == "Docs" {
+                            if let Some(s) = ann.args.get(0) {
+                                struct_doc = Some(s.trim_matches('"').to_string());
+                            }
+                        }
+                    }
                     let mut struct_methods = Vec::new();
-                    for stmt in &imported_module_decls {
-                        if let crate::parser::Stmt::ImplDecl {
-                            target_type,
-                            methods,
-                            ..
-                        } = stmt
-                        {
+                    let mut method_details = Vec::new();
+                    for other_stmt in &all_decls {
+                        let impl_cand = match other_stmt {
+                            crate::parser::Stmt::ImplDecl { target_type, methods, .. } => Some((target_type, methods)),
+                            crate::parser::Stmt::ExportDecl(inner, _) => match &**inner {
+                                crate::parser::Stmt::ImplDecl { target_type, methods, .. } => Some((target_type, methods)),
+                                _ => None,
+                            },
+                            _ => None,
+                        };
+                        if let Some((target_type, methods)) = impl_cand {
                             if target_type == name {
                                 for m in methods {
                                     if let crate::parser::Stmt::FuncDecl {
@@ -511,11 +525,11 @@ pub fn analyze_file_for_json(
                                         ..
                                     } = m
                                     {
-                                        let mut _doc_str = String::new();
+                                        let mut m_doc = None;
                                         for ann in annotations {
                                             if ann.name == "Docs" {
                                                 if let Some(s) = ann.args.get(0) {
-                                                    _doc_str = s.trim_matches('"').to_string();
+                                                    m_doc = Some(s.trim_matches('"').to_string());
                                                 }
                                             }
                                         }
@@ -524,36 +538,78 @@ pub fn analyze_file_for_json(
                                             .map(|p| format!("{}: {}", p.name, p.type_name))
                                             .collect::<Vec<_>>()
                                             .join(", ");
-                                        let _sig = format!(
+                                        let sig = format!(
                                             "fn {}({}) -> {}",
                                             m_name,
                                             p_str,
                                             return_type.as_deref().unwrap_or("Nil")
                                         );
-                                        struct_methods.push(m_name.clone());
+                                        if !struct_methods.contains(m_name) {
+                                            struct_methods.push(m_name.clone());
+                                        }
+                                        if !method_details.iter().any(|existing: &ide::ScannedMethod| existing.name == *m_name) {
+                                            method_details.push(ide::ScannedMethod {
+                                                name: m_name.clone(),
+                                                signature: sig,
+                                                doc: m_doc,
+                                                return_type: return_type.clone(),
+                                                params: params.iter().map(|p| (p.name.clone(), p.type_name.clone())).collect(),
+                                            });
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                    scanned_structs.push(ide::ScannedStruct {
-                        name: name.clone(),
-                        fields: fields.clone(),
-                        methods: struct_methods,
-                    });
+                    if let Some(existing) = scanned_structs.iter_mut().find(|s| s.name == *name) {
+                        existing.fields = fields.clone();
+                        for m in struct_methods {
+                            if !existing.methods.contains(&m) {
+                                existing.methods.push(m);
+                            }
+                        }
+                        for md in method_details {
+                            if !existing.method_details.iter().any(|e| e.name == md.name) {
+                                existing.method_details.push(md);
+                            }
+                        }
+                        if existing.doc.is_none() {
+                            existing.doc = struct_doc;
+                        }
+                    } else {
+                        scanned_structs.push(ide::ScannedStruct {
+                            name: name.clone(),
+                            fields: fields.clone(),
+                            methods: struct_methods,
+                            method_details,
+                            doc: struct_doc,
+                        });
+                    }
                     None
                 }
                 _ => None,
             },
-            crate::parser::Stmt::StructDecl { name, fields, .. } => {
+            crate::parser::Stmt::StructDecl { name, fields, annotations, .. } => {
+                let mut struct_doc = None;
+                for ann in annotations {
+                    if ann.name == "Docs" {
+                        if let Some(s) = ann.args.get(0) {
+                            struct_doc = Some(s.trim_matches('"').to_string());
+                        }
+                    }
+                }
                 let mut struct_methods = Vec::new();
-                for stmt in &imported_module_decls {
-                    if let crate::parser::Stmt::ImplDecl {
-                        target_type,
-                        methods,
-                        ..
-                    } = stmt
-                    {
+                let mut method_details = Vec::new();
+                for other_stmt in &all_decls {
+                    let impl_cand = match other_stmt {
+                        crate::parser::Stmt::ImplDecl { target_type, methods, .. } => Some((target_type, methods)),
+                        crate::parser::Stmt::ExportDecl(inner, _) => match &**inner {
+                            crate::parser::Stmt::ImplDecl { target_type, methods, .. } => Some((target_type, methods)),
+                            _ => None,
+                        },
+                        _ => None,
+                    };
+                    if let Some((target_type, methods)) = impl_cand {
                         if target_type == name {
                             for m in methods {
                                 if let crate::parser::Stmt::FuncDecl {
@@ -564,11 +620,11 @@ pub fn analyze_file_for_json(
                                     ..
                                 } = m
                                 {
-                                    let mut _doc_str = String::new();
+                                    let mut m_doc = None;
                                     for ann in annotations {
                                         if ann.name == "Docs" {
                                             if let Some(s) = ann.args.get(0) {
-                                                _doc_str = s.trim_matches('"').to_string();
+                                                m_doc = Some(s.trim_matches('"').to_string());
                                             }
                                         }
                                     }
@@ -577,23 +633,53 @@ pub fn analyze_file_for_json(
                                         .map(|p| format!("{}: {}", p.name, p.type_name))
                                         .collect::<Vec<_>>()
                                         .join(", ");
-                                    let _sig = format!(
+                                    let sig = format!(
                                         "fn {}({}) -> {}",
                                         m_name,
                                         p_str,
                                         return_type.as_deref().unwrap_or("Nil")
                                     );
-                                    struct_methods.push(m_name.clone());
+                                    if !struct_methods.contains(m_name) {
+                                        struct_methods.push(m_name.clone());
+                                    }
+                                    if !method_details.iter().any(|existing: &ide::ScannedMethod| existing.name == *m_name) {
+                                        method_details.push(ide::ScannedMethod {
+                                            name: m_name.clone(),
+                                            signature: sig,
+                                            doc: m_doc,
+                                            return_type: return_type.clone(),
+                                            params: params.iter().map(|p| (p.name.clone(), p.type_name.clone())).collect(),
+                                        });
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                scanned_structs.push(ide::ScannedStruct {
-                    name: name.clone(),
-                    fields: fields.clone(),
-                    methods: struct_methods,
-                });
+                if let Some(existing) = scanned_structs.iter_mut().find(|s| s.name == *name) {
+                    existing.fields = fields.clone();
+                    for m in struct_methods {
+                        if !existing.methods.contains(&m) {
+                            existing.methods.push(m);
+                        }
+                    }
+                    for md in method_details {
+                        if !existing.method_details.iter().any(|e| e.name == md.name) {
+                            existing.method_details.push(md);
+                        }
+                    }
+                    if existing.doc.is_none() {
+                        existing.doc = struct_doc;
+                    }
+                } else {
+                    scanned_structs.push(ide::ScannedStruct {
+                        name: name.clone(),
+                        fields: fields.clone(),
+                        methods: struct_methods,
+                        method_details,
+                        doc: struct_doc,
+                    });
+                }
                 None
             }
             _ => None,
@@ -629,11 +715,18 @@ pub fn analyze_file_for_json(
 
             let doc_text = doc_str.clone().unwrap_or(sig.clone());
 
-            scanned_vars.push(ide::ScannedVar {
-                name: name.clone(),
-                typ: Some(sig.clone()),
-                doc: doc_str.clone(),
-            });
+            if let Some(existing) = scanned_vars.iter_mut().find(|v| v.name == *name) {
+                existing.typ = Some(sig.clone());
+                if doc_str.is_some() {
+                    existing.doc = doc_str.clone();
+                }
+            } else {
+                scanned_vars.push(ide::ScannedVar {
+                    name: name.clone(),
+                    typ: Some(sig.clone()),
+                    doc: doc_str.clone(),
+                });
+            }
             let (actual_label, sort_text) = if is_annotation {
                 (format!("@{}", name), Some("1_".to_string()))
             } else {
@@ -723,6 +816,23 @@ pub fn analyze_file_for_json(
         }
     }
 
+    if let Some(tc) = &tc_opt {
+        for var in &mut scanned_vars {
+            if let Some(vinfo) = tc.lookup_var(&var.name) {
+                let inferred_name = match &vinfo.ty {
+                    crate::typechecker::Type::Named(n) => Some(n.clone()),
+                    crate::typechecker::Type::Struct(n) => Some(n.clone()),
+                    _ => None,
+                };
+                if let Some(name) = inferred_name {
+                    if name != "Unknown" {
+                        var.typ = Some(name);
+                    }
+                }
+            }
+        }
+    }
+
     let (namespace, member_prefix) = extract_member_context(current_line, cursor_col);
     // eprintln!("DEBUG_CONTEXT: namespace={:?}, prefix={:?}, line='{}', col={}", namespace, member_prefix, current_line, cursor_col);
 
@@ -778,34 +888,53 @@ pub fn analyze_file_for_json(
                         {
                             if let Some(t) = &var.typ {
                                 if t.starts_with("fn ") {
+                                    let doc = if let Some(d) = &var.doc {
+                                        format!("```flame\n{}\n```\n\n{}", t, d)
+                                    } else {
+                                        format!("```flame\n{}\n```", t)
+                                    };
                                     exact_ast_hover = Some(JsonHover {
                                         label: word_under_cursor.clone(),
-                                        documentation: Some(format!(
-                                            "```flame\n{}\n```\nDefined in project",
-                                            t
-                                        )),
+                                        documentation: Some(doc),
                                     });
                                 }
                             }
                         }
                         if exact_ast_hover.is_none() && !word_under_cursor.is_empty() {
                             let sig = format!("fn {}{}", word_under_cursor, &ty_str[2..]);
+                            let doc = if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
+                                if let Some(d) = &var.doc {
+                                    format!("```flame\n{}\n```\n\n{}", sig, d)
+                                } else {
+                                    format!("```flame\n{}\n```", sig)
+                                }
+                            } else {
+                                format!("```flame\n{}\n```", sig)
+                            };
                             exact_ast_hover = Some(JsonHover {
                                 label: word_under_cursor.clone(),
-                                documentation: Some(format!(
-                                    "```flame\n{}\n```\nDefined in project",
-                                    sig
-                                )),
+                                documentation: Some(doc),
                             });
                         }
                     } else if !word_under_cursor.is_empty() {
                         let sig = format!("{}: {}", word_under_cursor, ty_str);
+                        let struct_doc = scanned_structs.iter().find(|s| s.name == *ty_str).and_then(|s| s.doc.clone());
+                        let doc = if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
+                            if let Some(d) = &var.doc {
+                                format!("```flame\nlet {}\n```\n\n{}", sig, d)
+                            } else if let Some(sdoc) = &struct_doc {
+                                format!("```flame\nlet {}\n```\n\n{}", sig, sdoc)
+                            } else {
+                                format!("```flame\nlet {}\n```", sig)
+                            }
+                        } else if let Some(sdoc) = &struct_doc {
+                            format!("```flame\nlet {}\n```\n\n{}", sig, sdoc)
+                        } else {
+                            format!("```flame\nlet {}\n```", sig)
+                        };
                         exact_ast_hover = Some(JsonHover {
                             label: word_under_cursor.clone(),
-                            documentation: Some(format!(
-                                "```flame\n{}\n```\nInferred type from AST",
-                                sig
-                            )),
+                            documentation: Some(doc),
                         });
                     }
                 }
@@ -819,15 +948,18 @@ pub fn analyze_file_for_json(
         if let Some(var) = scanned_vars.iter().find(|v| v.name == word_under_cursor) {
             if let Some(t) = &var.typ {
                 if t != "Unknown" {
-                    let (code_block, source_msg) =
+                    let (code_block, doc_body) =
                         if t.starts_with("import:") {
                             let imported = &t["import:".len()..];
                             (
                                 format!("import {} as {}", imported, word_under_cursor),
-                                format!("Imported module `{}`", imported),
+                                var.doc.clone().unwrap_or_else(|| format!("Imported module `{}`", imported)),
                             )
                         } else if t.starts_with("fn ") || t.starts_with("annotation ") {
-                            (t.clone(), "Defined in project".to_string())
+                            (
+                                t.clone(),
+                                var.doc.clone().unwrap_or_default(),
+                            )
                         } else if let Some(mod_name) = native_modules.iter().find(|m| {
                             load_meta_from_project(&manifest_dir, m)
                                 .map_or(false, |meta| meta.structs.iter().any(|s| s.name == *t))
@@ -837,17 +969,24 @@ pub fn analyze_file_for_json(
                                 format!("Struct type from native module '{}'", mod_name),
                             )
                         } else {
+                            let struct_doc = scanned_structs.iter().find(|s| s.name == *t).and_then(|s| s.doc.clone());
                             (
                                 format!("{}: {}", word_under_cursor, t),
-                                "Inferred type from AST".to_string(),
+                                var.doc.clone().or(struct_doc).unwrap_or_default(),
                             )
                         };
+                    let documentation = if doc_body.is_empty() {
+                        format!("```flame\nlet {}\n```", code_block)
+                    } else if doc_body.starts_with("```") {
+                        doc_body
+                    } else if t.starts_with("fn ") || t.starts_with("annotation ") {
+                        format!("```flame\n{}\n```\n\n{}", code_block, doc_body)
+                    } else {
+                        format!("```flame\nlet {}\n```\n\n{}", code_block, doc_body)
+                    };
                     scanned_var_hover = Some(JsonHover {
                         label: word_under_cursor.clone(),
-                        documentation: Some(format!(
-                            "```flame\n{}\n```\n{}",
-                            code_block, source_msg
-                        )),
+                        documentation: Some(documentation),
                     });
                 }
             }
@@ -925,18 +1064,53 @@ pub fn analyze_file_for_json(
                     let mut provided = false;
                     for s in &scanned_structs {
                         if s.name == *typ {
-                            for func_name in &s.methods {
+                            for (field_name, field_type) in &s.fields {
                                 if member_prefix
                                     .as_deref()
-                                    .map_or(true, |p| func_name.starts_with(p))
+                                    .map_or(true, |p| field_name.starts_with(p))
                                 {
                                     completions.push(JsonCompletion {
-                                        sort_text: None,
-                                        label: func_name.clone(),
-                                        kind: "method".to_string(),
-                                        detail: format!("struct {}", typ),
-                                        documentation: None,
+                                        sort_text: Some("0_".to_string()),
+                                        label: field_name.clone(),
+                                        kind: "property".to_string(),
+                                        detail: format!("{}: {}", field_name, field_type),
+                                        documentation: Some(format!("```flame\n{}.{}: {}\n```\nField of `{}`", typ, field_name, field_type, typ)),
                                     });
+                                }
+                            }
+                            for m in &s.method_details {
+                                if member_prefix
+                                    .as_deref()
+                                    .map_or(true, |p| m.name.starts_with(p))
+                                {
+                                    let doc = if let Some(d) = &m.doc {
+                                        Some(format!("```flame\n{}\n```\n\n{}", m.signature, d))
+                                    } else {
+                                        Some(format!("```flame\n{}\n```", m.signature))
+                                    };
+                                    completions.push(JsonCompletion {
+                                        sort_text: Some("1_".to_string()),
+                                        label: m.name.clone(),
+                                        kind: "method".to_string(),
+                                        detail: m.signature.clone(),
+                                        documentation: doc,
+                                    });
+                                }
+                            }
+                            if s.method_details.is_empty() {
+                                for func_name in &s.methods {
+                                    if member_prefix
+                                        .as_deref()
+                                        .map_or(true, |p| func_name.starts_with(p))
+                                    {
+                                        completions.push(JsonCompletion {
+                                            sort_text: Some("1_".to_string()),
+                                            label: func_name.clone(),
+                                            kind: "method".to_string(),
+                                            detail: format!("struct {}", typ),
+                                            documentation: None,
+                                        });
+                                    }
                                 }
                             }
                             provided = true;
@@ -975,9 +1149,17 @@ pub fn analyze_file_for_json(
                             if let Some(tc) = &tc_opt {
                                 if let Some(methods) = tc.methods.get(typ) {
                                     if let Some((_, sig)) = methods.iter().find(|(name, _)| *name == &word_under_cursor) {
+                                        let params_str = sig.params.iter().map(|p| format!("{}: {:?}", p.name, p.ty)).collect::<Vec<_>>().join(", ");
+                                        let return_str = if sig.return_type == crate::typechecker::Type::Nil { "".to_string() } else { format!(" -> {:?}", sig.return_type) };
+                                        let fallback = format!("```flame\nfn {}({}){}\n```", word_under_cursor, params_str, return_str);
+                                        let doc = if let Some(d) = &sig.hover_doc {
+                                            format!("{}\n\n{}", fallback, d)
+                                        } else {
+                                            fallback
+                                        };
                                         hover_found = Some(JsonHover {
                                             label: format!("{}::{}()", typ, word_under_cursor),
-                                            documentation: sig.hover_doc.clone().or_else(|| Some(format!("```flame\nfn {}(...)\n```", word_under_cursor)))
+                                            documentation: Some(doc)
                                         });
                                     }
                                 }
@@ -986,6 +1168,25 @@ pub fn analyze_file_for_json(
                             if hover_found.is_none() {
                                 for s in &scanned_structs {
                                     if s.name == *typ {
+                                        if let Some(m) = s.method_details.iter().find(|m| m.name == word_under_cursor) {
+                                            let doc = if let Some(d) = &m.doc {
+                                                format!("```flame\n{}\n```\n\n{}", m.signature, d)
+                                            } else {
+                                                format!("```flame\n{}\n```", m.signature)
+                                            };
+                                            hover_found = Some(JsonHover {
+                                                label: format!("{}::{}()", typ, m.name),
+                                                documentation: Some(doc),
+                                            });
+                                            break;
+                                        }
+                                        if let Some((field_name, field_type)) = s.fields.iter().find(|(f, _)| f == &word_under_cursor) {
+                                            hover_found = Some(JsonHover {
+                                                label: format!("{}.{}: {}", typ, field_name, field_type),
+                                                documentation: Some(format!("```flame\n{}.{}: {}\n```\nField of `{}`", typ, field_name, field_type, typ)),
+                                            });
+                                            break;
+                                        }
                                         if let Some(func_name) =
                                             s.methods.iter().find(|&f| f == &word_under_cursor)
                                         {
@@ -993,10 +1194,11 @@ pub fn analyze_file_for_json(
                                             hover_found = Some(JsonHover {
                                                 label: format!("{}::{}()", typ, func_name),
                                                 documentation: Some(format!(
-                                                    "```flame\n{}\n```\nDefined in project",
+                                                    "```flame\n{}\n```",
                                                     sig
                                                 )),
                                             });
+                                            break;
                                         }
                                     }
                                 }
@@ -2939,15 +3141,54 @@ fn load_imported_module_declarations(
 
     for cap in import_re.captures_iter(&content) {
         let module_path = cap[1].to_string();
-        if module_path == "std"
-            || module_path == "native"
-            || module_path.starts_with("std.")
-            || module_path.starts_with("native.")
-        {
+        if module_path == "native" || module_path.starts_with("native.") {
             continue;
         }
 
         let path_parts: Vec<String> = module_path.split('.').map(|s| s.to_string()).collect();
+
+        let std_source = if module_path == "std" || module_path.starts_with("std.") {
+            let mut found = None;
+            for part in path_parts.iter().rev() {
+                let candidate = format!("{}.fm", part);
+                if let Some((_, src)) = crate::blaze::EMBEDDED_BLAZE_STD.iter().find(|(name, _)| *name == candidate) {
+                    found = Some((*src).to_string());
+                    break;
+                }
+            }
+            found
+        } else {
+            None
+        };
+
+        if let Some(src) = std_source {
+            let mut lexer = Lexer::new(&src);
+            let mut tokens = Vec::new();
+            loop {
+                let tok = lexer.next_token();
+                let is_eof = tok.kind == crate::lexer::TokenKind::EOF;
+                tokens.push(tok);
+                if is_eof {
+                    break;
+                }
+            }
+            let mut parser = Parser::new(tokens, format!("<std::{}>", module_path));
+            if let Ok(parsed_stmts) = parser.parse() {
+                for stmt in parsed_stmts {
+                    if let crate::parser::Stmt::ExportDecl(inner, _) = &stmt {
+                        results.push((**inner).clone());
+                    } else if let crate::parser::Stmt::PackageDecl { .. } = &stmt {
+                        results.push(stmt.clone());
+                    } else if let crate::parser::Stmt::ImplDecl { .. } = &stmt {
+                        results.push(stmt.clone());
+                    } else if let crate::parser::Stmt::StructDecl { .. } = &stmt {
+                        results.push(stmt.clone());
+                    }
+                }
+            }
+            continue;
+        }
+
         let file_path = crate::stdlib::locate_import_file(Path::new(current_file), &path_parts)
             .or_else(|| {
                 let pkg_main = _manifest_dir
@@ -2995,6 +3236,10 @@ fn load_imported_module_declarations(
                             if let crate::parser::Stmt::ExportDecl(inner, _) = &stmt {
                                 results.push((**inner).clone());
                             } else if let crate::parser::Stmt::PackageDecl { .. } = &stmt {
+                                results.push(stmt.clone());
+                            } else if let crate::parser::Stmt::ImplDecl { .. } = &stmt {
+                                results.push(stmt.clone());
+                            } else if let crate::parser::Stmt::StructDecl { .. } = &stmt {
                                 results.push(stmt.clone());
                             }
                         }

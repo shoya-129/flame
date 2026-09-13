@@ -92,7 +92,7 @@ pub fn run_update_command(args: &[String]) {
                 let mut target_dirs = Vec::new();
 
                 if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
-                    if cargo_bin.exists() {
+                    if cargo_bin.exists() && !target_dirs.contains(&cargo_bin) {
                         target_dirs.push(cargo_bin);
                     }
                 }
@@ -104,40 +104,110 @@ pub fn run_update_command(args: &[String]) {
                         }
                     }
                 }
+                if let Ok(home) = std::env::var("HOME") {
+                    let local_bin = PathBuf::from(home).join(".local").join("bin");
+                    if local_bin.exists() && !target_dirs.contains(&local_bin) {
+                        target_dirs.push(local_bin);
+                    }
+                }
+                let usr_local_bin = PathBuf::from("/usr/local/bin");
+                if usr_local_bin.exists() && !target_dirs.contains(&usr_local_bin) {
+                    target_dirs.push(usr_local_bin);
+                }
 
+                // Locate the newly installed/compiled binary produced by Cargo
+                let mut source_bin = None;
+                if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
+                    let flamelang_bin = if cfg!(windows) {
+                        cargo_bin.join("flamelang.exe")
+                    } else {
+                        cargo_bin.join("flamelang")
+                    };
+                    let fmp_bin = if cfg!(windows) {
+                        cargo_bin.join("fmp.exe")
+                    } else {
+                        cargo_bin.join("fmp")
+                    };
+                    if flamelang_bin.exists() {
+                        source_bin = Some(flamelang_bin);
+                    } else if fmp_bin.exists() {
+                        source_bin = Some(fmp_bin);
+                    }
+                }
+
+                if source_bin.is_none() {
+                    for dir in &target_dirs {
+                        let flamelang_bin = if cfg!(windows) {
+                            dir.join("flamelang.exe")
+                        } else {
+                            dir.join("flamelang")
+                        };
+                        let fmp_bin = if cfg!(windows) {
+                            dir.join("fmp.exe")
+                        } else {
+                            dir.join("fmp")
+                        };
+                        if flamelang_bin.exists() {
+                            source_bin = Some(flamelang_bin);
+                            break;
+                        } else if fmp_bin.exists() {
+                            source_bin = Some(fmp_bin);
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(ref src) = source_bin {
+                    for dir in &target_dirs {
+                        let fmp_bin = if cfg!(windows) {
+                            dir.join("fmp.exe")
+                        } else {
+                            dir.join("fmp")
+                        };
+
+                        if let Err(_e) = safe_replace_binary(src, &fmp_bin, &mut pending_cleanup) {
+                            // Directory might not be writable (e.g. /usr/local/bin without sudo), ignore
+                        } else {
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                let _ = fs::set_permissions(&fmp_bin, fs::Permissions::from_mode(0o755));
+                            }
+                            println!("  Synchronized 'fmp' binary to: {}", fmp_bin.display());
+                        }
+
+                        // Write fmp command shims on Windows
+                        if cfg!(windows) {
+                            let _ = fs::write(dir.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
+                            let _ = fs::write(dir.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
+                        }
+
+                        // Remove leftover flamelang and flame shims
+                        let _ = fs::remove_file(dir.join("flamelang.cmd"));
+                        let _ = fs::remove_file(dir.join("flamelang.bat"));
+                        let _ = fs::remove_file(dir.join("flame.cmd"));
+                        let _ = fs::remove_file(dir.join("flame.bat"));
+                    }
+                }
+
+                // After all target directories have received the new fmp binary, clean up any transitional/legacy binaries
                 for dir in &target_dirs {
                     let flamelang_bin = if cfg!(windows) {
                         dir.join("flamelang.exe")
                     } else {
                         dir.join("flamelang")
                     };
-                    let fmp_bin = if cfg!(windows) {
-                        dir.join("fmp.exe")
-                    } else {
-                        dir.join("fmp")
-                    };
                     let flame_bin = if cfg!(windows) {
                         dir.join("flame.exe")
                     } else {
                         dir.join("flame")
                     };
-
-                    let source_bin = if flamelang_bin.exists() {
-                        Some(flamelang_bin.clone())
-                    } else if fmp_bin.exists() {
-                        Some(fmp_bin.clone())
-                    } else if flame_bin.exists() {
-                        Some(flame_bin.clone())
+                    let fmp_bin = if cfg!(windows) {
+                        dir.join("fmp.exe")
                     } else {
-                        None
+                        dir.join("fmp")
                     };
 
-                    if let Some(ref src) = source_bin {
-                        // Safely replace fmp binary (renames if locked by current running process)
-                        let _ = safe_replace_binary(src, &fmp_bin, &mut pending_cleanup);
-                    }
-
-                    // Remove transitional flamelang binary completely
                     if flamelang_bin.exists() && flamelang_bin != fmp_bin {
                         if fs::remove_file(&flamelang_bin).is_err() {
                             let temp_name = format!("{}.deleteme.{}", flamelang_bin.display(), std::process::id());
@@ -146,11 +216,10 @@ pub fn run_update_command(args: &[String]) {
                                 pending_cleanup.push(temp_path);
                             }
                         } else {
-                            println!("  Removed 'flamelang' binary: {}", flamelang_bin.display());
+                            println!("  Removed transitional 'flamelang' binary: {}", flamelang_bin.display());
                         }
                     }
 
-                    // Remove flame binary completely (only fmp is supported)
                     if flame_bin.exists() && flame_bin != fmp_bin {
                         if fs::remove_file(&flame_bin).is_err() {
                             let temp_name = format!("{}.deleteme.{}", flame_bin.display(), std::process::id());
@@ -159,20 +228,8 @@ pub fn run_update_command(args: &[String]) {
                                 pending_cleanup.push(temp_path);
                             }
                         } else {
-                            println!("  Removed 'flame' binary: {}", flame_bin.display());
+                            println!("  Removed legacy 'flame' binary: {}", flame_bin.display());
                         }
-                    }
-
-                    // Remove leftover flamelang and flame shims
-                    let _ = fs::remove_file(dir.join("flamelang.cmd"));
-                    let _ = fs::remove_file(dir.join("flamelang.bat"));
-                    let _ = fs::remove_file(dir.join("flame.cmd"));
-                    let _ = fs::remove_file(dir.join("flame.bat"));
-
-                    // Write fmp command shims on Windows
-                    if cfg!(windows) {
-                        let _ = fs::write(dir.join("fmp.cmd"), "@\"%~dp0fmp.exe\" %*\n");
-                        let _ = fs::write(dir.join("fmp.bat"), "@\"%~dp0fmp.exe\" %*\n");
                     }
                 }
 

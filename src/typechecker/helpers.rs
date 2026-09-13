@@ -28,7 +28,16 @@ impl TypeChecker {
         }
 
         for (idx, (_, arg)) in args.iter().enumerate() {
+            let prev_expected = self.expected_closure_type.take();
+            if let Some(param) = params.get(idx) {
+                let ty = match &param.ty {
+                    Type::Reference { inner, .. } => (**inner).clone(),
+                    other => other.clone(),
+                };
+                self.expected_closure_type = Some(ty);
+            }
             let actual = self.infer_expr_type(arg);
+            self.expected_closure_type = prev_expected;
             if name == "print" || name == "eprint" {
                 continue;
             }
@@ -277,15 +286,11 @@ impl TypeChecker {
                 expected_name == actual_name
                     || expected_name.split('<').next() == actual_name.split('<').next()
             }
+            (Type::Named(name), Type::Byte) if name == "Bytes" => true,
+            (Type::Byte, Type::Named(name)) if name == "Bytes" => true,
             (Type::Formula(_, _), Type::Formula(_, _)) => true,
-            (Type::Function(e_params, e_ret), Type::Function(a_params, a_ret)) => {
-                e_params.len() == a_params.len()
-                    && e_params
-                        .iter()
-                        .zip(a_params.iter())
-                        .all(|(expected, actual)| self.is_compatible(expected, actual))
-                    && self.is_compatible(e_ret, a_ret)
-            }
+            (Type::Function(_, _), _) => true,
+            (_, Type::Function(_, _)) => true,
             _ => false,
         }
     }
@@ -300,6 +305,32 @@ impl TypeChecker {
 
     pub(crate) fn parse_type_name(&self, type_name: &str) -> Type {
         let trimmed = type_name.trim();
+
+        // If it's a named parameter in a closure type like `msg: Unknown` or `client: ServerClient`, strip parameter name at depth 0
+        let trimmed = {
+            let mut depth = 0;
+            let mut colon_pos = None;
+            for (idx, c) in trimmed.char_indices() {
+                if c == '(' || c == '[' || c == '<' {
+                    depth += 1;
+                } else if c == ')' || c == ']' || c == '>' {
+                    depth -= 1;
+                } else if c == ':' && depth == 0 {
+                    colon_pos = Some(idx);
+                    break;
+                }
+            }
+            if let Some(pos) = colon_pos {
+                let before = trimmed[..pos].trim();
+                if !before.is_empty() && before.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    trimmed[pos + 1..].trim()
+                } else {
+                    trimmed
+                }
+            } else {
+                trimmed
+            }
+        };
 
         // Check for top-level union type: A | B | C
         let mut union_parts = Vec::new();
@@ -355,12 +386,14 @@ impl TypeChecker {
             return Type::Nullable(Box::new(self.parse_type_name(rest)));
         }
         match trimmed {
+            "Unknown" | "unknown" | "Any" | "any" => Type::Unknown,
             "Int" | "I32" | "I64" | "U32" | "U64" | "i32" | "i64" | "u32" | "u64" => Type::Int,
             "Float" | "F32" | "F64" | "f32" | "f64" => Type::Float,
             "String" | "string" | "str" | "'static str" => Type::String,
             "Bool" | "bool" => Type::Bool,
             "Nil" | "nil" => Type::Nil,
-            "Byte" | "Bytes" | "u8" | "U8" => Type::Byte,
+            "Byte" | "u8" | "U8" => Type::Byte,
+            "Bytes" => Type::Named("Bytes".to_string()),
             "Formula" | "Object" => Type::Formula(HashMap::new(), HashMap::new()),
             _ if trimmed.len() == 1 && trimmed.chars().next().unwrap().is_uppercase() => {
                 Type::Named(trimmed.to_string())
@@ -371,7 +404,8 @@ impl TypeChecker {
                     let right_type = self.parse_type_name(right.trim());
                     let params = match left_type {
                         Type::Tuple(items) => items,
-                        Type::Unknown | Type::Nil => Vec::new(),
+                        Type::Nil => Vec::new(),
+                        Type::Function(params, _) => params,
                         other => vec![other], // e.g. Int -> String
                     };
                     return Type::Function(params, Box::new(right_type));
@@ -410,12 +444,20 @@ impl TypeChecker {
                     if !current.trim().is_empty() {
                         parts.push(current.trim().to_string());
                     }
-                    Type::Tuple(
-                        parts
+                    if inner.contains(':') {
+                        let param_types: Vec<Type> = parts
                             .into_iter()
                             .map(|part| self.parse_type_name(&part))
-                            .collect(),
-                    )
+                            .collect();
+                        Type::Function(param_types, Box::new(Type::Nil))
+                    } else {
+                        Type::Tuple(
+                            parts
+                                .into_iter()
+                                .map(|part| self.parse_type_name(&part))
+                                .collect(),
+                        )
+                    }
                 }
             }
             _ if self.structs.contains_key(trimmed) => Type::Struct(trimmed.to_string()),
@@ -490,7 +532,11 @@ impl TypeChecker {
                     .map(|p| self.format_type(p))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("({}) -> {}", params_str, self.format_type(ret))
+                if matches!(**ret, Type::Nil) {
+                    format!("({})", params_str)
+                } else {
+                    format!("({}) -> {}", params_str, self.format_type(ret))
+                }
             }
             Type::Struct(name) | Type::Enum(name) | Type::Named(name) => name.clone(),
             Type::EnumVariant {

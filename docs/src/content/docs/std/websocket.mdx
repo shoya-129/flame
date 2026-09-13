@@ -1,0 +1,239 @@
+---
+title: WebSockets (std.net.ws)
+description: Production-grade, high-performance WebSocket client and server subsystem in Flame.
+---
+
+import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+
+Flame includes a built-in, native, high-performance WebSocket subsystem in the standard library (`std.net.ws`). It supports full-duplex communication, RFC 6455 compliant text and binary frames, server broadcasting, asynchronous streaming, and zero-copy thread channel bridging.
+
+<Aside type="tip" title="No External Dependencies Required">
+The WebSocket engine is built directly into Flame's native standard library runtime. You do not need third-party packages or complex setup to create real-time chat gateways, game servers, or IoT telemetry streams.
+</Aside>
+
+## Quick Start
+
+### 1. Real-Time Chat Server with Broadcast
+
+To start a WebSocket server, call `ws.Socket.listen(addr)` or `ws.listen(addr)`. Event callbacks use Flame's closure syntax `(params) { ... }`. Parameter types such as `client: ServerClient` and `bytes: Bytes` are inferred automatically, giving you full IDE autocomplete and hover documentation:
+
+```flame
+import std.net.ws
+
+let s = ws.Socket.listen("127.0.0.1:8080")
+println($"[Server] Listening on {s.address} (port: {s.port})")
+
+// Client connection event
+s.onConnect((client) {
+    println($"[+] Client connected: {client.id} from {client.address}")
+    client.send("Welcome to Flame Realtime Gateway!")
+})
+
+// Text message frame event
+s.onMessage((client, msg) {
+    println($"[{client.id}] {msg}")
+    // Broadcast to all connected clients
+    s.broadcast($"[{client.id}]: {msg}")
+})
+
+// Binary data frame event
+s.onBinary((client, bytes) {
+    println($"[{client.id}] Received {bytes.len()} bytes")
+    // Echo raw binary payload back to client
+    client.sendBytes(bytes)
+})
+
+// Disconnect event
+s.onClose((client, code, reason) {
+    println($"[-] Client {client.id} disconnected (code: {code}, reason: {reason})")
+})
+
+// Error event
+s.onError((client, err) {
+    println($"[!] Client {client.id} error: {err}")
+})
+```
+
+---
+
+### 2. WebSocket Client
+
+Connect to any WebSocket server using `ws.Socket.connect(url)` or `ws.connect(url)`:
+
+```flame
+import std.net.ws
+
+let socket = ws.Socket.connect("ws://127.0.0.1:8080")
+
+socket.onMessage((msg) {
+    println($"Server says: {msg}")
+})
+
+socket.onBinary((bytes) {
+    println($"Received binary data: {bytes.len()} bytes (hex: {bytes.toHex()})")
+})
+
+socket.onClose((code, reason) {
+    println($"Disconnected from server: {code}")
+})
+
+socket.send("Hello from Flame Client!")
+```
+
+---
+
+### 3. Binary Frame Processing (`Bytes`)
+
+Binary WebSocket frames are received as `Bytes` objects with built-in manipulation methods:
+
+```flame
+import std.net.ws
+import std.byte
+
+let s = ws.Socket.listen("127.0.0.1:8080")
+
+s.onBinary((client, bytes) {
+    println($"Payload length: {bytes.len()} bytes")
+    println($"Hex preview: {bytes.toHex()}")
+    
+    // Extract slice
+    let header = bytes.slice(0, 4)
+    
+    // Decode as string
+    let text = bytes.toString()
+    
+    // Send binary back
+    client.sendBytes(bytes)
+})
+```
+
+---
+
+### 4. Message Streaming & Thread Channel Bridging
+
+You can convert any WebSocket client connection into an asynchronous message `Stream` or bridge it directly into Flame's native `std.thread` MPSC channels:
+
+```flame
+import std.net.ws
+import std.thread as th
+
+let socket = ws.connect("ws://127.0.0.1:8080")
+
+// Option A: Asynchronous stream iteration
+let stream = socket.messages()
+stream.forEach((msg) {
+    println($"Streamed message: {msg}")
+})
+
+// Option B: Bridge directly to thread channels
+let (tx, rx) = socket.messages().toChannel()
+
+th.spawn(|| {
+    while true {
+        let msg = rx.recv()
+        println($"Worker thread received: {msg}")
+    }
+})
+```
+
+---
+
+## Architecture & Types
+
+<CardGrid>
+  <Card title="ws.Socket" icon="setting">
+    Entrypoint factory providing `ws.Socket.connect(url)` and `ws.Socket.listen(addr)`.
+  </Card>
+  <Card title="Server" icon="laptop">
+    Active listener instance managing peer connections, lifecycle callbacks, and broadcast channels.
+  </Card>
+  <Card title="ClientSocket" icon="external">
+    Client socket handle providing `.send()`, `.sendBytes()`, `.recv()`, and event callbacks.
+  </Card>
+  <Card title="ServerClient" icon="information">
+    Per-connection client handle passed to server callbacks with `.id`, `.address`, and `.send()`.
+  </Card>
+  <Card title="Bytes" icon="document">
+    Zero-copy binary buffer with `.len()`, `.slice()`, `.toString()`, and `.toHex()`.
+  </Card>
+  <Card title="Stream" icon="random">
+    Event stream bridging incoming messages to `.forEach()`, `.onEach()`, and `(Sender, Receiver)` channels.
+  </Card>
+</CardGrid>
+
+---
+
+---
+
+## Closure Typing & Type Safety
+
+In Flame's type system, closure signatures on parameters (such as `(client: ServerClient, bytes: Byte)` or `(msg: String)`) are designed to maximize developer productivity while preserving safety:
+
+- **Type Safety Flexibility**: In terms of strict type safety, closure types are essentially dynamic (`Unknown`) for call-site argument matching. This ensures you can pass any closure `(client, bytes) { ... }` or pre-bound handler without encountering rigid function-pointer type mismatch errors.
+- **Hover Docs & Suggestions**: The closure types exist primarily for hover documentation and rich IDE suggestions. Inside the closure body, the LSP automatically provides autocomplete methods for `client.` (`send`, `sendBytes`, `close`, `id`, `address`) and `bytes.` (`len`, `slice`, `toString`, `toHex`).
+- **Implicit Nil Return**: For event listeners and callbacks that do not return a value, there is no need to write `-> Nil`. The runtime and type checker automatically treat void returns as `Nil`.
+
+---
+
+## API Reference
+
+### `Server` Methods
+
+| Method | Signature | Description |
+| :--- | :--- | :--- |
+| `onConnect` | `(callback: (client: ServerClient)) -> Server` | Registers a callback invoked when a new client connects. |
+| `onMessage` | `(callback: (client: ServerClient, msg: String)) -> Server` | Registers a callback invoked when a client transmits a UTF-8 text message. |
+| `onBinary` | `(callback: (client: ServerClient, bytes: Byte)) -> Server` | Registers a callback invoked when a client transmits a binary frame. |
+| `onClose` | `(callback: (client: ServerClient, code: Int, reason: String)) -> Server` | Registers a callback invoked when a client disconnects. |
+| `onError` | `(callback: (client: ServerClient, error: String)) -> Server` | Registers a callback invoked on protocol or transport errors. |
+| `onPing` | `(callback: (client: ServerClient, data: Byte)) -> Server` | Registers a callback invoked when a Ping control frame is received. |
+| `onPong` | `(callback: (client: ServerClient, data: Byte)) -> Server` | Registers a callback invoked when a Pong control frame is received. |
+| `broadcast` | `(data: String \| Byte)` | Broadcasts a message to all currently connected clients simultaneously. |
+| `connections` | `() -> Int` | Returns the count of currently active client connections. |
+| `close` | `()` | Gracefully closes all client connections and terminates the listener. |
+
+### `ServerClient` Methods & Properties
+
+| Member | Type / Signature | Description |
+| :--- | :--- | :--- |
+| `id` | `Int` | Unique sequential integer ID assigned to this connected client. |
+| `address` | `String` | Client remote IP and port string (e.g. `"127.0.0.1:54321"`). |
+| `send` | `(data: String \| Byte)` | Transmits a UTF-8 text message or raw binary frame to this client. |
+| `sendText` | `(text: String)` | Transmits a UTF-8 text frame to this client. |
+| `sendBytes` | `(bytes: Byte)` | Transmits a binary frame to this client. |
+| `ping` | `(data: String \| Byte)` | Transmits a Ping control frame to this client. |
+| `close` | `()` | Gracefully closes this client's WebSocket connection. |
+
+### `ClientSocket` Methods
+
+| Method | Signature | Description |
+| :--- | :--- | :--- |
+| `send` | `(data: String \| Byte)` | Sends a UTF-8 text message or binary payload to the server. |
+| `sendText` | `(text: String)` | Sends a UTF-8 text frame to the server. |
+| `sendBytes` | `(bytes: Byte)` | Sends a raw binary frame to the server. |
+| `recv` | `() -> String` | Synchronously blocks until the next text message arrives. |
+| `recvBytes` | `() -> Byte` | Synchronously blocks until the next binary frame arrives. |
+| `onMessage` | `(callback: (msg: String)) -> ClientSocket` | Registers a callback for incoming UTF-8 text messages. |
+| `onBinary` | `(callback: (bytes: Byte)) -> ClientSocket` | Registers a callback for incoming binary frames. |
+| `onClose` | `(callback: (code: Int, reason: String)) -> ClientSocket` | Registers a callback for connection close events. |
+| `onError` | `(callback: (err: String)) -> ClientSocket` | Registers a callback for connection errors. |
+| `messages` | `() -> Stream` | Returns an event `Stream` for asynchronous consumption. |
+| `close` | `()` | Gracefully disconnects from the server. |
+
+### `Bytes` Methods
+
+| Method | Signature | Description |
+| :--- | :--- | :--- |
+| `len` | `() -> Int` | Returns total buffer size in bytes. |
+| `slice` | `(start: Int, length: Int) -> Bytes` | Returns a sub-slice of the byte buffer. |
+| `toString` | `() -> String` | Decodes the byte buffer as a UTF-8 string. |
+| `toHex` | `() -> String` | Encodes the buffer as a lowercase hexadecimal string. |
+| `get` | `(index: Int) -> Int` | Returns the unsigned byte value at the zero-based index. |
+
+### `Stream` Methods
+
+| Method | Signature | Description |
+| :--- | :--- | :--- |
+| `forEach` | `(callback: (msg: String))` | Subscribes a consumer closure to incoming stream messages. |
+| `onEach` | `(callback: (msg: String))` | Subscribes an event closure to stream items. |
+| `toChannel` | `() -> (Sender, Receiver)` | Bridges the stream into a native `std.thread` MPSC channel. |

@@ -22,6 +22,7 @@ pub struct TypeChecker {
     pub plugin_functions: HashMap<String, HashMap<String, FunctionSig>>,
     pub annotations: HashSet<String>,
     pub is_importing: bool,
+    pub(crate) expected_closure_type: Option<Type>,
     pub defined_functions_in_file: HashMap<String, Vec<Option<String>>>,
     pub defined_types_in_file: HashMap<String, Vec<(String, Option<String>)>>,
 }
@@ -35,8 +36,7 @@ pub(crate) fn get_platform_annotation(annotations: &[Annotation]) -> Option<Stri
                 raw = raw[pos + 1..].trim();
             }
             let p = raw
-                .trim_matches('"')
-                .trim_matches('\'')
+                .trim_matches(|c| c == '\'' || c == '"' || c == '[' || c == ']')
                 .trim()
                 .to_lowercase();
             if !p.is_empty() {
@@ -74,6 +74,7 @@ impl TypeChecker {
             plugin_functions: HashMap::new(),
             annotations: HashSet::new(),
             is_importing: false,
+            expected_closure_type: None,
             defined_functions_in_file: HashMap::new(),
             defined_types_in_file: HashMap::new(),
         };
