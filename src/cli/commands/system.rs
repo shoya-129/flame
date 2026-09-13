@@ -26,18 +26,60 @@ fn safe_replace_binary(
     if !src.exists() || src == dst {
         return Ok(());
     }
-    if dst.exists() {
-        if fs::copy(src, dst).is_err() {
-            let temp_name = format!("{}.deleteme.{}", dst.display(), std::process::id());
-            let temp_path = PathBuf::from(&temp_name);
-            let _ = fs::remove_file(&temp_path);
-            fs::rename(dst, &temp_path)?;
-            pending_cleanup.push(temp_path);
-            fs::copy(src, dst)?;
-        }
-    } else {
-        fs::copy(src, dst)?;
+
+    let parent_dir = match dst.parent() {
+        Some(p) => p,
+        None => return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "destination has no parent")),
+    };
+
+    if !parent_dir.exists() {
+        fs::create_dir_all(parent_dir)?;
     }
+
+    let file_name = dst.file_name().unwrap_or_default().to_string_lossy();
+    let temp_dst = parent_dir.join(format!(".{}.tmp.{}", file_name, std::process::id()));
+
+    // Clean up any stale temp file
+    let _ = fs::remove_file(&temp_dst);
+
+    // 1. Copy fresh source to staging file in destination directory (guarantees same mount / filesystem)
+    fs::copy(src, &temp_dst)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&temp_dst, fs::Permissions::from_mode(0o755));
+    }
+
+    // 2. Try atomic rename over dst
+    // On Unix (Linux, macOS), rename(2) atomically replaces dst even if dst is currently running!
+    if let Err(_rename_err) = fs::rename(&temp_dst, dst) {
+        // Atomic rename failed (e.g. Windows file locking when dst is currently running/open)
+        if dst.exists() {
+            let deleteme_path = parent_dir.join(format!(".{}.deleteme.{}", file_name, std::process::id()));
+            let _ = fs::remove_file(&deleteme_path);
+
+            if fs::rename(dst, &deleteme_path).is_ok() {
+                pending_cleanup.push(deleteme_path);
+            } else {
+                // Direct unlink fallback
+                let _ = fs::remove_file(dst);
+            }
+        }
+
+        // Retry replacing dst with temp_dst
+        if fs::rename(&temp_dst, dst).is_err() {
+            fs::copy(&temp_dst, dst)?;
+            let _ = fs::remove_file(&temp_dst);
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(dst, fs::Permissions::from_mode(0o755));
+    }
+
     Ok(())
 }
 
@@ -89,45 +131,64 @@ pub fn run_update_command(args: &[String]) {
             Ok(s) if s.success() => {
                 println!("\x1b[1;34m[3/4]\x1b[0m Synchronizing 'fmp' binary...");
                 let mut pending_cleanup = Vec::new();
-                let mut target_dirs = Vec::new();
+                let mut target_dirs: Vec<PathBuf> = Vec::new();
+
+                let mut add_target_dir = |d: PathBuf| {
+                    if d.exists() && !target_dirs.iter().any(|existing| existing == &d) {
+                        target_dirs.push(d);
+                    }
+                };
 
                 if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
-                    if cargo_bin.exists() && !target_dirs.contains(&cargo_bin) {
-                        target_dirs.push(cargo_bin);
-                    }
+                    add_target_dir(cargo_bin);
                 }
                 if let Ok(cur) = std::env::current_exe() {
                     if let Some(parent) = cur.parent() {
-                        let pb = parent.to_path_buf();
-                        if !target_dirs.contains(&pb) && pb.exists() {
-                            target_dirs.push(pb);
+                        add_target_dir(parent.to_path_buf());
+                    }
+                    if let Ok(canonical) = fs::canonicalize(&cur) {
+                        if let Some(parent) = canonical.parent() {
+                            add_target_dir(parent.to_path_buf());
                         }
                     }
                 }
                 if let Ok(home) = std::env::var("HOME") {
                     let local_bin = PathBuf::from(home).join(".local").join("bin");
-                    if local_bin.exists() && !target_dirs.contains(&local_bin) {
-                        target_dirs.push(local_bin);
+                    add_target_dir(local_bin);
+                }
+                add_target_dir(PathBuf::from("/usr/local/bin"));
+
+                if cfg!(windows) {
+                    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+                        add_target_dir(PathBuf::from(user_profile).join(".cargo").join("bin"));
+                    }
+                    if let Ok(local_app) = std::env::var("LOCALAPPDATA") {
+                        add_target_dir(PathBuf::from(local_app).join("Blaze"));
                     }
                 }
-                let usr_local_bin = PathBuf::from("/usr/local/bin");
-                if usr_local_bin.exists() && !target_dirs.contains(&usr_local_bin) {
-                    target_dirs.push(usr_local_bin);
+
+                // Scan PATH for all directories containing any active flame/flamelang/fmp binaries
+                if let Some(path_var) = std::env::var_os("PATH") {
+                    for p in std::env::split_paths(&path_var) {
+                        let has_fmp = p.join(if cfg!(windows) { "fmp.exe" } else { "fmp" }).exists();
+                        let has_flamelang = p.join(if cfg!(windows) { "flamelang.exe" } else { "flamelang" }).exists();
+                        let has_flame = p.join(if cfg!(windows) { "flame.exe" } else { "flame" }).exists();
+                        if has_fmp || has_flamelang || has_flame {
+                            add_target_dir(p);
+                        }
+                    }
                 }
 
-                // Locate the newly installed/compiled binary produced by Cargo
-                let mut source_bin = None;
+                let fmp_name = if cfg!(windows) { "fmp.exe" } else { "fmp" };
+                let flamelang_name = if cfg!(windows) { "flamelang.exe" } else { "flamelang" };
+
+                // Locate the freshly compiled binary produced by Cargo
+                let mut source_bin: Option<PathBuf> = None;
+
+                // 1. Check Cargo bin directory where cargo install placed it
                 if let Some(cargo_bin) = dirs_fallback_cargo_bin() {
-                    let flamelang_bin = if cfg!(windows) {
-                        cargo_bin.join("flamelang.exe")
-                    } else {
-                        cargo_bin.join("flamelang")
-                    };
-                    let fmp_bin = if cfg!(windows) {
-                        cargo_bin.join("fmp.exe")
-                    } else {
-                        cargo_bin.join("fmp")
-                    };
+                    let flamelang_bin = cargo_bin.join(flamelang_name);
+                    let fmp_bin = cargo_bin.join(fmp_name);
                     if flamelang_bin.exists() {
                         source_bin = Some(flamelang_bin);
                     } else if fmp_bin.exists() {
@@ -135,18 +196,25 @@ pub fn run_update_command(args: &[String]) {
                     }
                 }
 
+                // 2. Check local target/release if compiled in local workspace
+                if source_bin.is_none() {
+                    let target_rel = PathBuf::from("target").join("release");
+                    if target_rel.exists() {
+                        let flamelang_bin = target_rel.join(flamelang_name);
+                        let fmp_bin = target_rel.join(fmp_name);
+                        if flamelang_bin.exists() {
+                            source_bin = Some(flamelang_bin);
+                        } else if fmp_bin.exists() {
+                            source_bin = Some(fmp_bin);
+                        }
+                    }
+                }
+
+                // 3. Fallback: Search all candidate target directories
                 if source_bin.is_none() {
                     for dir in &target_dirs {
-                        let flamelang_bin = if cfg!(windows) {
-                            dir.join("flamelang.exe")
-                        } else {
-                            dir.join("flamelang")
-                        };
-                        let fmp_bin = if cfg!(windows) {
-                            dir.join("fmp.exe")
-                        } else {
-                            dir.join("fmp")
-                        };
+                        let flamelang_bin = dir.join(flamelang_name);
+                        let fmp_bin = dir.join(fmp_name);
                         if flamelang_bin.exists() {
                             source_bin = Some(flamelang_bin);
                             break;
@@ -157,23 +225,62 @@ pub fn run_update_command(args: &[String]) {
                     }
                 }
 
-                if let Some(ref src) = source_bin {
-                    for dir in &target_dirs {
-                        let fmp_bin = if cfg!(windows) {
-                            dir.join("fmp.exe")
-                        } else {
-                            dir.join("fmp")
-                        };
+                if let Some(src) = source_bin {
+                    // Copy fresh source to an isolated temporary location so it cannot be
+                    // modified, deleted, or clobbered while we update target directories
+                    let temp_fresh_bin = std::env::temp_dir().join(format!(
+                        "flame_fresh_bin_{}_{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_millis())
+                            .unwrap_or(0)
+                    ));
 
-                        if let Err(_e) = safe_replace_binary(src, &fmp_bin, &mut pending_cleanup) {
-                            // Directory might not be writable (e.g. /usr/local/bin without sudo), ignore
-                        } else {
-                            #[cfg(unix)]
-                            {
-                                use std::os::unix::fs::PermissionsExt;
-                                let _ = fs::set_permissions(&fmp_bin, fs::Permissions::from_mode(0o755));
+                    if let Err(e) = fs::copy(&src, &temp_fresh_bin) {
+                        eprintln!("  \x1b[1;31merror:\x1b[0m Failed to stage updated binary from {}: {}", src.display(), e);
+                        return;
+                    }
+
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ = fs::set_permissions(&temp_fresh_bin, fs::Permissions::from_mode(0o755));
+                    }
+
+                    let mut synchronized_destinations: Vec<PathBuf> = Vec::new();
+
+                    // 1. Explicitly update the currently running executable
+                    if let Ok(cur_exe) = std::env::current_exe() {
+                        if let Ok(()) = safe_replace_binary(&temp_fresh_bin, &cur_exe, &mut pending_cleanup) {
+                            println!("  Synchronized active binary: {}", cur_exe.display());
+                            synchronized_destinations.push(cur_exe.clone());
+                            if let Ok(canonical) = fs::canonicalize(&cur_exe) {
+                                synchronized_destinations.push(canonical);
                             }
-                            println!("  Synchronized 'fmp' binary to: {}", fmp_bin.display());
+                        }
+                    }
+
+                    // 2. Synchronize 'fmp' binary into all target directories
+                    for dir in &target_dirs {
+                        let fmp_bin = dir.join(fmp_name);
+
+                        // Skip if already synchronized in step 1
+                        if synchronized_destinations.iter().any(|d| d == &fmp_bin) {
+                            continue;
+                        }
+
+                        match safe_replace_binary(&temp_fresh_bin, &fmp_bin, &mut pending_cleanup) {
+                            Ok(()) => {
+                                println!("  Synchronized 'fmp' binary to: {}", fmp_bin.display());
+                                synchronized_destinations.push(fmp_bin.clone());
+                                if let Ok(canonical) = fs::canonicalize(&fmp_bin) {
+                                    synchronized_destinations.push(canonical);
+                                }
+                            }
+                            Err(_e) => {
+                                // Directory might not be writable (e.g. /usr/local/bin without sudo), ignore
+                            }
                         }
 
                         // Write fmp command shims on Windows
@@ -188,49 +295,48 @@ pub fn run_update_command(args: &[String]) {
                         let _ = fs::remove_file(dir.join("flame.cmd"));
                         let _ = fs::remove_file(dir.join("flame.bat"));
                     }
-                }
 
-                // After all target directories have received the new fmp binary, clean up any transitional/legacy binaries
-                for dir in &target_dirs {
-                    let flamelang_bin = if cfg!(windows) {
-                        dir.join("flamelang.exe")
-                    } else {
-                        dir.join("flamelang")
-                    };
-                    let flame_bin = if cfg!(windows) {
-                        dir.join("flame.exe")
-                    } else {
-                        dir.join("flame")
-                    };
-                    let fmp_bin = if cfg!(windows) {
-                        dir.join("fmp.exe")
-                    } else {
-                        dir.join("fmp")
-                    };
+                    // 3. Clean up transitional and legacy binaries across all target directories
+                    for dir in &target_dirs {
+                        let flamelang_bin = dir.join(flamelang_name);
+                        let flame_bin = dir.join(if cfg!(windows) { "flame.exe" } else { "flame" });
+                        let fmp_bin = dir.join(fmp_name);
 
-                    if flamelang_bin.exists() && flamelang_bin != fmp_bin {
-                        if fs::remove_file(&flamelang_bin).is_err() {
-                            let temp_name = format!("{}.deleteme.{}", flamelang_bin.display(), std::process::id());
-                            let temp_path = PathBuf::from(&temp_name);
-                            if fs::rename(&flamelang_bin, &temp_path).is_ok() {
-                                pending_cleanup.push(temp_path);
+                        if flamelang_bin.exists()
+                            && flamelang_bin != fmp_bin
+                            && !synchronized_destinations.iter().any(|d| d == &flamelang_bin)
+                        {
+                            if fs::remove_file(&flamelang_bin).is_err() {
+                                let temp_name = format!("{}.deleteme.{}", flamelang_bin.display(), std::process::id());
+                                let temp_path = PathBuf::from(&temp_name);
+                                if fs::rename(&flamelang_bin, &temp_path).is_ok() {
+                                    pending_cleanup.push(temp_path);
+                                }
+                            } else {
+                                println!("  Removed transitional 'flamelang' binary: {}", flamelang_bin.display());
                             }
-                        } else {
-                            println!("  Removed transitional 'flamelang' binary: {}", flamelang_bin.display());
+                        }
+
+                        if flame_bin.exists()
+                            && flame_bin != fmp_bin
+                            && !synchronized_destinations.iter().any(|d| d == &flame_bin)
+                        {
+                            if fs::remove_file(&flame_bin).is_err() {
+                                let temp_name = format!("{}.deleteme.{}", flame_bin.display(), std::process::id());
+                                let temp_path = PathBuf::from(&temp_name);
+                                if fs::rename(&flame_bin, &temp_path).is_ok() {
+                                    pending_cleanup.push(temp_path);
+                                }
+                            } else {
+                                println!("  Removed legacy 'flame' binary: {}", flame_bin.display());
+                            }
                         }
                     }
 
-                    if flame_bin.exists() && flame_bin != fmp_bin {
-                        if fs::remove_file(&flame_bin).is_err() {
-                            let temp_name = format!("{}.deleteme.{}", flame_bin.display(), std::process::id());
-                            let temp_path = PathBuf::from(&temp_name);
-                            if fs::rename(&flame_bin, &temp_path).is_ok() {
-                                pending_cleanup.push(temp_path);
-                            }
-                        } else {
-                            println!("  Removed legacy 'flame' binary: {}", flame_bin.display());
-                        }
-                    }
+                    // Remove our temporary staging binary
+                    let _ = fs::remove_file(&temp_fresh_bin);
+                } else {
+                    eprintln!("  \x1b[1;33mwarning:\x1b[0m Could not locate compiled Flame binary to synchronize.");
                 }
 
                 #[cfg(windows)]
