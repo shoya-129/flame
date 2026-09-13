@@ -2,6 +2,12 @@
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 
+## [0.5.1] - 2026-09-13 (Codename: *Fifth Spark*)
+
+### 🐛 Bug Fixes
+
+- **Flame Distribution**: Fixed an issue where the `fmp` binary was not being distributed correctly.
+
 ## [0.5.0] - 2026-09-13 (Codename: *Fifth Spark*)
 
 ### 🌐 Native WebSockets Subsystem (`std.net.ws`)
