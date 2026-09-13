@@ -9,11 +9,11 @@ documentation = "https://flamelang.vercel.app/"
 keywords = ["compiler", "flame", "language", "scripting"]
 categories = ["command-line-utilities", "compilers"]
 exclude = [
-    "examples/",
-    "docs/",
-    "bin/",
-    "scripts/",
-    "ide/"
+    "/examples/",
+    "/docs/",
+    "/bin/",
+    "/scripts/",
+    "/ide/"
 ]
 
 [[bin]]
