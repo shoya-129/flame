@@ -8,15 +8,21 @@ pub fn init() -> HashMap<String, Value> {
     map.insert(
         "parse".to_string(),
         Value::NativeCallback(|args| {
-            if let Some(Value::String(json_str)) = args.get(0) {
-                match serde_json::from_str::<JsonValue>(json_str.as_str()) {
-                    Ok(val) => Ok(json_to_value(&val)),
-                    Err(e) => Err(format!("JSON parse error: {}", e))
+            if let Some(val) = args.get(0) {
+                match val {
+                    Value::String(json_str) => {
+                        match serde_json::from_str::<JsonValue>(json_str.as_str()) {
+                            Ok(val) => Ok(json_to_value(&val)),
+                            Err(e) => Err(format!("JSON parse error: {}", e)),
+                        }
+                    }
+                    Value::Formula(_) | Value::Object(_) => Ok(val.clone()),
+                    _ => Err("json.parse expects a string or object".to_string()),
                 }
             } else {
-                Err("json.parse expects a string".to_string())
+                Err("json.parse expects an argument".to_string())
             }
-        })
+        }),
     );
 
     map.insert(

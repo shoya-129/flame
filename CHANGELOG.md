@@ -2,6 +2,45 @@
 
 All pre-release versions in the `0.x.x` series carry the official codename **Flame Spark**, reflecting the fast, evolving, and multithreaded foundation of the language toolchain. Upon reaching the stable `1.0.0` milestone, Flame will transition to its canonical **Final Spark** release codename.
 
+## [0.4.9] - 2026-09-13 (Codename: *Fourth Spark*)
+
+### ⚡ Application-Specific Runtime & Filesystem Execution
+- **Strict VFS Opt-In (--vfs / --exe)**:
+  - Aligned the toolchain with Flame's core architectural model: Virtual File System (VFS) is **only** embedded into binaries when explicitly requested via `--vfs` or `--exe` on `fmp build` / `fmp build --release`.
+  - Normal development and production builds execute directly against the real host filesystem, reading `src/` and package interfaces (`.flame/pkg/`) dynamically.
+- **Smart Toolchain-Aware Rebuild Detection**:
+  - Enhanced `check_runtime_needs_rebuild` in `fmp run` to compare the `flamelang` compiler executable's modification timestamp (`std::env::current_exe()`) against cached application binaries in `target/dev/`.
+  - Upgrades or modifications to the compiler toolchain now automatically trigger a clean host runtime rebuild while maintaining instantaneous zero-compile re-execution when only Flame source scripts (`src/*.fm`) are modified.
+
+### 🌐 Native Callback Serialization & HTTP Framework Responses (Flamer)
+- **Automatic JSON Serialization for Handlers Returning Formulas & Objects**:
+  - Resolved an issue where HTTP endpoint handlers (e.g. `flamer.post`, `flamer.get`) returning a `Formula` (such as `return { ok: true }`) or `Object` returned `nil` over HTTP.
+  - Updated `Value::pack(&self)` to automatically serialize `Value::Formula`, `Value::Object`, and `Value::StructInstance` into JSON strings (`CValueTag::String`) across native FFI boundaries.
+  - Enhanced code generation in `src/compiler.rs` for Axum route handlers to serialize returned structured data types (`Formula`, `Object`, `StructInstance`, `Tuple`) into formatted JSON responses.
+- **Global Runtime Environment Propagation**:
+  - Added global registries (`GLOBAL_NATIVE_METHODS`, `GLOBAL_GRANTED_PERMISSIONS`, `GLOBAL_VFS`) in `flamelang::runner` to ensure asynchronous callbacks and background daemon threads retain full access to linked native plugins and module methods without context loss.
+
+### 📦 `json.parse` Union Typing & Documentation Corrections
+- **Flexible JSON Parsing**:
+  - Enhanced `json.parse` in `std.json` runtime to accept `Formula` and `Object` values in addition to `String`, gracefully returning the parsed structure if already converted.
+  - Updated the static typechecker built-in signatures to allow `Type::Union([Type::String, Type::Named("Formula"), Type::Formula])` as arguments to `json.parse`.
+- **Request Body Typing in Documentation**:
+  - Corrected Telegram bot tutorials and documentation (`telegram-bot.mdx`) where webhook handler request bodies were typed as `body: Formula` instead of `body: String`.
+
+### 🏗️ Codebase Modularization & Contributor Architecture
+- **Component-Based Modular Architecture**:
+  - Refactored monolithic files exceeding 2,000+ lines into modular, component-based directories:
+    - `src/parser/` (lexer, AST definitions, recursive descent parser)
+    - `src/typechecker/` (type definitions, environment, builtins, inferencer, expression/statement checkers)
+    - `src/runner/` (core interpreter, statement execution, expression evaluation, callbacks, target/platform filters, plugins)
+    - `src/package_manager/` (dependency resolution, manifest parser, package installation)
+    - `src/ide/` (hover, completion, definitions, module metadata)
+    - `src/utils/` (shared string and formatting utilities)
+- **Comprehensive Contributing Documentation**:
+  - Added extensive contribution workflows in `CONTRIBUTING.md` covering repository layout, component boundaries, testing procedures, adding standard library modules, extending native plugins, and syntax additions.
+
+---
+
 ## [0.4.8] - 2026-09-10 (Codename: *Fourth Spark*)
 
 ### 🩺 Doctor Smoke Test & Host Runtime Codegen Fix

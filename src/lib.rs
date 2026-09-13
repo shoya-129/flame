@@ -12,4 +12,5 @@ pub mod std_docs;
 pub mod stdlib;
 pub mod test_engine;
 pub mod typechecker;
+pub mod utils;
 pub mod vm;

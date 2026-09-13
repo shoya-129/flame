@@ -90,10 +90,7 @@ pub fn build_project(
                                 "std.desktop" => vec!["os"],
                                 "std.hardware" => vec!["hardware"],
                                 "std.camera" => vec!["camera"],
-                                "std.bluetooth" => vec!["bluetooth"],
                                 "std.base64" => vec!["base64"],
-                                "std.hid" => vec!["hardware"],
-                                "std.serial" => vec!["hardware"],
                                 "std.net.tcp" | "std.net.udp" | "std.net.dns" | "std.net.url"
                                 | "std.net.interface" | "std.net" => vec!["net"],
                                 "std.net.http" => vec!["net", "http"],
@@ -772,6 +769,10 @@ panic = "abort"
         }
     }
 
+    main_rs.push_str("    flamelang::runner::set_global_native_methods(base_runner.native_methods.clone());\n");
+    main_rs.push_str("    flamelang::runner::set_global_granted_permissions(base_runner.granted_permissions.clone());\n");
+    main_rs.push_str("    flamelang::runner::set_global_vfs(base_runner.vfs.clone());\n");
+
     // We don't have execute_source right now, so we need to run file
     main_rs.push_str("    // Since execute_source does not exist, we just run_file from main.rs if we had it, but here we can just parse and run\n");
     main_rs
@@ -1095,7 +1096,13 @@ fn generate_param_extraction(
             code.push_str(
                 "            let res_val = flamelang::vm::Value::unpack(res, \"\", \"\");\n",
             );
-            code.push_str("            res_val.to_string()\n");
+            code.push_str("            match res_val {\n");
+            code.push_str("                flamelang::vm::Value::String(s) => s,\n");
+            code.push_str("                flamelang::vm::Value::Formula(_) | flamelang::vm::Value::Object(_) | flamelang::vm::Value::StructInstance { .. } | flamelang::vm::Value::Tuple(_) => {\n");
+            code.push_str("                    flamelang::native_std::json::value_to_json(&res_val).to_string()\n");
+            code.push_str("                }\n");
+            code.push_str("                _ => res_val.to_string(),\n");
+            code.push_str("            }\n");
             code.push_str("        };\n");
         } else {
             code.push_str(&format!(
@@ -1107,7 +1114,13 @@ fn generate_param_extraction(
             code.push_str(
                 "            let res_val = flamelang::vm::Value::unpack(res, \"\", \"\");\n",
             );
-            code.push_str("            res_val.to_string()\n");
+            code.push_str("            match res_val {\n");
+            code.push_str("                flamelang::vm::Value::String(s) => s,\n");
+            code.push_str("                flamelang::vm::Value::Formula(_) | flamelang::vm::Value::Object(_) | flamelang::vm::Value::StructInstance { .. } | flamelang::vm::Value::Tuple(_) => {\n");
+            code.push_str("                    flamelang::native_std::json::value_to_json(&res_val).to_string()\n");
+            code.push_str("                }\n");
+            code.push_str("                _ => res_val.to_string(),\n");
+            code.push_str("            }\n");
             code.push_str("        };\n");
         }
     } else if p_type.contains("range") {

@@ -547,6 +547,20 @@ impl Value {
                     obj_ptr: ptr as *mut std::ffi::c_void,
                 }
             }
+            Value::Formula(_) | Value::Object(_) | Value::StructInstance { .. } => {
+                let json_val = crate::native_std::json::value_to_json(self);
+                let json_str = json_val.to_string();
+                let c_str = std::ffi::CString::new(json_str).unwrap_or_default();
+                CValue {
+                    tag: CValueTag::String,
+                    int_val: 0,
+                    int_val2: 0,
+                    float_val: 0.0,
+                    bool_val: false,
+                    string_ptr: c_str.into_raw(),
+                    obj_ptr: std::ptr::null_mut(),
+                }
+            }
             _ => CValue::null(),
         }
     }

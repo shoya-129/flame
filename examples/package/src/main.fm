@@ -11,7 +11,7 @@ let bot_token = env.get("BOT_TOKEN")
 
 println(bot_token)
 
-async fn webhook(body: Formula) -> Formula {
+async fn webhook(body: String) -> Formula {
     let data = json.parse(body)
     let chat_id = data.message.chat.id
     let text = data.message.text
@@ -52,8 +52,18 @@ async fn main() {
     println("Point your Telegram webhook to: /webhook")
 
     flamer.post("/webhook", webhook)
+    flamer.post(
+        "/test", 
+        (body: String) -> Formula {
+            let parsed = json.parse(body)
+            println(parsed.name)
+            return {
+                ok: true
+            }
+        }
+    )
+
     await flamer.listen()
 }
 
 await main()
-

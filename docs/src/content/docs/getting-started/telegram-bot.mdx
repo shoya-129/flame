@@ -85,7 +85,7 @@ Before starting, ensure you have:
    Next, we will define our asynchronous `webhook` function. This function will be triggered by `flamer` every time Telegram sends a new message to our `/webhook` endpoint.
    
    ```flame
-   async fn webhook(body: Formula) -> Formula {
+   async fn webhook(body: String) -> Formula {
        // Parse the incoming JSON request body from Telegram
        let data = json.parse(body)
        
